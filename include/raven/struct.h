@@ -36,7 +36,7 @@
 #include "defines.h"
 
 //Error codes
-#include <linux/errno.h>
+#include <errno.h>
 
 #ifndef FALSE
 #define FALSE 0

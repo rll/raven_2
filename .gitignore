@@ -5,3 +5,5 @@ __init__.py
 msg/*.py
 msg_gen
 _*.py
+build
+bin/*
