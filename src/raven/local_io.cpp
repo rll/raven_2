@@ -253,6 +253,7 @@ void updateMasterRelativeOrigin(struct device *device0)
 ///
 #include <tf/transform_datatypes.h>
 #include <raven_2/raven_state.h>
+#include <raven_2/joint_command.h>
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/JointState.h>
 
@@ -266,6 +267,8 @@ ros::Publisher pub_ravenstate;
 ros::Publisher joint_publisher;
 ros::Publisher vis_pub1;
 ros::Publisher vis_pub2;
+ros::Subscriber joint_sub1;
+ros::Subscriber joint_sub2;
 
 /**
 *    init_ravenstate_publishing()  - initialize publishing data to ros.
@@ -278,6 +281,21 @@ int init_ravenstate_publishing(ros::NodeHandle &n){
     return 0;
 }
 
+float joint_cmd1[8];
+void jointCallback1(const joint_command::ConstPtr& joint_cmd) {
+    for (int i=0; i < 8; i++) {
+        joint_cmd1[i] = joint_cmd->jpos[i];
+    }
+}
+void updateJoints(mechanism* mech) {
+    for (int i=0; i < 8; i++)
+        mech->joint[i].jpos_d = joint_cmd1[0];
+}
+
+void init_joint_subs(ros::NodeHandle &n) {
+    joint_sub1 = n.subscribe("joint_cmd1", 1, jointCallback1);
+    //joint_sub2 = n.subscribe("joint_cmd2", 2, jointCallback2);    
+}
 
 /*
 * publish_ravenstate_ros()
