@@ -7,3 +7,4 @@ msg_gen
 _*.py
 build
 bin/*
+err_network.log
