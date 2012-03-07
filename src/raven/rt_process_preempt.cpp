@@ -236,6 +236,7 @@ int init_ros(int argc, char **argv)
 //    rosrt::init();
     init_ravenstate_publishing(n);
     init_ravengains(n, &device0);
+    init_joint_subs(n);
 
     return 0;
 }

@@ -153,7 +153,7 @@
 #define GRASP2_TR_GOLD_ARM     (GRASP2_TR_GREEN_ARM)
 
 //Link Angles/Lengths
-#define A12 (float)(1.30899694)    /*Link1 - 75deg in RAD*/
+const float A12  = 1.30899694;    /*Link1 - 75deg in RAD*/
 #define A23 (float)(0.907571211)    /*Link2 - 52deg in RAD - was set to 60*/
 
 //Kinematic Zero Offset (encoder space)

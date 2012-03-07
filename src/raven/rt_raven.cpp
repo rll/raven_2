@@ -180,6 +180,46 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
 }
 
 
+int raven_joint_position_command(struct device *device0, struct param_pass *currParams){
+
+    struct DOF *_joint = NULL;
+    struct mechanism* _mech = NULL;
+    int i=0,j=0;
+
+    if (currParams->runlevel != RL_PEDAL_DN)
+    {
+        set_posd_to_pos(device0);
+        updateMasterRelativeOrigin(device0);
+    }
+
+    ros::spinOnce();
+    updateJoints(&device0->mech[0]);
+    
+
+    //Inverse Cable Coupling
+    invCableCoupling(device0, currParams->runlevel);
+
+    // Set all joints to zero torque
+    _mech = NULL;  _joint = NULL;
+    while (loop_over_joints(device0, _mech, _joint, i,j) )
+    {
+        if (currParams->runlevel != RL_PEDAL_DN)
+        {
+            _joint->tau_d=0;
+        }
+        else
+        {
+            mpos_PD_control(_joint);
+        }
+
+        TorqueToDAC(device0);
+    }
+    //    gravComp(device0);
+
+    return 0;
+}
+
+
 /**
 * raven_sinusoidal_joint_motion()
 *    Applies a sinusoidal trajectory to all joints

@@ -17,7 +17,7 @@
 #include "defines.h"
 
 //Error codes
-#include <linux/errno.h>
+#include <errno.h>
 
 #ifndef FALSE
 #define FALSE 0
@@ -41,6 +41,7 @@ enum t_controlmode{
     motor_pd_control       = 5,
     cartesian_space_control =6,
     multi_dof_sinusoid     = 7,
+    joint_position_control = 8,
     LAST_TYPE
     } ;
 
