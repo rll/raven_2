@@ -1,0 +1,8 @@
+__init__.py
+*.pyc
+*~
+.#*
+msg/*.py
+msg_gen
+_*.py
+build

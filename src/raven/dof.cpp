@@ -1,0 +1,90 @@
+/*
+ * dof.c - functions that fill in the DOF structure
+ *     processEncVal - process an encoder value from a USB packet
+ *     encToJPos - go from an encoder value to a Joint position
+ *
+ * Kenneth Fodero
+ * Biorobotics Lab
+ * 2005
+ *
+ */
+
+#include "dof.h"
+
+extern struct DOF_type DOF_types[];
+
+/**
+ * processEncVal - reads an encoder value from a USB packet buffer
+ *   and returns the integer result
+ *
+ * \param buffer[] - the USB packet buffer
+ * \param channel - the encoder channel to load
+ *
+ * \return the resulting encoder value
+ */
+int processEncVal(unsigned char buffer[], int channel)
+{
+  int result;
+
+  // encoder value is in bytes 3,4,and 5 of the usb in-packet
+  // see atmel_code/main.c: in_packet() for more info
+  result = (buffer[3*channel+5]<<16) | (buffer[3*channel+4]<<8) |
+           (buffer[3*channel+3]);
+
+  //Handle negative values by padding result with ones
+  if (result >> 23) {
+    result = result | 0xFF000000;
+  }
+#ifdef RAVEN_I
+  return result;
+#else
+  return (-1*result);
+#endif
+}
+
+/**
+ * encToMPos - converts an encoder count to motor position. This function sets the mpos parameter of the joint structure
+ *
+ * \param joint pointer to degree of freedom to work on
+ *
+ */
+void encToMPos(struct DOF *joint)
+{
+  //MPos is just the motor angle
+  joint->mpos = encToMPos2(joint);
+}
+
+
+/**
+* Similar returns an angle corresponding to encoder value contained in joint parameter. Function normalizes values so that they are returned measured from start position
+*  \param joint Pointer to structure containing joint info
+*  \return angle of the encoder
+*/
+float encToMPos2(struct DOF *joint)
+{
+  float motorAngle;
+  int normEnc;
+
+  //Adjust encoder value - based on start position
+  normEnc =  normalizeEncCnt(joint);
+
+  //Determine motor angle
+  motorAngle = (2*PI) * (1/((float)ENC_CNTS_PER_REV)) * normEnc;
+
+  //MPos is just the motor angle
+  return motorAngle;
+}
+
+/**
+ * normalizeEncCnt - adjusts encVal based on middle pos.
+ *
+ * \param encVal the encoder value
+ * \param dof the degree of freedom
+ *
+ * \return normalized encoder value
+ */
+int normalizeEncCnt(struct DOF *joint)
+{
+  return (joint->enc_val - joint->enc_offset);
+}
+
