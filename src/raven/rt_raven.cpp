@@ -37,6 +37,7 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
 int raven_homing(struct device *device0, struct param_pass *currParams, int begin_homing=0);
 int applyTorque(struct device *device0, struct param_pass *currParams);
 int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *currParams);
+int raven_joint_position_command(struct device *device0, struct param_pass *currParams);
 
 extern int initialized;
 
@@ -107,7 +108,11 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
             ret = raven_sinusoidal_joint_motion(device0, currParams);
             break;
 
+        case joint_position_control:
+            ret = raven_joint_position_command(device0,currParams);
+	    break;
         default:
+	  printf("got control mode %i\n", (int)controlmode);
             ROS_ERROR("Error: unknown control mode in controlRaven (rt_raven.cpp)");
             ret = -1;
             break;
