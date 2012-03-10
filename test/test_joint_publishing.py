@@ -6,20 +6,18 @@ import rospy
 import sensor_msgs.msg as sm
 
 rospy.init_node("test_joint_publishing")
-print "getting raven state"
-raven_state_msg = rospy.wait_for_message("ravenstate", raven_state, timeout = 4)
+print "getting joint state"
+joint_state_msg = rospy.wait_for_message("joint_states", sm.JointState, timeout = 4)
 
-assert isinstance(raven_state_msg, raven_state)
-arm1_joints = raven_state_msg.jpos[0:8]
+assert isinstance(joint_state_msg, sm.JointState)
 
-print "arm1 joints", arm1_joints
-new_arm1_joints = list(arm1_joints)
-new_arm1_joints[0] -= .1
+torque = [0 for _ in xrange(8)]
+torque[4] = 0
 
 pub = rospy.Publisher("joint_cmd1", joint_command)
-rospy.sleep(.25)
+rospy.sleep(.5)
 
-msg = joint_command(jpos = tuple(new_arm1_joints))
+msg = joint_command(torque = torque)
 pub.publish(msg)
 
 print "done!"
