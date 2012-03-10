@@ -39,6 +39,8 @@ struct DOF_type {
 
   // starting position in degrees
   float home_position;
+  
+  float speed_limit; // radian / sec
 
 
   // encoder counts per revolution
