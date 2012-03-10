@@ -15,9 +15,6 @@ extern int NUM_MECH;
 
 void getStateLPF(struct DOF *joint);
 
-/*
- * stateEstimate()
- */
 
 void stateEstimate(struct robot_device *device0)
 {
