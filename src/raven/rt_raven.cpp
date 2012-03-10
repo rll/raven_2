@@ -180,13 +180,13 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
         TorqueToDAC(device0);
     }
     //    gravComp(device0);
-
+ 
     return 0;
 }
 
 device* device0ptr;
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams){
-
+  device0->surgeon_mode=1;
     //Inverse Cable Coupling
     invCableCoupling(device0, currParams->runlevel);
 

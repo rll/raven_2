@@ -2,7 +2,11 @@
 #include <exception>
 #include <iostream>
 #include <cstdio>
+#include <fstream>
+
+#include "saveload.h"
 #include "DOF_type.h"
+
 namespace fs = boost::filesystem;
 using namespace std;
 
@@ -13,7 +17,7 @@ fs::path getRosDir() {
   return rosDir;  
 }
 
-bool loadOffsets(device& dev) {  
+bool loadOffsets(robot_device& dev) {  
   fs::path rosDir = getRosDir();
   fs::path offsetPath = rosDir / "offsets.txt";
   ifstream infile(offsetPath.string().c_str());
@@ -23,7 +27,7 @@ bool loadOffsets(device& dev) {
     for (int iJoint = 0; iJoint < 8; iJoint++) {
       float x;
       infile >> x;
-      device.mech[iMech].joint[iJoint].enc_offset = x;
+      dev.mech[iMech].joint[iJoint].enc_offset = x;
     }
   }
   assert(!infile.fail());  
@@ -32,7 +36,7 @@ bool loadOffsets(device& dev) {
 }
 
 
-bool saveOffsets(device& dev) {
+bool saveOffsets(robot_device& dev) {
   fs::path rosDir = getRosDir();
   if (!fs::exists(rosDir)) {
     bool success = create_directory(rosDir);
@@ -45,7 +49,7 @@ bool saveOffsets(device& dev) {
   
   for (int iMech = 0; iMech < 2; iMech++) {
     for (int iJoint = 0; iJoint < 8; iJoint++) {
-      outfile << device.mech[iMech].joint[iJoint].enc_offset<< " ";
+      outfile << dev.mech[iMech].joint[iJoint].enc_offset<< " ";
     }
   }
   return true;
