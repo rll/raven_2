@@ -18,6 +18,7 @@
 #include "homing.h"
 #include "state_estimate.h"
 #include "log.h"
+#include "offsets.h"
 
 
 int homing_condition_met(struct DOF *_joint);
@@ -139,6 +140,8 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         }
 
     }
+    
+    saveOffsets(*device0);
 
     return 0;
 }

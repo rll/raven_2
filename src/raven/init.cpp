@@ -15,6 +15,7 @@
 #include "init.h"
 #include "USB_init.h"
 #include "local_io.h"
+#include "offsets.h"
 
 extern int initialized;
 
@@ -293,6 +294,9 @@ void initDOFs(struct device *device0)
 
 		device0->mech[i].tool_type = TOOL_GRASPER_10MM;
     }
+    
+    
+    loadOffsets(*device0);
 
     dofs_inited=1;
 }
