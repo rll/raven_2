@@ -352,7 +352,7 @@ void publish_joints(struct robot_device* device0){
         return;
     t1=t2;
 
-    publish_marker(device0);
+    // publish_marker(device0);
 
     sensor_msgs::JointState joint_state;
     //update joint_state
