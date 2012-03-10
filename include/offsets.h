@@ -1,4 +1,4 @@
 #include "struct.h"
 
-void loadOffsets(device& dev);
-void saveOffsets(device& dev);
+bool loadOffsets(robot_device& dev);
+bool saveOffsets(robot_device& dev);

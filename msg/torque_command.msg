@@ -1,1 +1,1 @@
-float32[8] torque
+float32[16] torque

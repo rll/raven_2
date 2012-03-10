@@ -262,7 +262,8 @@ extern device* device0ptr;
 void jointCallback1(const joint_command::ConstPtr& joint_cmd) {
   printf("joint callback!\n");
   for (int i=0; i < 8; i++) {
-    device0ptr->mech[0].joint[i].tau_d = joint_cmd->torque[i];
+    device0ptr->mech[1].joint[i].tau_d = joint_cmd->torque[i];
+    device0ptr->mech[0].joint[i].tau_d = joint_cmd->torque[i+8];
   }
 }
 
