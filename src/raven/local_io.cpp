@@ -258,16 +258,14 @@ int init_ravenstate_publishing(ros::NodeHandle &n){
     return 0;
 }
 
-float joint_cmd1[8];
+extern device* device0ptr;
 void jointCallback1(const joint_command::ConstPtr& joint_cmd) {
-    for (int i=0; i < 8; i++) {
-        joint_cmd1[i] = joint_cmd->jpos[i];
-    }
+  printf("joint callback!\n");
+  for (int i=0; i < 8; i++) {
+    device0ptr->mech[0].joint[i].tau_d = joint_cmd->torque[i];
+  }
 }
-void updateJoints(mechanism* mech) {
-    for (int i=0; i < 8; i++)
-        mech->joint[i].jpos_d = joint_cmd1[0];
-}
+
 
 void init_joint_subs(ros::NodeHandle &n) {
     joint_sub1 = n.subscribe("joint_cmd1", 1, jointCallback1);

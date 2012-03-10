@@ -12,7 +12,7 @@ joint_state_msg = rospy.wait_for_message("joint_states", sm.JointState, timeout 
 assert isinstance(joint_state_msg, sm.JointState)
 
 torque = [0 for _ in xrange(8)]
-torque[4] = 0
+torque[4] =-.02
 
 pub = rospy.Publisher("joint_cmd1", joint_command)
 rospy.sleep(.5)

@@ -41,7 +41,7 @@ enum t_controlmode{
     motor_pd_control       = 5,
     cartesian_space_control =6,
     multi_dof_sinusoid     = 7,
-    joint_position_control = 8,
+    joint_torque_control = 8,
     LAST_TYPE
     } ;
 
