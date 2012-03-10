@@ -1,6 +1,8 @@
 #include <boost/filesystem.hpp>
 #include <exception>
 #include <iostream>
+#include <cstdio>
+#include "DOF_type.h"
 namespace fs = boost::filesystem;
 using namespace std;
 
@@ -48,6 +50,21 @@ bool saveOffsets(device& dev) {
   }
   return true;
   
+}
+
+bool saveDOFInfo() {
+  fs::path outPath = getRosDir() / "dof_info.txt";
+  fs::path offsetPath = rosDir / "offsets.txt";
   
+  
+  FILE* outFile = fopen (offsetPath.string().c_str(),"w");
+  if (outFile == NULL) return false;
+  
+  extern DOF_type DOF_types[];  
+  
+  for (int iDOF = 0; iDOF < 16) {
+    DOF_type dof& = DOF_types[iDOF];
+    fprintf(outFile, "%i %.5f %.5f %.5f %.5f %.5f", iDOF, dof.home_position, dof.max_position, dof.KP, dof.KD, dof.KI);
+  }
   
 }

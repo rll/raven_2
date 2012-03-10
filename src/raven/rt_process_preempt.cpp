@@ -32,6 +32,7 @@
 #include "console_process.h"
 #include "rt_raven.h"
 #include "network_layer.h"
+#include "saveload.h"
 
 using namespace std;
 
@@ -236,6 +237,7 @@ int init_ros(int argc, char **argv)
 //    rosrt::init();
     init_ravenstate_publishing(n);
     init_ravengains(n, &device0);
+    saveDOFInfo();
     init_joint_subs(n);
 
     return 0;

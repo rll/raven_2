@@ -15,7 +15,7 @@
 #include "init.h"
 #include "USB_init.h"
 #include "local_io.h"
-#include "offsets.h"
+#include "saveload.h"
 
 extern int initialized;
 
@@ -96,6 +96,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
  * \param device0 pointer to device struct.
  *
  */
+  
 void initDOFs(struct device *device0)
 {
     static int dofs_inited=0;
