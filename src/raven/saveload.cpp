@@ -57,7 +57,7 @@ bool saveOffsets(robot_device& dev) {
 }
 
 bool saveDOFInfo() {
-  fs::path outPath = getRosDir() / "dof_info.txt";
+  fs::path rosDir = getRosDir() / "dof_info.txt";
   fs::path offsetPath = rosDir / "offsets.txt";
   
   
@@ -66,9 +66,9 @@ bool saveDOFInfo() {
   
   extern DOF_type DOF_types[];  
   
-  for (int iDOF = 0; iDOF < 16) {
-    DOF_type dof& = DOF_types[iDOF];
+  for (int iDOF = 0; iDOF < 16; iDOF++) {
+    DOF_type& dof = DOF_types[iDOF];
     fprintf(outFile, "%i %.5f %.5f %.5f %.5f %.5f", iDOF, dof.home_position, dof.max_position, dof.KP, dof.KD, dof.KI);
   }
-  
+  return true;  
 }

@@ -205,7 +205,7 @@ void initDOFs(struct device *device0)
             int dofindex = _joint->type;
             struct DOF_type *_dof = &(DOF_types[dofindex]);
 
-            _dof->speed_limit = abs(_dof->max_position - _dof->home_position)/5; // total range of motion in 5 seconds
+            _dof->speed_limit = fabs(_dof->max_position - _dof->home_position)/5; // total range of motion in 5 seconds
 
             //Initialize joint and motor position variables
             _joint->jpos = 0;

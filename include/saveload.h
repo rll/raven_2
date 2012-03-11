@@ -1,5 +1,5 @@
 #include "struct.h"
 
-void loadOffsets(device& dev);
-void saveOffsets(device& dev);
+bool loadOffsets(device& dev);
+bool saveOffsets(device& dev);
 bool saveDOFInfo();

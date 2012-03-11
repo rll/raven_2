@@ -40,7 +40,7 @@ int applyTorque(struct device *device0, struct param_pass *currParams);
 int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *currParams);
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams);
 
-int turnOffSpeedyJoints(device& dev);
+void turnOffSpeedyJoints(device& dev);
 
 extern int initialized;
 
@@ -121,20 +121,21 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
             break;
     }
 
-    turnOffSpeedyJoints(*device0);
-    
+    if (controlmode != homing_mode) turnOffSpeedyJoints(*device0);
+
     return ret;
 }
 
-int turnOffSpeedyJoints(device& dev) {
+void turnOffSpeedyJoints(device& dev) {
   extern DOF_type DOF_types[];
   for (int iMech = 0; iMech < 2; iMech++) {
     for (int iJoint = 0; iJoint < 8; iJoint++) {
-      DOF& dof = dev[iMech].joint[iJoint];
-      if (abs(dof.jvel) > DOF_types[dof.type].speed_limit) dof.tau_d = 0;
+      DOF& dof = dev.mech[iMech].joint[iJoint];
+      if (fabs(dof.mvel) > 10) {
+	dof.current_cmd = 0;
+      }
     }
   }
-  
 }
 
 /**
