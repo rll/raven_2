@@ -9,6 +9,11 @@
 
 #include <ros/ros.h>
 
+#include <openrave/openrave.h>
+#include <openrave-core.h>
+#include "stdafx.h"
+#include "GeneralIK.h"
+
 #include "rt_raven.h"
 #include "defines.h"
 
@@ -27,6 +32,16 @@
 #include "update_device_state.h"
 #include <cmath>
 
+using namespace std;
+using namespace OpenRAVE;
+
+
+#define STRINGIFY(x) #x
+#define EXPAND(x) STRINGIFY(x)
+
+#define OPEN_RAVE_IK false
+#define OPEN_RAVE_J false
+
 extern int NUM_MECH;
 extern unsigned long int gTime;
 extern struct DOF_type DOF_types[];
@@ -39,10 +54,23 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
 int applyTorque(struct device *device0, struct param_pass *currParams);
 int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *currParams);
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams);
-
-void turnOffSpeedyJoints(device& dev);
+NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d);
 
 extern int initialized;
+
+void turnOffSpeedyJoints(device& dev) {
+	return;
+	extern DOF_type DOF_types[];
+	for (int iMech = 0; iMech < 2; iMech++) {
+		for (int iJoint = 0; iJoint < 8; iJoint++) {
+			DOF& dof = dev.mech[iMech].joint[iJoint];
+			if (fabs(dof.mvel) > 10) {
+				log_msg("Turning off speedy joint %d on mech %d",iJoint,iMech);
+				dof.current_cmd = 0;
+			}
+		}
+	}
+}
 
 /**
 * controlRaven()
@@ -54,7 +82,7 @@ extern int initialized;
 *
 */
 int controlRaven(struct device *device0, struct param_pass *currParams){
-    int ret = 0;
+	int ret = 0;
     t_controlmode controlmode = (t_controlmode)currParams->robotControlMode;
 
     //Initi zalization code
@@ -69,13 +97,17 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     //Forward kinematics
     fwdKin(device0, currParams->runlevel);
 
+    //log_msg("0 (%d,%d,%d)",device0->mech[0].pos.x,device0->mech[0].pos.y,device0->mech[0].pos.z);
+    //log_msg("1 (%d,%d,%d)",device0->mech[1].pos.x,device0->mech[1].pos.y,device0->mech[1].pos.z);
+
+    //log_msg("control mode %d",(int)controlmode);
     switch (controlmode){
         case no_control:
             break;
 
         case cartesian_space_control:
             //initialized = false;
-            ret = raven_cartesian_space_command(device0,currParams);
+        	ret = raven_cartesian_space_command(device0,currParams);
             break;
 
         case motor_pd_control:
@@ -96,6 +128,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
             updateMasterRelativeOrigin(device0);
             if (robot_ready(device0))
             {
+                log_msg("Homing finished, switching to cartesian space control");
                 currParams->robotControlMode = cartesian_space_control;
                 newRobotControlMode = cartesian_space_control;
             }
@@ -112,30 +145,44 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
             break;
 
         case joint_torque_control:
-            ret = raven_joint_torque_command(device0,currParams);
-	    break;
+        	ret = raven_joint_torque_command(device0,currParams);
+            break;
         default:
-	  printf("got control mode %i\n", (int)controlmode);
+            printf("got control mode %i\n", (int)controlmode);
             ROS_ERROR("Error: unknown control mode in controlRaven (rt_raven.cpp)");
             ret = -1;
             break;
     }
 
-    if (controlmode != homing_mode) turnOffSpeedyJoints(*device0);
+    if (controlmode != homing_mode) {
+    	turnOffSpeedyJoints(*device0);
+    }
 
     return ret;
 }
 
-void turnOffSpeedyJoints(device& dev) {
-  extern DOF_type DOF_types[];
-  for (int iMech = 0; iMech < 2; iMech++) {
-    for (int iJoint = 0; iJoint < 8; iJoint++) {
-      DOF& dof = dev.mech[iMech].joint[iJoint];
-      if (fabs(dof.mvel) > 10) {
-	dof.current_cmd = 0;
-      }
-    }
-  }
+EnvironmentBasePtr env;
+RobotBasePtr raven;
+vector<RobotBase::ManipulatorPtr> manips;
+RobotBase::ManipulatorPtr leftarm;
+RobotBase::ManipulatorPtr rightarm;
+GeneralIK* iksolver;
+int ik_test_counter;
+
+void init_open_rave() {
+	if (OPEN_RAVE_IK) {
+		log_msg("init openrave");
+		RaveInitialize(true);
+		env = RaveCreateEnvironment();
+		env->Load(EXPAND(RAVEN_DATA_DIR) "/ravenII_2arm.xml");
+		raven = env->GetRobot("raven_2");
+		manips = 	raven->GetManipulators();
+		leftarm = manips[0];
+		rightarm = manips[1];
+		iksolver = new GeneralIK(env);
+		iksolver->Init(leftarm);
+		ik_test_counter = 0;
+	}
 }
 
 /**
@@ -144,18 +191,19 @@ void turnOffSpeedyJoints(device& dev) {
 *     Why is it called "end_effector_control?  Why's your mom so fat?
 */
 int raven_cartesian_space_command(struct device *device0, struct param_pass *currParams){
+	ik_test_counter++;
 
     struct DOF *_joint = NULL;
     struct mechanism* _mech = NULL;
     int i=0,j=0;
 
-    if (currParams->runlevel != RL_PEDAL_DN)
-    {
+    if (currParams->runlevel != RL_PEDAL_DN) {
         set_posd_to_pos(device0);
         updateMasterRelativeOrigin(device0);
     }
 
     // Set desired transform to straight down
+    /*
     for (int i=0;i<NUM_MECH;i++)
     {
         _mech = &(device0->mech[i]);
@@ -170,7 +218,15 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
         _mech->ori_d.R[2][0] = 0.0;
         _mech->ori_d.R[2][1] = 0.0;
         _mech->ori_d.R[2][2] = 1.0;
+
     }
+    */
+    //cout << "ori_d" << device0->mech[0].ori_d.grasp << " " << device0->mech[1].ori_d.grasp << endl;
+    //device0->mech[0].ori_d.grasp = 900;
+    //device0->mech[1].ori_d.grasp = -900;
+
+
+
 
     //Inverse kinematics
     invKin(device0, currParams);
@@ -182,12 +238,9 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
-        if (currParams->runlevel != RL_PEDAL_DN)
-        {
+        if (currParams->runlevel != RL_PEDAL_DN || _mech->type == GREEN_ARM) {
             _joint->tau_d=0;
-        }
-        else
-        {
+        } else {
             mpos_PD_control(_joint);
         }
 //        if (_joint->type == TOOL_ROT_GREEN)
@@ -197,7 +250,7 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
         TorqueToDAC(device0);
     }
     //    gravComp(device0);
- 
+
     return 0;
 }
 
@@ -210,7 +263,7 @@ int raven_joint_torque_command(struct device *device0, struct param_pass *currPa
     device0ptr = device0;
     ros::spinOnce();
     TorqueToDAC(device0);
-    
+
     //    gravComp(device0);
 
     return 0;
@@ -343,9 +396,7 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
 
     // If we're not in pedal down or init.init then do nothing.
     if (! ( currParams->runlevel == RL_PEDAL_DN ||
-          ( currParams->runlevel == RL_INIT     && currParams->sublevel == SL_AUTO_INIT ))
-       )
-    {
+          ( currParams->runlevel == RL_INIT     && currParams->sublevel == SL_AUTO_INIT ))) {
         controlStart = 0;
         delay = gTime;
 
@@ -367,18 +418,16 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
 
-        // initialize trajectory
-        if (!controlStart && _joint->type == Z_INS_GREEN)
-            start_trajectory(_joint, 0.08, 8);
-
-
-        else if (!controlStart)
-            _joint->jpos_d = _joint->jpos;
-
-        // Get trajectory update
-        if (_joint->type == Z_INS_GREEN)
-           update_sinusoid_position_trajectory(_joint);
-
+    	// initialize trajectory
+    	if (!controlStart && _joint->type == Z_INS_GREEN) {
+    		start_trajectory(_joint, 0.08, 8);
+    	} else if (!controlStart) {
+    		_joint->jpos_d = _joint->jpos;
+    	}
+    	// Get trajectory update
+    	if (_joint->type == Z_INS_GREEN) {
+    		update_sinusoid_position_trajectory(_joint);
+    	}
     }
 
     //Inverse Cable Coupling
@@ -391,8 +440,9 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
         // Do PD control
         mpos_PD_control(_joint);
 
-        if (device0->mech[i].type == GOLD_ARM)
+        if (device0->mech[i].type == GOLD_ARM) {
             _joint->tau_d=0;
+        }
     }
 
     TorqueToDAC(device0);
@@ -467,7 +517,85 @@ int raven_joint_velocity_control(struct device *device0, struct param_pass *curr
     return 0;
 }
 
+inline NEWMAT::ColumnVector cross(NEWMAT::ColumnVector a, NEWMAT::ColumnVector b) {
+	NEWMAT::ColumnVector result(3);
+	result(1) = a(2)*b(3) - a(3)*b(2);
+	result(2) = a(3)*b(1) - a(1)*b(3);
+	result(3) = a(1)*b(2) - a(2)*b(1);
+	return result;
+}
 
+NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d) {
+	NEWMAT::Matrix U01(3,3);
+	NEWMAT::Matrix U12(3,3);
+	NEWMAT::IdentityMatrix U23(3);
+	NEWMAT::IdentityMatrix U3E(3);
+
+	U01(1,1) = cos(theta_s);
+	U01(1,2) = -sin(theta_s) * cos(A12);
+	U01(1,3) = sin(theta_s) * sin(A12);
+	U01(2,1) = sin(theta_s);
+	U01(2,2) = cos(theta_s) * cos(A12);
+	U01(2,3) = -cos(theta_s) * sin(A12);
+	U01(3,1) = 0;
+	U01(3,2) = sin(A12);
+	U01(3,3) = cos(A12);
+
+	U12(1,1) = cos(theta_e);
+	U12(1,2) = -sin(theta_e) * cos(A23);
+	U12(1,3) = sin(theta_e) * sin(A23);
+	U12(2,1) = sin(theta_e);
+	U12(2,2) = cos(theta_e) * cos(A23);
+	U12(2,3) = -cos(theta_e) * sin(A23);
+	U12(3,1) = 0;
+	U12(3,2) = sin(A23);
+	U12(3,3) = cos(A23);
+
+	NEWMAT::ColumnVector p1(3);
+	NEWMAT::ColumnVector p2(3);
+	NEWMAT::ColumnVector p3(3);
+	NEWMAT::ColumnVector pE(3);
+	p1 = 0.;
+	p2 = 0.;
+	p3 = 0.; p3(3) = d;
+	pE = 0.;
+
+	NEWMAT::IdentityMatrix UEE(3);
+
+	NEWMAT::Matrix UE3 = UEE * U3E.t();
+	NEWMAT::Matrix UE2 = UE3 * U23.t();
+	NEWMAT::Matrix UE1 = UE2 * U12.t();
+	NEWMAT::Matrix UE0 = UE1 * U01.t();
+
+	NEWMAT::ColumnVector zhat(3);
+	zhat(1) = 0; zhat(2) = 0; zhat(3) = 1;
+
+	NEWMAT::ColumnVector gammaE1 = UE0 * zhat;
+	NEWMAT::ColumnVector gammaE2 = UE1 * zhat;
+	NEWMAT::ColumnVector gammaE3(3);
+
+	NEWMAT::ColumnVector rEE(3);
+	rEE = 0.0;
+
+	NEWMAT::ColumnVector rE3 = rEE - UEE * pE;
+	NEWMAT::ColumnVector rE2 = rE3 - UE3 * p3;
+	NEWMAT::ColumnVector rE1 = rE2 - UE2 * p2;
+	NEWMAT::ColumnVector rE0 = rE1 - UE1 * p1;
+
+	NEWMAT::ColumnVector betaE1 = cross(gammaE1, -1 * rE0);
+	NEWMAT::ColumnVector betaE2 = cross(gammaE2, -1 * rE1);
+	NEWMAT::ColumnVector betaE3 = UE2 * zhat;
+
+	NEWMAT::Matrix J(6,3);
+	for (int i=1;i<=3;i++) { J(i,1) = gammaE1(i); }
+	for (int i=1;i<=3;i++) { J(i+3,1) = betaE1(i); }
+	for (int i=1;i<=3;i++) { J(i,2) = gammaE2(i); }
+	for (int i=1;i<=3;i++) { J(i+3,2) = betaE2(i); }
+	for (int i=1;i<=3;i++) { J(i,3) = gammaE3(i); }
+	for (int i=1;i<=3;i++) { J(i+3,3) = betaE3(i); }
+
+	return J;
+}
 
 
 

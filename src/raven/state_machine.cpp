@@ -66,10 +66,16 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
 
     if (*rl == RL_E_STOP)
     {
-        if (soft_estopped)
-        {
+        if (soft_estopped) {
             err_msg("Software e-stop.\n");
             soft_estopped = FALSE;
+        } else {
+        	for (i=0;i<NUM_MECH;i++) {
+        		tmp = ( device0->mech[i].inputs & (PIN_PS0 | PIN_PS1)) >> 6;
+        		if (tmp == RL_E_STOP) {
+        			err_msg("E-stop signal from mech %d\n",i);
+        		}
+        	}
         }
 
         err_msg("*** ENTERED E-STOP STATE ***\n");

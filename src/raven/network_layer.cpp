@@ -221,8 +221,12 @@ void* network_process(void* param1)
                 continue;
             }
 
-            if (k++ % 1000 == 0)
-                log_msg("rec'd socket data x1000");
+            k++;
+            if (k==1) {
+                log_msg("rec'd first socket data");
+            } else if (k % 10000 == 0) {
+                log_msg("rec'd socket data x10000");
+            }
 
 //
 //            if (u.checksum != UDPChecksum(&u))   // Check checksum

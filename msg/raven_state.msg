@@ -1,6 +1,7 @@
 float32     f_secs
 int32       runlevel
 int32       sublevel
+
 int32[2]    type
 int32[6]    pos
 int32[6]    pos_d

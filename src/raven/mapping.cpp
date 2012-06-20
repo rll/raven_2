@@ -57,36 +57,24 @@ void masterToSlave(struct position *pos, int type) // struct mechanism *mech)
 /// Transform a position increment and an orientation increment from ITP coordinate frame
 /// into local robot coordinate frame.
 ///
-void fromITP(struct position *pos, btQuaternion &rot, int armserial)
+void fromITP(btVector3& pos, btQuaternion& q, int armserial)
 {
-    const btMatrix3x3 ITP2Gold ( 0,0,-1,  -1,0,0,  0,1,0);
+	const btMatrix3x3 ITP2Gold_pos(1,0,0, 0,1,0, 0,0,1);
+    const btMatrix3x3 ITP2Gold_rotL(0,0,1, 0,-1,0, 1,0,0);
+    const btMatrix3x3 ITP2Gold_rotR(0,-1,0, 0,0,1, -1,0,0);
     const btMatrix3x3 ITP2Green( 0,0,-1,  1,0,0,  0,-1,0);
-    btVector3 v_pos(pos->x, pos->y, pos->z);
-    btVector3 v_rotAx(rot.getAxis());
-    btScalar  s_rotAn(rot.getAngle());
 
-    if (armserial == GOLD_ARM_SERIAL)
-    {
+        btMatrix3x3 rot(q);
+
+    if (armserial == GOLD_ARM_SERIAL) {
         // Multiply the position vector by the rotation matrix to convert from ITP frame to R_II gold/green frame
-        v_pos   = ITP2Gold * v_pos;
-        v_rotAx = ITP2Gold * v_rotAx;
-    }
-    else
-    {
-        v_pos   = ITP2Green * v_pos;
-        v_rotAx = ITP2Green * v_rotAx;
-    }
-    pos->x=v_pos[0];
-    pos->y=v_pos[1];
-    pos->z=v_pos[2];
-
-    // check for degenerate case.  Only a problem at zero.
-    if (v_rotAx[0] == 0 && v_rotAx[1] == 0 && v_rotAx[2] == 0)
-    {
-        v_rotAx[0] = 1;
+        pos = btMatrix3x3(-1,0,0, 0,0,1, 0,1,0) * pos;
+        rot = ITP2Gold_rotL * rot * ITP2Gold_rotR * btMatrix3x3(1,0,0, 0,-1,0, 0,0,-1);
+    } else {
+        pos = ITP2Green * pos;
+        rot = ITP2Green * rot;
     }
 
-    btQuaternion newrot(v_rotAx, s_rotAn);
-    rot=newrot;
+    rot.getRotation(q);
 
 }

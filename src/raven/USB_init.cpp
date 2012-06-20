@@ -136,6 +136,8 @@ int USBInit(struct device *device0)
             ROS_ERROR("ERROR: ioctl error opening board %s", boardStr.c_str());
             errno = 0;
         }
+        log_msg ("Boards Opened");
+
 
         device0->mech[i].type = 0;
         /// Set mechanism type Green or Gold surgical robot
@@ -156,7 +158,10 @@ int USBInit(struct device *device0)
             log_msg("*** WARNING: USB BOARD #%d NOT CONNECTED TO MECH (update defines?).",boardid);
         }
 
+        log_msg ("okboards = %d", okboards);
+
         /// Store usb dev parameters
+
         boardFile.push_back(tmp_fileHandle);  // Store file handle
         USBBoards.boards.push_back(boardid);  // Store board array index
         boardFPs[boardid] = tmp_fileHandle;   // Map serial (i) to fileHandle (tmp_fileHandle)

@@ -8,11 +8,129 @@
  */
 
 #include <math.h>
+#include "hmatrix.h"
 #include "utils.h"
 #include "DS0.h"
 #include "defines.h"
+#include "log.h"
 
 extern int NUM_MECH;
+
+btMatrix3x3 tb_to_mat(float yaw, float pitch, float roll) {
+	btMatrix3x3 Ryaw(
+			cos(yaw), -sin(yaw), 0,
+			sin(yaw),  cos(yaw), 0,
+			0,         0,        1);
+	btMatrix3x3 Rpitch(
+			 cos(pitch), 0, sin(pitch),
+			 0,          1, 0,
+			-sin(pitch), 0, cos(pitch));
+	btMatrix3x3 Rroll(
+			1,  0,          0,
+			0,  cos(roll), -sin(roll),
+			0,  sin(roll),  cos(roll));
+	return Ryaw * Rpitch * Rroll;
+}
+
+#define FLOAT_CLOSE_ENOUGH 0.0001
+tb_angles get_tb_angles(btMatrix3x3 R) {
+	float yaw, pitch, roll;
+	tb_angles angles;
+	angles.yaw = 0;
+	angles.pitch = 0;
+	angles.roll = 0;
+
+	if (fabs(R[0][1]-R[1][0]) < FLOAT_CLOSE_ENOUGH && fabs(R[0][2]-R[2][0]) < FLOAT_CLOSE_ENOUGH && fabs(R[1][2]-R[2][1]) < FLOAT_CLOSE_ENOUGH) {
+		//matrix is symmetric
+		if (fabs(R[0][1]+R[1][0]) < FLOAT_CLOSE_ENOUGH && fabs(R[0][2]+R[2][0]) < FLOAT_CLOSE_ENOUGH && fabs(R[1][2]+R[2][1]) < FLOAT_CLOSE_ENOUGH) {
+			//diagonal
+			if (R[0][0] > 0) {
+				if (R[1][1] > 0) {
+					goto ret;
+				} else {
+					angles.roll = M_PI;
+				}
+			} else if (R[1][1] > 0) {
+				angles.yaw = M_PI;
+				angles.pitch = M_PI;
+			} else {
+				angles.yaw = M_PI;
+			}
+			goto ret;
+		}
+	}
+
+	{
+		btVector3 vx = R * btVector3(1,0,0);
+		btVector3 vy = R * btVector3(0,1,0);
+
+		yaw = atan2(vx.y(),vx.x());
+		pitch = atan2(-vx.z(), sqrt(vx.x()*vx.x() + vx.y()*vx.y()));
+
+		btMatrix3x3 Ryaw(
+					 cos(yaw), -sin(yaw), 0,
+					 sin(yaw),  cos(yaw), 0,
+					 0,         0,        1);
+		btMatrix3x3 Rpitch(
+				 cos(pitch), 0, sin(pitch),
+				 0,          1, 0,
+				-sin(pitch), 0, cos(pitch));
+		btVector3 vyp = Ryaw * Rpitch * btVector3(0,1,0);
+		btVector3 vzp = Ryaw * Rpitch * btVector3(0,0,1);
+
+		float coeff = vzp.dot(vy) >= 0 ? 1 : -1;
+
+		roll = coeff * acos(vyp.dot(vy));
+	}
+
+	angles.yaw = yaw;
+	angles.pitch = pitch;
+	angles.roll = roll;
+
+	ret:
+
+	angles.yaw_deg = angles.yaw * 180. / M_PI;
+	angles.pitch_deg = angles.pitch * 180. / M_PI;
+	angles.roll_deg = angles.roll * 180. / M_PI;
+
+	return angles;
+}
+
+float fix_angle(float angle,float center) {
+	float test_angle = angle;
+	int cnt = 1;
+	while ((test_angle-center) > M_PI) {
+		test_angle = angle - cnt * 2*M_PI;
+		cnt++;
+	}
+	angle = test_angle;
+	cnt = 1;
+	while ((test_angle-center) < -M_PI) {
+		test_angle = angle + cnt * 2*M_PI;
+		cnt++;
+	}
+	return test_angle;
+}
+
+btTransform Z(float theta,float d) {
+	btMatrix3x3 rot(
+			cos(theta), -sin(theta), 0,
+			sin(theta),  cos(theta), 0,
+			0,           0,          1);
+	btVector3 shift(0,0,d);
+	return btTransform(rot,shift);
+}
+
+btTransform X(float alpha,float a) {
+	btMatrix3x3 rot(
+			1, 0,           0,
+			0, cos(alpha), -sin(alpha),
+			0, sin(alpha),  cos(alpha));
+	btVector3 shift(a,0,0);
+	return btTransform(rot,shift);
+}
+
+
 /*
  * toShort - function that takes an integer and places it in the
  *   target short int, reporting under/overflow
@@ -263,6 +381,7 @@ struct  timespec  tsSubtract ( struct  timespec  time1,
     return (result);
 }
 
+float copysignf(float a,float b);
 void getQuaternion(float* Q, float mat[3][3])
 {
     Q[_Qw] = sqrt( fmax( 0, 1 + mat[0][0] + mat[1][1] + mat[2][2] ) ) / 2;

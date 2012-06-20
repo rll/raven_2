@@ -15,7 +15,8 @@ unsigned int newDofTorqueSetting = 0;   // for setting torque from console
 unsigned int newDofTorqueMech = 0;      // for setting torque from console
 unsigned int newDofTorqueDof = 0;       //
 int newDofTorqueTorque = 0;             // float for torque value in mNm
-t_controlmode newRobotControlMode = motor_pd_control;
+//t_controlmode newRobotControlMode = motor_pd_control;
+t_controlmode newRobotControlMode = homing_mode;
 
 /*
  * updateDeviceState - Function that update the device state based on parameters passed from
@@ -56,9 +57,11 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     }
 
     // Switch control modes only in pedal up or init.
-    if ( (currParams->runlevel == RL_E_STOP)   &&
-         (currParams->robotControlMode != (int)newRobotControlMode) )
-    {
+    if (99 == (int)newRobotControlMode) {
+        log_msg("Current control mode: %d",currParams->robotControlMode);
+        newRobotControlMode = (t_controlmode)currParams->robotControlMode;
+    } else if ( (currParams->runlevel == RL_E_STOP)   &&
+         (currParams->robotControlMode != (int)newRobotControlMode) ) {
         currParams->robotControlMode = (int)newRobotControlMode;
         log_msg("Control mode updated");
     }
@@ -92,7 +95,9 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
 *       Change controller mode, i.e. position control, velocity control, visual servoing, etc
 */
 void setRobotControlMode(t_controlmode in_controlMode){
-    log_msg("Robot control mode: %d",in_controlMode);
+    if (99 != in_controlMode) {
+        log_msg("Robot control mode: %d",in_controlMode);
+    }
     newRobotControlMode = in_controlMode;
     isUpdated = TRUE;
 }

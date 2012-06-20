@@ -11,3 +11,4 @@
 #include "DS1.h"
 
 int controlRaven(struct robot_device*, struct param_pass*);
+void init_open_rave();

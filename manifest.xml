@@ -12,6 +12,7 @@
   <depend package="roscpp"/>
   <depend package="sensor_msgs"/>
   <depend package="visualization_msgs"/>
+  <depend package="raven_2_msgs"/>
   <depend package="tf"/>
   <export>
 	<cpp cflags="-I${prefix}/include -I${prefix}/include/raven -Wno-unused-result -Wno-missing-field-initializers" lflags="-Lpthread -lrt"/>

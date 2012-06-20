@@ -59,7 +59,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     // Initialize the homing sequence.
     if (begin_homing || !homing_inited)
     {
-        // Zero out joint torques, and control inputs. Set joint.state=not_ready.
+    	// Zero out joint torques, and control inputs. Set joint.state=not_ready.
         _mech = NULL;  _joint = NULL;
         while (loop_over_joints(device0, _mech, _joint, i,j) )
         {
@@ -108,7 +108,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         // Check to see if we've reached the joint limit.
         if( check_homing_condition(_joint) )
         {
-            // log_msg("Found limit on joint %d", _joint->type, _joint->current_cmd, DOF_types[_joint->type].DAC_max);
+            log_msg("Found limit on joint %d", _joint->type, _joint->current_cmd, DOF_types[_joint->type].DAC_max);
             _joint->state = jstate_hard_stop;
             _joint->current_cmd = 0;
             stop_trajectory(_joint);
@@ -118,21 +118,21 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         if ( j == (MAX_DOF_PER_MECH-1) )
         {
             /// if we're homing tools, wait for tools to be finished
-            if ((  !tools_ready(_mech) &&
-                   _mech->joint[TOOL_ROT].state==jstate_hard_stop &&
-                   _mech->joint[WRIST   ].state==jstate_hard_stop &&
-                   _mech->joint[GRASP1  ].state==jstate_hard_stop )
-                    ||
-                (  tools_ready( _mech ) &&
-                   _mech->joint[SHOULDER].state==jstate_hard_stop &&
-                   _mech->joint[ELBOW   ].state==jstate_hard_stop &&
-                   _mech->joint[Z_INS   ].state==jstate_hard_stop ))
-            {
-                if (delay2==0)
+        	bool ready = (  !tools_ready(_mech) &&
+                    _mech->joint[TOOL_ROT].state==jstate_hard_stop &&
+                    _mech->joint[WRIST   ].state==jstate_hard_stop &&
+                    _mech->joint[GRASP1  ].state==jstate_hard_stop )
+                     ||
+                 (  tools_ready( _mech ) &&
+                    _mech->joint[SHOULDER].state==jstate_hard_stop &&
+                    _mech->joint[ELBOW   ].state==jstate_hard_stop &&
+                    _mech->joint[Z_INS   ].state==jstate_hard_stop );
+            if (ready) {
+                if (delay2==0) {
                     delay2=gTime;
+                }
 
-                if (gTime > delay2 + 200)
-                {
+                if (gTime > delay2 + 200) {
                     set_joints_known_pos(_mech, !tools_ready(_mech) );
                     delay2 = 0;
                 }
@@ -161,17 +161,12 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
     _joint = NULL;
     while ( loop_over_joints(_mech, _joint ,j) )
     {
-        if ( tool_only  && ! is_toolDOF( _joint->type))
-        {
+        if ( tool_only  && ! is_toolDOF( _joint->type)) {
             // Set jpos_d to the joint limit value.
             _joint->jpos_d = DOF_types[ _joint->type ].home_position;
-        }
-
-        else if (!tool_only && is_toolDOF(_joint->type) )
-            _joint->jpos_d = _joint->jpos;
-
-        else
-        {
+        } else if (!tool_only && is_toolDOF(_joint->type) ) {
+        	_joint->jpos_d = _joint->jpos;
+        } else {
             // Set jpos_d to the joint limit value.
             _joint->jpos_d = DOF_types[ _joint->type ].max_position;
 

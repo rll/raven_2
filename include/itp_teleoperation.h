@@ -19,6 +19,8 @@
 #define SURGEON_ENGAGED       1
 #define SURGEON_DISENGAGED    0
 
+#include <iostream>
+
 /*
 u_struct : structure passed from master to slave.
 This struct defines an incremental movment packet type.
@@ -56,6 +58,16 @@ struct u_struct {
 	int surgeon_mode;
 	int checksum;
 };
+
+inline void print_u_struct(u_struct* u,int i=0) {
+    std::cout << i << " (" << u->delx[i] << "," << u->dely[i] << "," << u->delz[i] << ")"
+            << " (" << u->Qx[i] << "," << u->Qy[i] << "," << u->Qz[i] << "," << u->Qw[i] << ") "
+            << u->buttonstate[i] << " " << u->grasp[i] << std::endl;
+}
+
+inline void print_u_struct_pos(u_struct* u,int i=0) {
+    std::cout << i << " (" << u->delx[i] << "," << u->dely[i] << "," << u->delz[i] << ")" << std::endl;
+}
 
 /*
 v_struct: Return DS from slave to master.

@@ -24,7 +24,7 @@ void mulMatrix3x3f(float A[3][3], float B[3][3], float C[3][3]);
 void transpose3x3f(float R[3][3], float R_transpose[3][3]);
 
 void invOrthMatrix(float tip[HMATRIX_SIZE][HMATRIX_SIZE], float tip_inv[HMATRIX_SIZE][HMATRIX_SIZE]);
-void printMatrix4x4(double rot_matrix[4][4], char *str);
+void printMatrix4x4(double rot_matrix[4][4], char *str = 0);
 void printMatrix3x3(double rot_matrix[3][3], char *str);
 void printMatrix3x3i(int rot_matrix[3][3], char *str);
 

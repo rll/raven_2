@@ -16,6 +16,9 @@
 #include "DS0.h"
 #endif
 
+#include <iostream>
+#include <sstream>
+
 #define STOP 0    // runlevel 0 is STOP state
 
 // TODO: Delete stuff from OLD R_I code!
@@ -35,5 +38,33 @@ struct param_pass {
   int    surgeon_mode;
   int    robotControlMode;
 };
+
+inline void print_param_pass(param_pass* p) {
+    std::stringstream ss;
+    for (int i=0;i < MAX_MECH_PER_DEV; i++) {
+        ss << "[";
+        ss << "(";
+        ss << p->xd[i].x << ",";
+        ss << p->xd[i].y << ",";
+        ss << p->xd[i].z << ",";
+        ss << "),";
+        ss << "(";
+        ss << p->rd[i].roll << ",";
+        ss << p->rd[i].pitch << ",";
+        ss << p->rd[i].yaw << ",";
+        ss << ")";
+        ss << "],";
+
+        /*
+        ss << p->enc_d[i] << ",";
+        ss << p->dac_d[i] << ",";
+        ss << p->jpos_d[i] << ",";
+        ss << p->jvel_d[i] << ",";
+        //ss << p->kp[i] << ",";
+        //ss << p->kd[i] << ",";
+        */
+    }
+    std::cout << ss.str() << std::endl;
+}
 
 #endif

@@ -142,6 +142,9 @@ void *console_process(void *)
             t1=t1.now();
         }
 
+//        printf("g: %1.5f %1.5f\n",device0.mech[0].joint[GRASP1].jpos,device0.mech[1].joint[GRASP1].jpos);
+//        printf("d: %1.5f %1.5f\n\n",device0.mech[0].joint[GRASP1].jpos_d,device0.mech[1].joint[GRASP1].jpos_d);
+
         usleep(1e5); //Sleep for 1/10 second
     }
 

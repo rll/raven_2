@@ -100,7 +100,9 @@ void printMatrix4x4(double rot_matrix[4][4], char *str)
 
 void printMatrix3x3(double rot_matrix[3][3], char *str)
 {
-	printf("%s\n", str);
+	if (str) {
+		printf("%s\n", str);
+	}
 	printf("%7.4f %7.4f %7.4f\n", rot_matrix[0][0], rot_matrix[0][1], rot_matrix[0][2]);
 	printf("%7.4f %7.4f %7.4f\n", rot_matrix[1][0], rot_matrix[1][1], rot_matrix[1][2]);
 	printf("%7.4f %7.4f %7.4f\n", rot_matrix[2][0], rot_matrix[2][1], rot_matrix[2][2]);

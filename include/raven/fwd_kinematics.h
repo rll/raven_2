@@ -10,4 +10,5 @@
 #include "struct.h"
 
 void fwdKin(struct device *device0, int runlevel);
+void fwdMechKinNew(struct mechanism *mech);
 void fwdMechKin(struct mechanism *mech);

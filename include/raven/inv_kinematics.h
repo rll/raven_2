@@ -24,5 +24,6 @@ const double gr_dh_a[6]  = {0,              0,      0,         0, 0, 0 };
 
 void invKin(struct device *device0, struct param_pass * currParam);
 int invMechKin(struct mechanism *mech);
+int invMechKinNew(struct mechanism *mech,bool test=false);
 
 #endif

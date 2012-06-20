@@ -16,11 +16,20 @@
 #include <math.h>
 #include <iostream>
 #include <tf/transform_datatypes.h>
+#include <LinearMath/btTransform.h>
 #include "hmatrix.h"
 #include "inv_kinematics.h"
+#include "utils.h"
+#include "t_to_DAC_val.h"
 
 #define EPS2 0.00001
 #define EPS 0.01
+
+static const int PRINT_EVERY_PEDAL_UP   = 1000000;
+static const int PRINT_EVERY_PEDAL_DOWN = 1000000;
+static int PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
+
+#define PRINT (_ik_counter % PRINT_EVERY == 0)
 
 extern unsigned long int gTime;
 extern int NUM_MECH;
@@ -28,6 +37,14 @@ int inv_kin_last_err = 0;
 
 int check_joint_limits1(struct mechanism*);
 int check_joint_limits2(struct mechanism*);
+bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp);
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act);
+int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float thy_act, float grasp);
+int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float thr_act);
+
+static int _ik_counter = 0;
+static int _curr_rl = -1;
+static int _prev_rl = -1;
 
 /**
  * invKin - wrapper function that checks for correct runlevel
@@ -44,9 +61,19 @@ void invKin(struct device *device0, struct param_pass* currParams)
 {
   int ret=0;
 
-#ifdef AUTO_INIT  // EE449 Return if we are in run level 1.2: auto initialize
   int runlevel = currParams->runlevel;
   int sublevel = currParams->sublevel;
+
+  _prev_rl = _curr_rl;
+  _curr_rl = runlevel;
+
+  if (runlevel == RL_PEDAL_DN) {
+	  PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
+  } else {
+	  PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
+  }
+
+#ifdef AUTO_INIT  // EE449 Return if we are in run level 1.2: auto initialize
   // Note that in RL 1.2 we are running the joint-level auto-init routine, so we don't want invKin to update jpos_d.  So we return here.
   if(runlevel == RL_INIT && sublevel == SL_AUTO_INIT) {
     return;
@@ -55,10 +82,636 @@ void invKin(struct device *device0, struct param_pass* currParams)
 
   //Run inverse kinematics for each mech
   for (int i = 0; i < NUM_MECH; i++) {
-    if  ( (ret=invMechKin( &(device0->mech[i]) )) < 0)
-//    	log_msg("inv_kin failed with %d", ret);
-        return;
+	  bool testNew = false;
+	  if ((!testNew) && device0->mech[i].type == GOLD_ARM) {
+		  ret = invMechKinNew(&(device0->mech[i]));
+	  } else {
+		  ret=invMechKin( &(device0->mech[i]));
+	  }
+	  if (testNew && ret == 1 && device0->mech[i].type == GOLD_ARM) {
+		  invMechKinNew(&(device0->mech[i]),true);
+	  }
+	  if (ret < 0) {
+		  //    	log_msg("inv_kin failed with %d", ret);
+		  return;
+	  }
   }
+}
+
+//fool eclipse
+float atan2f(float y,float x);
+float fabsf(float val);
+float cosf(float val);
+
+//inline float* fromBt(btMatrix3x3 btR) {
+//	float R[3][3];
+//		for (int i = 0; i < 3; i++) {
+//			for (int j = 0; j < 3; j++) {
+//				R[i][j] = btR[i][j];
+//			}
+//		}
+//	return R;
+//}
+
+btTransform fwdKin(struct mechanism* mech) {
+	float ths_offset, thr_offset;
+	if (mech->type == GOLD_ARM) {
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI / 4.;
+	} else {
+		//TODO: fix
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI / 4.;
+	}
+
+	float th12 = -A12;
+	float th23 = -A23;
+
+	float dw = 0.012;
+
+	float ths = mech->joint[SHOULDER].jpos;
+	float the = mech->joint[ELBOW].jpos;
+	float   d = mech->joint[Z_INS].jpos;
+	float thr = mech->joint[TOOL_ROT].jpos;
+	float thp = mech->joint[WRIST].jpos;
+	float thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
+	//float grasp = (mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos)/1000;
+
+	btTransform ik_world_to_actual_world;
+	if (mech->type == GOLD_ARM) {
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,1,0,
+				-1,0,0,
+				0,0,1)).inverse();
+	} else {
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,-1,0,
+				1,0,0,
+				0,0,1),
+				btVector3(-.2, 0, 0)).inverse();
+	}
+
+	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Zs = Z(ths + ths_offset,0);
+	btTransform Xu = X(th12,0);
+	btTransform Ze = Z(the,0);
+	btTransform Xf = X(th23,0);
+	btTransform Zr = Z(-thr + thr_offset,0);
+	btTransform Zi = Z(0,-d);
+	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Zp = Z(thp,0);
+	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
+	btTransform Zy = Z(thy,0);
+	btTransform Tg(btMatrix3x3::getIdentity());
+
+	btTransform tool = ik_world_to_actual_world.inverse() * Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg;
+
+	if (_ik_counter % PRINT_EVERY == 0) {
+		btVector3 ins = Tw2b * Zs * Xu * Ze * Xf * btVector3(0,0,-1);
+		float yaw = atan2(ins.y(),ins.x());
+		float pitch = atan2(sqrt(ins.x()*ins.x()+ins.y()*ins.y()), ins.z());
+
+		log_msg("curr roll axis (%0.4f,%0.4f,%0.4f)",
+				yaw * 180 / M_PI,pitch * 180 / M_PI,0);
+
+		btVector3 gpt = (Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Xpy * Zy * Tg).getOrigin();
+		log_msg("gpt (%0.4f,%0.4f,%0.4f)",gpt.x(),gpt.y(),gpt.z());
+	}
+
+	return tool;
+
+}
+
+int invMechKinNew(struct mechanism *mech,bool test) {
+	_ik_counter++;
+	bool print = PRINT || (_prev_rl !=3 && _curr_rl == 3);
+	struct position*    pos_d = &(mech->pos_d);
+	struct orientation* ori_d = &(mech->ori_d);
+
+	if (print) {
+		log_msg("---------------------------");
+		log_msg("---------------------------");
+		if (test) {
+			log_msg("----------TESTING----------");
+		}
+	}
+
+
+	// desired tip position
+	btVector3 currentPoint = btVector3(mech->pos.x,mech->pos.y,mech->pos.z) / MICRON_PER_M;
+	btVector3 actualPoint = btVector3(pos_d->x,pos_d->y,pos_d->z) / MICRON_PER_M;
+	btMatrix3x3 actualOrientation = toBt(ori_d->R);
+	btTransform actualPose(actualOrientation,actualPoint);
+
+	btTransform actualPose_fk = fwdKin(mech);
+
+	tb_angles currentPoseAngles = get_tb_angles(mech->ori.R);
+	tb_angles actualPoseAngles = get_tb_angles(ori_d->R);
+
+	float grasp = ((float)mech->ori_d.grasp)/1000.0f;
+
+	if (print) {
+		log_msg("j s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f y %0.4f g %0.4f g1 %0.4f g2 %0.4f",mech->joint[SHOULDER].jpos,
+				mech->joint[ELBOW].jpos,mech->joint[TOOL_ROT].jpos,mech->joint[Z_INS].jpos,mech->joint[WRIST].jpos,
+				(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2,
+				mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos,
+				mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos);
+		log_msg("v s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f y %0.4f g %0.4f g1 %0.4f g2 %0.4f",mech->joint[SHOULDER].jvel,
+				mech->joint[ELBOW].jvel,mech->joint[TOOL_ROT].jvel,mech->joint[Z_INS].jvel,mech->joint[WRIST].jvel,
+				(mech->joint[GRASP2].jvel - mech->joint[GRASP1].jvel) / 2,
+				mech->joint[GRASP1].jvel + mech->joint[GRASP2].jvel,
+				mech->joint[GRASP1].jvel,mech->joint[GRASP2].jvel);
+		log_msg("t s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f g1 %0.4f g2 %0.4f",mech->joint[SHOULDER].tau_d,
+				mech->joint[ELBOW].tau_d,mech->joint[TOOL_ROT].tau_d,mech->joint[Z_INS].tau_d,mech->joint[WRIST].tau_d,
+				mech->joint[GRASP1].tau_d,mech->joint[GRASP2].tau_d);
+		log_msg("d s %d e %d r %d i %d p %d g1 %d g2 %d",tToDACVal(&(mech->joint[SHOULDER])),
+				tToDACVal(&(mech->joint[ELBOW])),tToDACVal(&(mech->joint[TOOL_ROT])),tToDACVal(&(mech->joint[Z_INS])),tToDACVal(&(mech->joint[WRIST])),
+				tToDACVal(&(mech->joint[GRASP1])),tToDACVal(&(mech->joint[GRASP2])));
+		log_msg("cp (%0.4f,%0.4f,%0.4f\typr (%0.4f,%0.4f,%0.4f))",
+				currentPoint.x(),currentPoint.y(),currentPoint.z(),
+				currentPoseAngles.yaw_deg,currentPoseAngles.pitch_deg,currentPoseAngles.roll_deg);
+		log_msg("pt (%0.4f,%0.4f,%0.4f)\typr (%0.4f,%0.4f,%0.4f)\tg %0.4f",
+				actualPoint.x(),actualPoint.y(),actualPoint.z(),
+				actualPoseAngles.yaw_deg,actualPoseAngles.pitch_deg,actualPoseAngles.roll_deg,
+				grasp);
+
+		btVector3 point = actualPose_fk.getOrigin();
+		tb_angles angles = get_tb_angles(actualPose_fk.getBasis());
+		log_msg("fp (%0.4f,%0.4f,%0.4f)\typr (%0.4f,%0.4f,%0.4f)\tg %0.4f",
+				point.x(),point.y(),point.z(),
+				angles.yaw_deg,angles.pitch_deg,angles.roll_deg,
+				grasp);
+
+	}
+
+	/*
+	 * Actual pose is in the actual world frame, so we have <actual_world to gripper>
+	 * The ik world frame is the base frame.
+	 * Therefore, we need <base to actual_world> to get <base to gripper>.
+	 * <base to actual_world> is inverse of <actual_world to base>
+	 */
+	btTransform ik_world_to_actual_world;
+	if (mech->type == GOLD_ARM) {
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,1,0,
+				-1,0,0,
+				0,0,1)).inverse();
+	} else {
+		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,-1,0,
+				1,0,0,
+				0,0,1),
+				btVector3(-.2, 0, 0)).inverse();
+	}
+
+	btTransform ik_pose;
+	if (test) {
+		ik_pose = ik_world_to_actual_world * actualPose_fk;
+	} else {
+		ik_pose = ik_world_to_actual_world * actualPose;
+	}
+
+	btMatrix3x3 ik_orientation = ik_pose.getBasis();
+	btVector3 ik_point = ik_pose.getOrigin();
+
+	tb_angles ikPoseAngles = get_tb_angles(ik_pose);
+	if (print) {
+		log_msg("ik (%0.4f,%0.4f,%0.4f)\typr (%0.4f,%0.4f,%0.4f)",
+				ik_point.x(),ik_point.y(),ik_point.z(),
+				ikPoseAngles.yaw_deg,ikPoseAngles.pitch_deg,ikPoseAngles.roll_deg);
+	}
+
+	float ths_offset, thr_offset;
+	if (mech->type == GOLD_ARM) {
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI_2;
+	} else {
+		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+		//TODO: fix
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI / 4.;
+	}
+
+	float th12 = -A12;
+	float th23 = -A23;
+
+	float ks12 = sin(th12);
+	float kc12 = cos(th12);
+	float ks23 = sin(th23);
+	float kc23 = cos(th23);
+
+	float dw = 0.012;
+
+	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Xu = X(th12,0);
+	btTransform Xf = X(th23,0);
+	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
+	btTransform Tg(btMatrix3x3::getIdentity());
+
+	btTransform Tworld_to_gripper = ik_pose;
+	btTransform Tgripper_to_world = ik_pose.inverse();
+
+	if (print) {
+		log_msg("Tw2g: %d",PRINT_EVERY);
+		for (int i=0;i<3;i++) {
+			log_msg("   %0.4f\t%0.4f\t%0.4f\t%0.4f",ik_pose.getBasis()[i][0],ik_pose.getBasis()[i][1],ik_pose.getBasis()[i][2],ik_pose.getOrigin()[i]);
+		}
+	}
+
+	btVector3 origin_in_gripper_frame = Tgripper_to_world.getOrigin();
+	float px = origin_in_gripper_frame.x();
+	float py = origin_in_gripper_frame.y();
+	float pz = origin_in_gripper_frame.z();
+
+	float thy = atan2f(py,-px);
+
+	float thp;
+	if (fabs(thy) < 0.001) {
+		thp = atan2f(-pz, -px/cos(thy) - dw);
+		if (print) { log_msg("zero thy: %0.4f, (%0.4f, %0.4f, %0.4f)",thp,px,py,pz); }
+	} else {
+		thp = atan2f(-pz,  py/sin(thy) - dw);
+	}
+
+	float d = -pz / sin(thp);
+
+	float d_act, thp_act, thy_act, g1_act, g2_act;
+	if (mech->type == GOLD_ARM) {
+		d_act = -d;
+		thp_act = thp;
+		thy_act = thy;
+		g1_act = -thy + grasp/2;
+		g2_act =  thy + grasp/2;
+	} else {
+		d_act = -d;
+		thp_act = thp;
+		thy_act = thy;
+		g1_act = -thy + grasp/2;
+		g2_act =  thy + grasp/2;
+	}
+
+	//check angles
+	bool valid1 = check_joint_limits1_new(d_act,thp_act,thy_act,grasp);
+	if (!valid1) {
+		if (_curr_rl == 3) {
+			printf("ik invalid ---- d %0.4f\tp %0.4f\ty %0.4f\n",d_act,thp_act,thy_act);
+		}
+		if (print) {
+			log_msg("ik invalid 1");
+			log_msg("  act d %0.4f\tp %0.4f\ty %0.4f",mech->joint[Z_INS].jpos_d,mech->joint[WRIST].jpos_d,thy_act);
+			log_msg("  ik  d %0.4f\tp %0.4f\ty %0.4f",d_act,thp_act,thy_act);
+		}
+		return 0;
+	}
+
+	//set joints
+	if (!test) {
+		set_joints_with_limits1(mech,d_act,thp_act,thy_act,grasp);
+	}
+
+
+	btTransform Zi = Z(0,d);
+	btTransform Zp = Z(thp,0);
+	btTransform Zy = Z(thy,0);
+
+	btVector3 z_roll_in_world = (Zi * Xip * Zp * Xpy * Zy * Tg * Tgripper_to_world).invXform(btVector3(0,0,1));
+	btVector3 x_roll_in_world = (Zi * Xip * Zp * Xpy * Zy * Tg * Tgripper_to_world).invXform(btVector3(1,0,0));
+
+	float zx = z_roll_in_world.x();
+	float zy = z_roll_in_world.y();
+	float zz = z_roll_in_world.z();
+
+	float xx = x_roll_in_world.x();
+	float xy = x_roll_in_world.y();
+	float xz = x_roll_in_world.z();
+
+	float cthe = (zy + kc12*kc23) / (ks12*ks23);
+
+	float the_1 = acos(cthe);
+	float the_2 = -acos(cthe);
+
+	float the_opt[2];
+	the_opt[0] = the_1;
+	the_opt[1] = the_2;
+
+	float ths_opt[2];
+	float thr_opt[2];
+
+	for (int i=0;i<2;i++) {
+		float sthe_tmp = sin(the_opt[i]);
+		float C1 = ks12*kc23 + kc12*ks23*cthe;
+		float C2 = ks23 * sthe_tmp;
+		float C3 = C2 + C1*C1 / C2;
+
+		ths_opt[i] = atan2(
+				-sgn(C3)*(zx - C1 * zz / C2),
+				 sgn(C3)*(zz + C1 * zx / C2));
+
+		float sths_tmp = sin(ths_opt[i]);
+		float cths_tmp = cos(ths_opt[i]);
+
+		float C4 = ks12 * sin(the_opt[i]);
+		float C5 = kc12 * ks23 + ks12 * kc23 * cos(the_opt[i]);
+		float C6 = kc23*(sthe_tmp * sths_tmp - kc12*cthe*cths_tmp) + cths_tmp*ks12*ks23;
+		float C7 = cthe*sths_tmp + kc12*cths_tmp*sthe_tmp;
+
+		thr_opt[i] = atan2(
+				(xx - C7 * xy / C4) / (C6 + C7*C5/C4),
+				(xx + C6 * xy / C5) / (-C6*C4/C5 - C7));
+
+		float ths_act, the_act, thr_act;
+		if (mech->type == GOLD_ARM) {
+			ths_act = ths_opt[i] - ths_offset;
+			the_act = the_opt[i];
+			thr_act = fix_angle(-thr_opt[i] + thr_offset);
+		} else {
+			log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+			//TODO: fix
+			ths_act = ths_opt[i] - ths_offset;
+			the_act = the_opt[i];
+			thr_act = -thr_opt[i] + thr_offset;
+		}
+
+		if (print) {
+			if (test) {
+				log_msg("j s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f y %0.4f g %0.4f g1 %0.4f g2 %0.4f",mech->joint[SHOULDER].jpos_d,
+						mech->joint[ELBOW].jpos_d,mech->joint[TOOL_ROT].jpos_d,mech->joint[Z_INS].jpos_d,mech->joint[WRIST].jpos_d,
+						(mech->joint[GRASP2].jpos_d - mech->joint[GRASP1].jpos_d) / 2,
+						mech->joint[GRASP1].jpos_d + mech->joint[GRASP2].jpos_d,
+						mech->joint[GRASP1].jpos_d,mech->joint[GRASP2].jpos_d);
+			} else {
+				log_msg("j s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f y %0.4f g %0.4f g1 %0.4f g2 %0.4f",mech->joint[SHOULDER].jpos,
+						mech->joint[ELBOW].jpos,mech->joint[TOOL_ROT].jpos,mech->joint[Z_INS].jpos,mech->joint[WRIST].jpos,
+						(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2,
+						mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos,
+						mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos);
+			}
+			log_msg("%d s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f y %0.4f g %0.4f g1 %0.4f g2 %0.4f",i,ths_act,the_act,thr_act,d_act,thp_act,thy_act,grasp,g1_act,g2_act);
+
+			if (ths_act != ths_act) {
+				log_msg("C1 %0.4f\tC2 %0.4f\tC3 %0.4f\tC4 %0.4f\tC5 %0.4f\tC6 %0.4f\tC7 %0.4f\t",C1,C2,C3,C4,C5,C6,C7);
+				log_msg("ks23 %0.4f\tsthe_tmp %0.4f",ks23 , sthe_tmp);
+				log_msg("cthe %0.4f\tzy %0.4f\tkc12 %0.4f\tkc23 %0.4f\tks12 %0.4f\tks23 %0.4f",cthe,zy,kc12,kc23,ks12,ks23);
+			}
+		}
+
+		bool valid2 = check_joint_limits2_new(ths_act,the_act,thr_act);
+
+		if (valid2) {
+			float ths_diff, the_diff, d_diff, thr_diff, thp_diff, thg1_diff, thg2_diff;
+			if (!test) {
+				//set joints
+				set_joints_with_limits2(mech,ths_act,the_act,thr_act);
+
+				ths_diff = mech->joint[SHOULDER].jpos - ths_act;
+				the_diff = mech->joint[ELBOW].jpos    - the_act;
+				d_diff = mech->joint[Z_INS].jpos    - d_act;
+				thr_diff = mech->joint[TOOL_ROT].jpos - thr_act;
+				thp_diff = mech->joint[WRIST].jpos    - thp_act;
+				thg1_diff = mech->joint[GRASP1].jpos   - (-thy_act + grasp/2);
+				thg2_diff = mech->joint[GRASP2].jpos   - (thy_act + grasp/2);
+			} else {
+				ths_diff = mech->joint[SHOULDER].jpos_d - ths_act;
+				the_diff = mech->joint[ELBOW].jpos_d    - the_act;
+				d_diff = mech->joint[Z_INS].jpos_d    - d_act;
+				thr_diff = mech->joint[TOOL_ROT].jpos_d - thr_act;
+				thp_diff = mech->joint[WRIST].jpos_d    - thp_act;
+				thg1_diff = mech->joint[GRASP1].jpos_d   - (-thy_act + grasp/2);
+				thg2_diff = mech->joint[GRASP2].jpos_d   - (thy_act + grasp/2);
+			}
+
+			if (print) {
+				log_msg("%d s %0.4f e %0.4f r %0.4f i %0.4f p %0.4f          g %0.4f g1 %0.4f g2 %0.4f",
+						i,mech->joint[SHOULDER].jpos_d,mech->joint[ELBOW].jpos_d,mech->joint[TOOL_ROT].jpos_d,
+						mech->joint[Z_INS].jpos_d,mech->joint[WRIST].jpos_d,grasp,mech->joint[GRASP1].jpos_d,mech->joint[GRASP2].jpos_d);
+//				log_msg("diffs: ths %0.4f  the %0.4f  thr %0.4f  d %0.4f  thp %0.4f  g1 %0.4f  g2 %0.4f",
+//						ths_diff,the_diff,thr_diff,d_diff,thp_diff,thg1_diff,thg2_diff);
+//				log_msg("  deg: ths %0.4f  the %0.4f  thr %0.4f  d %0.4f  thp %0.4f  g1 %0.4f  g2 %0.4f",
+//						ths_diff*180/M_PI,the_diff*180/M_PI,thr_diff*180/M_PI,d_diff,
+//						thp_diff*180/M_PI,thg1_diff*180/M_PI,thg2_diff*180/M_PI);
+				log_msg("diff:");
+				log_msg("R s %0.4f e %0.4f r %0.4f d %0.4f p %0.4f                     g1 %0.4f  g2 %0.4f",
+						ths_diff,the_diff,thr_diff,d_diff,thp_diff,thg1_diff,thg2_diff);
+				log_msg("D s %0.4f e %0.4f r %0.4f d %0.4f p %0.4f                     g1 %0.4f  g2 %0.4f",
+						ths_diff*180/M_PI,the_diff*180/M_PI,thr_diff*180/M_PI,d_diff,
+						thp_diff*180/M_PI,thg1_diff*180/M_PI,thg2_diff*180/M_PI);
+
+//				btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+//				btTransform Zs = Z(ths_act + ths_offset,0);
+//				btTransform Xu = X(th12,0);
+//				btTransform Ze = Z(the_act,0);
+//				btTransform Xf = X(th23,0);
+//				btTransform Zr = Z(-thr_act + thr_offset,0);
+//				btTransform Zi = Z(0,-d_act);
+//				btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+//				btTransform Zp = Z(thp_act,0);
+//				btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
+//				btTransform Zy = Z(thy_act,0);
+//				btTransform Tg(btMatrix3x3::getIdentity());
+//
+//				btTransform tool = ik_world_to_actual_world.inverseTimes(Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg);
+
+
+			}
+//			mech->joint[GRASP1].jpos_d = grasp/2;
+//			mech->joint[GRASP2].jpos_d = grasp/2;
+//			mech->joint[TOOL_ROT].jpos_d = 0;
+//			mech->joint[WRIST].jpos_d = 0;
+
+			return 1;
+		}
+	}
+
+	if (_curr_rl == 3) {
+		printf("ik invalid **** %d\n",_ik_counter);
+	}
+	if (print) {
+		log_msg("ik invalid");
+	}
+
+		//no joints were valid
+	return 0;
+}
+
+int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float thy_act, float grasp) {
+	if (_ik_counter % PRINT_EVERY == 0) {
+		log_msg("setting joints 1");
+	}
+	mech->joint[Z_INS].jpos_d    = d_act;
+	mech->joint[WRIST].jpos_d    = thp_act; //WRIST_HOME_ANGLE; int WARNING_WRIST_NOT_SET;
+	mech->joint[GRASP1].jpos_d   = -thy_act + grasp / 2; //GRASP1_HOME_ANGLE; int WARNING_GRASP1_NOT_SET;
+	mech->joint[GRASP2].jpos_d   = thy_act + grasp / 2; //GRASP2_HOME_ANGLE; int WARNING_GRASP2_NOT_SET;
+
+	int limits=0;
+
+	if (mech->joint[Z_INS].jpos_d  < Z_INS_MIN_LIMIT) {
+		limits++;
+		log_msg("insertion min limit");
+		mech->joint[Z_INS].jpos_d = Z_INS_MIN_LIMIT;
+	} else if (mech->joint[Z_INS].jpos_d  > Z_INS_MAX_LIMIT) {
+		limits++;
+		log_msg("insertion max limit");
+		mech->joint[Z_INS].jpos_d = Z_INS_MAX_LIMIT;
+	}
+
+	if (mech->joint[WRIST].jpos_d  < TOOL_WRIST_MIN_LIMIT) {
+		log_msg("wrist min limit");
+		limits++;
+		mech->joint[WRIST].jpos_d = TOOL_WRIST_MIN_LIMIT;
+	} else if (mech->joint[WRIST].jpos_d  > TOOL_WRIST_MAX_LIMIT) {
+		limits++;
+		log_msg("wrist max limit");
+		mech->joint[WRIST].jpos_d = TOOL_WRIST_MAX_LIMIT;
+	}
+	if (fabs(mech->joint[WRIST].jpos_d - mech->joint[WRIST].jpos) > 10 DEG2RAD) {
+		if (mech->joint[WRIST].jpos_d > mech->joint[WRIST].jpos) {
+			mech->joint[WRIST].jpos_d = mech->joint[WRIST].jpos + 10 DEG2RAD;
+		} else {
+			mech->joint[WRIST].jpos_d = mech->joint[WRIST].jpos - 10 DEG2RAD;
+		}
+	}
+
+	if (mech->joint[GRASP1].jpos_d  < TOOL_GRASP1_MIN_LIMIT) {
+		limits++;
+		log_msg("grasp1 min limit");
+		mech->joint[GRASP1].jpos_d = TOOL_GRASP1_MIN_LIMIT;
+	} else if (mech->joint[GRASP1].jpos_d  > TOOL_GRASP1_MAX_LIMIT) {
+		limits++;
+		log_msg("grasp1 max limit");
+		mech->joint[GRASP1].jpos_d = TOOL_GRASP1_MAX_LIMIT;
+	}
+
+	if (mech->joint[GRASP2].jpos_d  < TOOL_GRASP2_MIN_LIMIT) {
+		log_msg("grasp2 min limit");
+		limits++;
+		mech->joint[GRASP2].jpos_d = TOOL_GRASP2_MIN_LIMIT;
+	} else if (mech->joint[GRASP2].jpos_d  > TOOL_GRASP2_MAX_LIMIT) {
+		limits++;
+		log_msg("grasp2 max limit");
+		mech->joint[GRASP2].jpos_d = TOOL_GRASP2_MAX_LIMIT;
+	}
+
+	return limits;
+}
+
+int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float thr_act) {
+	if (_ik_counter % PRINT_EVERY == 0) {
+		log_msg("setting joints 2");
+	}
+	mech->joint[SHOULDER].jpos_d = ths_act;
+	mech->joint[ELBOW].jpos_d    = the_act;
+	//mech->joint[TOOL_ROT].jpos_d = fix_angle(thr_act + M_PI); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
+	mech->joint[TOOL_ROT].jpos_d = thr_act; //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
+
+	int limits = 0;
+	if (mech->joint[SHOULDER].jpos_d < SHOULDER_MIN_LIMIT) {
+		limits++;
+		log_msg("shoulder min limit");
+		mech->joint[SHOULDER].jpos_d = SHOULDER_MIN_LIMIT;
+	} else if (mech->joint[SHOULDER].jpos_d > SHOULDER_MAX_LIMIT) {
+		limits++;
+		log_msg("shoulder max limit");
+		mech->joint[SHOULDER].jpos_d = SHOULDER_MAX_LIMIT;
+	}
+
+	if (mech->joint[ELBOW].jpos_d < ELBOW_MIN_LIMIT) {
+		limits++;
+		log_msg("elbow min limit");
+		mech->joint[ELBOW].jpos_d = ELBOW_MIN_LIMIT;
+	} else if (mech->joint[ELBOW].jpos_d > ELBOW_MAX_LIMIT) {
+		limits++;
+		log_msg("elbow max limit");
+		mech->joint[ELBOW].jpos_d = ELBOW_MAX_LIMIT;
+	}
+
+	if (mech->joint[TOOL_ROT].jpos_d < TOOL_ROLL_MIN_LIMIT) {
+		limits++;
+		log_msg("roll %1.4fdeg under min limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
+		mech->joint[TOOL_ROT].jpos_d = TOOL_ROLL_MIN_LIMIT;
+	} else if (mech->joint[TOOL_ROT].jpos_d > TOOL_ROLL_MAX_LIMIT) {
+		limits++;
+		log_msg("roll %1.4fdeg over max limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
+		mech->joint[TOOL_ROT].jpos_d = TOOL_ROLL_MAX_LIMIT;
+	}
+
+	if (fabs(mech->joint[TOOL_ROT].jpos_d - mech->joint[TOOL_ROT].jpos) > 10 DEG2RAD) {
+		if (mech->joint[TOOL_ROT].jpos_d > mech->joint[TOOL_ROT].jpos) {
+			mech->joint[TOOL_ROT].jpos_d = mech->joint[TOOL_ROT].jpos + 10 DEG2RAD;
+		} else {
+			mech->joint[TOOL_ROT].jpos_d = mech->joint[TOOL_ROT].jpos - 10 DEG2RAD;
+		}
+	}
+
+	return limits;
+}
+
+bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp) {
+	bool any_nan = false;
+	if (d_act != d_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("d_act is nan"); } any_nan = true; };
+	if (thp_act != thp_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("thp_act is nan"); } any_nan = true; };
+	if (thy_act != thy_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("thy_act is nan"); } any_nan = true; };
+	if (grasp != grasp) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("grasp is nan"); } any_nan = true; };
+	if (any_nan) {
+		return false;
+	}
+
+	if (d_act < Z_INS_MIN_LIMIT) {
+		return false;
+	}
+	if (d_act > Z_INS_MAX_LIMIT) {
+		return false;
+	}
+	if (thp_act < TOOL_WRIST_MIN_LIMIT) {
+		return false;
+	}
+	if (thp_act > TOOL_WRIST_MAX_LIMIT) {
+		return false;
+	}
+	if (thy_act + grasp/2 < TOOL_GRASP1_MIN_LIMIT) {
+		return false;
+	}
+	if (thy_act + grasp/2 > TOOL_GRASP1_MAX_LIMIT) {
+		return false;
+	}
+	if (-thy_act + grasp/2 < TOOL_GRASP2_MIN_LIMIT) {
+		return false;
+	}
+	if (-thy_act + grasp/2 > TOOL_GRASP2_MAX_LIMIT) {
+		return false;
+	}
+	return true;
+}
+
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act) {
+	bool any_nan = false;
+	if (ths_act != ths_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("ths_act is nan"); } any_nan = true; };
+	if (the_act != the_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("the_act is nan"); } any_nan = true; };
+	if (thr_act != thr_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("thr_act is nan"); } any_nan = true; };
+	if (any_nan) {
+		return false;
+	}
+
+	if (ths_act < SHOULDER_MIN_LIMIT) {
+		return false;
+	}
+	if (ths_act > SHOULDER_MAX_LIMIT) {
+		return false;
+	}
+	if (the_act < ELBOW_MIN_LIMIT) {
+		return false;
+	}
+	if (the_act > ELBOW_MAX_LIMIT) {
+		return false;
+	}
+	if (thr_act < TOOL_ROLL_MIN_LIMIT) {
+		return false;
+	}
+	if (thr_act > TOOL_ROLL_MAX_LIMIT) {
+		return false;
+	}
+	return true;
 }
 
 
@@ -527,600 +1180,3 @@ int check_joint_limits2(struct mechanism *_mech)
 
 	return limits;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
-* Inverse kinematics equations for Raven_II robot
-*  Preconditions:
-*      pos_d stores the desired end effector position
-*      ori_d stores the desired end effector orientation
-*  Postcondition
-*      jpos_d stores the desired joint angles
-*
-*  Previously the function was defined like this, but not anymore:
-*   Input pos_d, ori_d
-*   Output jpos_d joint angles
-*/
-int invMechKin_old(struct mechanism *mech)
-{
-    int robot;
-    if (mech->type == GOLD_ARM){
-        robot=0;
-    }
-    else if (mech->type == GREEN_ARM) {
-        robot=1;
-    }
-    else {
-        log_msg("ERROR: @invMechKin Bad mechanism->type");
-        return -1;
-    }
-
-    struct position    *pos_d = &(mech->pos_d);
-    struct orientation *ori_d = &(mech->ori_d);
-    //float jpos_d[MAX_DOF_PER_MECH];
-
-	int has_solution = 0;
-	int i, j;
-	float tip[HMATRIX_SIZE][HMATRIX_SIZE];
-	float tip_inv[HMATRIX_SIZE][HMATRIX_SIZE];
-
-// New Variables introduced my LW and HK for new Inv Kinematics
-
-    // Desired Position
-    float Px;
-    float Py;
-    float Pz;
-
-    // helper variables
-//    float a;
-//    float b;
-//    float c;
-    float d;
-
-    float cpb;
-	float spb;
-	float cna;
-	float sna;
-
-    // output angles for robot
-    float j1; //Shoulder
-    float j2; //Elbow
-    float d3; //Insertion
-//    float j4; //Tool Roll
-//    float j5; //Wrist
-//    float j6; //Grasper
-
-// End new variables
-
-
-	float Px_inv;
-	float Py_inv;
-	float Pz_inv;
-	float Pxyz;
-	float d44;
-	float dd4;
-	float s1, c1;
-	float s2, c2;
-	float s3, c3;
-	float s5, c5;
-	float s6 = 0;
-	float c6 = 0;
-	float a, b, c, dd;
-	float th31;
-	float th32;
-	float th1;
-	float th2;
-	float th3;
-	float th5;
-	float th6;
-
-	const float _sin_A12 = sin(A12);
-	const float _cos_A12 = cos(A12);
-	const float _sin_A23 = sin(A23);
-	const float _cos_A23 = cos(A23);
-
-	float a5 = _A5;
-
-	float T46[HMATRIX_SIZE][HMATRIX_SIZE];
-	float T46_inv[HMATRIX_SIZE][HMATRIX_SIZE];
-	float T13[HMATRIX_SIZE][HMATRIX_SIZE];
-	float T23[HMATRIX_SIZE][HMATRIX_SIZE];
-	float temp[HMATRIX_SIZE][HMATRIX_SIZE];
-	float temp_inv[HMATRIX_SIZE][HMATRIX_SIZE];
-	float T1[HMATRIX_SIZE][HMATRIX_SIZE];
-
-	float s31;
-	float c31;
-	float s32;
-	float c32;
-	float T13_calc1;
-	float T13_calc2;
-
-	static int counter = 0;
-
-#define USE_EXACT_ROTATION
-	// create tip matrix ====================================================
-	// the invkin is solved from the tip matrix =============================
-#ifdef USE_EXACT_ROTATION
-	// copy R matrix
-	for (i = 0; i < 3; i++)
-	  for (j = 0; j < 3; j++)
-		  tip[i][j] = ori_d->R[i][j];
-#else
-	hmatrix_from_orientation(ori_d, tip);
-#endif
-
-	tip[0][3] = (pos_d->x) / MICRON_PER_M;
-	tip[1][3] = (pos_d->y) / MICRON_PER_M;
-	tip[2][3] = (pos_d->z) / MICRON_PER_M;
-	tip[3][3] = 1.0;
-
-	tip[3][0] = 0.0;
-	tip[3][1] = 0.0;
-	tip[3][2] = 0.0;
-
-
-    /*
-    Inverse kinematics have been reformulated for Raven II Build
-    New formulation follows
-
-    Lee White
-    Hawkeye King
-
-    1/8/2012
-
-    */
-
-    // CURRENTLY ONLY VALID FOR LEFT ARM
-
-	// desired tip position
-	Px = tip[0][3];
-	Py = tip[1][3];
-	Pz = tip[2][3];
-
-	// insertion - always negative
-	d3 = - sqrt(SQR(Px) + SQR(Py) + SQR(Pz));
-
-	// j2
-
-	// cos(Pi-beta), sin(Pi - beta)
-	cpb = cos(M_PI - A23);
-	spb = sin(M_PI - A23);
-
-	// cos(-alpha), sin (-alpha)
-	cna = cos(-A12);
-	sna = sin (-A12);
-
-	c2 = (Pz - cpb * cna * d3)/( - spb *  d3 * cna);
-	// may need to specify an output sign for pose
-	s2 = 1 * sqrt(1-SQR(c2));
-
-	// correct atan2?
-	j2 = atan2f(s2,c2);
-
-	//j1
-
-	//helper terms
-	a = spb * d3 * s2;
-	b = ( spb * d3 * c2 * cna + cpb * d3 * sna );
-	c = spb * d3 * s2;
-	d = ( spb * d3 * c2 * cna - cpb * d3 * sna );
-
-	c1 = Px * c / (a * c + Pz + d );
-	// choose sign
-	s1 = 1 * sqrt( 1 - SQR(c1));
-
-	// correct atan2?
-	j1 = atan2f ( s1, c1 );
-
-
-// END MODIFICATIONS
-
-
-	// create tip matrix end ================================================
-
-	invOrthMatrix(tip, tip_inv);
-	//printf("the inverse recieved matrix\n");
-	//printMatrix(tip_inv);
-	Px_inv = tip_inv[0][3];
-	Py_inv = tip_inv[1][3];
-	Pz_inv = tip_inv[2][3];
-	Pxyz = SQR(tip[0][3]) + SQR(tip[1][3]) + SQR(tip[2][3]);
-
-	//There are four solutions for d4
-	//float d41 = sqrt((SQR(a5)+Pxyz+2*sqrt((SQR(a5)*Pxyz-SQR(Py_inv)*SQR(a5)))));
-	//float d42 = -sqrt((SQR(a5)+Pxyz+2*sqrt((SQR(a5)*Pxyz-SQR(Py_inv)*SQR(a5)))));
-	//float d43 = sqrt((SQR(a5)+Pxyz-2*sqrt((SQR(a5)*Pxyz-SQR(Py_inv)*SQR(a5)))));
-	d44 = -sqrt( SQR(a5) + Pxyz - 2 * sqrt( SQR(a5) * Pxyz - SQR(Py_inv) * SQR(a5) ) );
-
-	//We choose solution number 4
-	dd4 = d44;
-	// Solved for d4 --------------------------------------------------------------------
-
-	if (ABS(dd4) < EPS) // division by zero
-	{
-		s5 = 0.0;
-	}
-	else
-	{
-		s5 = (Py_inv/dd4);
-	}
-
-	if ( (ABS(s5) > 1.0) && (ABS(s5) < 1.0 + EPS) )
-	{
-		s5 = ABS(s5)/s5;
-	}
-	else if (ABS(s5) > 1.0 + EPS)
-	{
-		log_msg("ik: ABS(s5) > 1.0 + EPS, %f", s5);
-		return has_solution;  // has no solution
-	}
-
-	th5 = asin(s5);
-	//Solved for theta5 -------------------------------------------------------------------
-
-	c5 = sqrt(1.0-SQR(s5));
-	if ((robot == 0)||(robot == 2))
-	{
-		c6 = Pz_inv/(-c5*dd4+a5);
-		s6 = Px_inv/(-c5*dd4+a5);
-	}
-	if ((robot == 1)||(robot == 3))
-	{
-		c6 = Pz_inv/(-c5*dd4+a5);
-		s6 = -Px_inv/(-c5*dd4+a5);
-	}
-
-	th6 = atan2(s6, c6);
-	//Solved for th6 -------------------------------------------------------------------
-
-
-	if ((robot == 0) || (robot == 2))
-	{
-		T46[0][0] = -s5*s6; T46[0][1] = -c5; T46[0][2] = -s5*c6; T46[0][3] = a5*s5;
-		T46[1][0] = c6; T46[1][1] = 0; T46[1][2] = -s6; T46[1][3] = 0;
-		T46[2][0] = c5*s6; T46[2][1] = -s5; T46[2][2] = c5*c6; T46[2][3] = -a5*c5+dd4;
-		T46[3][0] = 0; T46[3][1] = 0; T46[3][2] = 0; T46[3][3] = 1;
-	}
-
-	else // if ((robot == 1) || (robot == 3))
-	{
-		T46[0][0] = -s5*s6; T46[0][1] = c5; T46[0][2] = s5*c6; T46[0][3] = -a5*s5;
-		T46[1][0] = -c6; T46[1][1] = 0; T46[1][2] = -s6; T46[1][3] = 0;
-		T46[2][0] = -c5*s6; T46[2][1] = -s5; T46[2][2] = c5*c6; T46[2][3] = -a5*c5+dd4;
-		T46[3][0] = 0; T46[3][1] = 0; T46[3][2] = 0; T46[3][3] = 1;
-	}
-
-	invOrthMatrix(T46, T46_inv);
-	mulMatrix(tip, T46_inv, T13);
-	//printf("T13 matrix\n");
-	//printMatrix(T13);
-	c2 = (_cos_A12*_cos_A23+ T13[2][2])/(_sin_A12*_sin_A23);
-	s2 = 0;
-	//printf("ABS of c2 is %f\n",c2);
-	if (ABS(c2) > 1.0 + EPS)
-	{
-		log_msg("ABS(c2) [%6.3f] > 1.0 + EPS", c2);
-		return has_solution;   // has no solution
-	}
-	else if (ABS(c2) > 1.0)
-	{
-		log_msg("ABS(c2) [%6.3f] > 1.0 < 1.0 + EPS", c2);
-		c2 = ABS(c2)/c2; // make it 1 with the right sign
-	}
-	s2 = sqrt(1-SQR(c2));
-	th2 = atan2(s2,c2);
-	//Solved for theta2 -------------------------------------------------------------------
-
-	a = _sin_A12*s2;
-	b = _sin_A12*c2*_cos_A23+_cos_A12*_sin_A23;
-	c = T13[2][1];
-	dd = SQR(b)+SQR(a)-SQR(c);
-
-	if (dd < 0.0)
-	{
-		if (ABS(dd) < EPS)
-		{
-			dd = 0;
-			log_msg("dd = 0, %f", dd);
-		}
-		else
-		{
-			log_msg("ABS(b*b+a*a-c*c)<EPS, %f < %f", ABS(dd), EPS);
-			return has_solution;  // has no solution
-		}
-	}
-
-	if (ABS(a+c) < EPS2)
-	{
-		log_msg("ABS(a+c) < %d", EPS);
-		a = c = EPS2;
-		return has_solution;  // has no solution
-	}
-
-	//There are two solutions for th3
-	th31 = 2.0*atan((b+sqrt(dd))/(a+c));
-	th32 = 2.0*atan((b-sqrt(dd))/(a+c));
-
-	//We can choose by selection of other unit in matrix
-	s31 = sin(th31);
-	c31 = cos(th31);
-	s32 = sin(th32);
-	c32 = cos(th32);
-	T13_calc1 = 0;
-	T13_calc2 = 0;
-
-	if ((robot == 0)||(robot == 2))
-	{
-		T13_calc1 = -_sin_A12*s2*s31+(_sin_A12*c2*_cos_A23+_cos_A12*_sin_A23)*c31;
-		T13_calc2 = -_sin_A12*s2*s32+(_sin_A12*c2*_cos_A23+_cos_A12*_sin_A23)*c32;
-	}
-	else //if ((robot == 1)||(robot == 3))
-	{
-		T13_calc1 = _sin_A12*s2*s31-(_sin_A12*c2*_cos_A23+_cos_A12*_sin_A23)*c31;
-		T13_calc2 = _sin_A12*s2*s32-(_sin_A12*c2*_cos_A23+_cos_A12*_sin_A23)*c32;
-	}
-
-	th3 = 0;
-
-	if ( ABS(T13_calc1 - T13[2][0]) < ABS(T13_calc2 - T13[2][0]) )
-	{
-		th3 = th31;
-	}
-	else
-	{
-		th3 = th32;
-	}
-
-	// Solved for th3 -----------------------------------------------------------------
-
-	c3 = cos(th3);
-	s3 = sin(th3);
-
-	if ((robot == 0)||(robot == 2))
-	{
-		T23[0][0] = c2*s3+s2*_cos_A23*c3;
-		T23[0][1] = -c2*c3+s2*_cos_A23*s3;
-		T23[0][2] = s2*_sin_A23;
-		T23[0][3] = 0;
-
-		T23[1][0] = -s2*s3+c2*_cos_A23*c3;
-		T23[1][1] = s2*c3+c2*_cos_A23*s3;
-		T23[1][2] = c2*_sin_A23;
-		T23[1][3] = 0;
-
-		T23[2][0] = -_sin_A23*c3;
-		T23[2][1] = -_sin_A23*s3;
-		T23[2][2] = _cos_A23;
-		T23[2][3] = 0;
-
-		T23[3][0] = 0;
-		T23[3][1] = 0;
-		T23[3][2] = 0;
-		T23[3][3] = 1;
-	}
-
-	if ((robot == 1)||(robot == 3))
-	{
-		T23[0][0] = c2*s3+s2*_cos_A23*c3;
-		T23[0][1] = c2*c3-s2*_cos_A23*s3;
-		T23[0][2] = -s2*_sin_A23;
-		T23[0][3] = 0;
-
-		T23[1][0] = s2*s3-c2*_cos_A23*c3;
-		T23[1][1] = s2*c3+c2*_cos_A23*s3;
-		T23[1][2] = c2*_sin_A23;
-		T23[1][3] = 0;
-
-		T23[2][0] = _sin_A23*c3;
-		T23[2][1] = -_sin_A23*s3;
-		T23[2][2] = _cos_A23;
-		T23[2][3] = 0;
-
-		T23[3][0] = 0;
-		T23[3][1] = 0;
-		T23[3][2] = 0;
-		T23[3][3] = 1;
-	}
-
-	mulMatrix(T23, T46, temp);
-	invOrthMatrix(temp, temp_inv);
-	mulMatrix(tip, temp_inv, T1);
-	//printMatrix(T1);
-
-
-	if ((robot == 0) || (robot == 2))
-	{
-		c1 = T1[0][0];
-		s1 = T1[1][0];
-	}
-	else //if ((robot == 1) || (robot == 3))
-	{
-		c1 = -T1[0][0];
-		s1 = T1[1][0];
-	}
-
-	//th1 final
-	th1 = atan2(s1,c1);
-	//solved for theta1 ----------------------------------------------------
-
-	inv_kin_last_err = 0;
-	// revised by JiMa to fix the problem that robot stops working when reaching joint limit
-
-	if (th1 < SHOULDER_MIN_LIMIT)
-	{
-		th1 = SHOULDER_MIN_LIMIT;
-		inv_kin_last_err = 1;
-	}
-	else if (th1 > SHOULDER_MAX_LIMIT)
-	{
-		th1 = SHOULDER_MAX_LIMIT;
-		inv_kin_last_err = 2;
-	}
-
-	if (th2 < ELBOW_MIN_LIMIT)
-	{
-		th2 = ELBOW_MIN_LIMIT;
-		inv_kin_last_err = 3;
-	}
-	else if (th2 > ELBOW_MAX_LIMIT)
-	{
-		th2 = ELBOW_MAX_LIMIT;
-		inv_kin_last_err = 4;
-	}
-
-	if (th3 < TOOL_ROLL_MIN_LIMIT)
-	{
-		th3 = TOOL_ROLL_MIN_LIMIT;
-		inv_kin_last_err = 5;
-	}
-	else if (th3 > TOOL_ROLL_MAX_LIMIT)
-	{
-		th3 = TOOL_ROLL_MAX_LIMIT;
-		inv_kin_last_err = 6;
-	}
-
-	if (dd4 < Z_INS_MIN_LIMIT)
-	{
-		dd4 = Z_INS_MIN_LIMIT;
-		inv_kin_last_err = 7;
-	}
-	else if (dd4 > Z_INS_MAX_LIMIT)
-	{
-		dd4 = Z_INS_MAX_LIMIT;
-		inv_kin_last_err = 8;
-	}
-
-	if (th5 < TOOL_WRIST_MIN_LIMIT)
-	{
-		th5 = TOOL_WRIST_MIN_LIMIT;
-		inv_kin_last_err = 9;
-	}
-	else if (th5 > TOOL_WRIST_MAX_LIMIT)
-	{
-		th5 = TOOL_WRIST_MAX_LIMIT;
-		inv_kin_last_err = 10;
-	}
-
-	// Now have solved for th1, th2, d3 ...
-    mech->joint[SHOULDER].jpos_d = th1;
-    mech->joint[ELBOW].jpos_d    = th2;
-    mech->joint[Z_INS].jpos_d    = dd4;
-    mech->joint[TOOL_ROT].jpos_d = th3;
-    mech->joint[WRIST].jpos_d    = th5;
-
-	// implementation of simple grasping on and off -------------------------------------
-	// it takes several cycles to open or close so do it gradually
-	static float delta_grasp[MAX_MECH_PER_DEV] = {0.0, 0.0};
-	static int dir[MAX_MECH_PER_DEV] = {1, 1};
-	static float delta_target[MAX_MECH_PER_DEV] = {0.0, 0.0};
-
-	if (!ori_d->grasp)
-		delta_target[robot] =  45.0 DEG2RAD; // grasp open
-	else
-		delta_target[robot] = -40.0 DEG2RAD;			 // grasp closed
-
-	if ( ABS(delta_grasp[robot] - delta_target[robot]) > 0.2 DEG2RAD )
-	{
-		if (delta_grasp[robot] < delta_target[robot])
-		{
-			dir[robot] = 5;
-		}
-		else
-		{
-			dir[robot] = -1;
-		}
-
-
-		if ((dir[robot] == -1) && mech->joint[GRASP1].tau > 0.02)
-		{
-			log_msg("robot: %d, torque: %5.2f", robot, mech->joint[GRASP1].tau);
-			; // do nothing if closing and too much torque
-		}
-		else
-		{
-			delta_grasp[robot] += dir[robot] * 0.1 DEG2RAD;
-			//delta_target[robot] = delta_grasp[robot]; // stay where you are
-		}
-	}
-
-	if ((robot == 0) || (robot == 2))
-	{
-        mech->joint[GRASP1].jpos_d = (th6 + delta_grasp[robot]);
-        mech->joint[GRASP2].jpos_d = -(th6 - delta_grasp[robot]);
-//      From UCSC R_II. Kept for reference
-//		jpos_d[GRASP1] =  (th6 + delta_grasp[robot]);
-//		jpos_d[GRASP2] = -(th6 - delta_grasp[robot]);
-	}
-	else if ((robot == 1) || (robot == 3))
-	{
-        mech->joint[GRASP1].jpos_d = (th6 - delta_grasp[robot]);
-        mech->joint[GRASP2].jpos_d = -(th6 + delta_grasp[robot]);
-//      From UCSC R_II. Kept for reference.     Once this code is working properly, this should b3e deleted.
-
-//		jpos_d[GRASP1] =  (th6 - delta_grasp[robot]);
-//		jpos_d[GRASP2] = -(th6 + delta_grasp[robot]);
-	}
-	// ----------------------------------------------------------------------------------
-
-
-	if (mech->joint[GRASP1].jpos_d < TOOL_GRASP1_MIN_LIMIT)
-	{
-		mech->joint[GRASP1].jpos_d = TOOL_GRASP1_MIN_LIMIT;
-		inv_kin_last_err = 11;
-	}
-	else if (mech->joint[GRASP1].jpos_d > TOOL_GRASP1_MAX_LIMIT)
-	{
-		mech->joint[GRASP1].jpos_d = TOOL_GRASP1_MAX_LIMIT;
-		inv_kin_last_err = 12;
-	}
-
-	if (mech->joint[GRASP2].jpos_d < TOOL_GRASP2_MIN_LIMIT)
-	{
-		mech->joint[GRASP2].jpos_d = TOOL_GRASP2_MIN_LIMIT;
-		inv_kin_last_err = 13;
-	}
-	else if (mech->joint[GRASP2].jpos_d > TOOL_GRASP2_MAX_LIMIT)
-	{
-		mech->joint[GRASP2].jpos_d = TOOL_GRASP2_MAX_LIMIT;
-		inv_kin_last_err = 14;
-	}
-
-	counter++;
-
-	has_solution = 1;
-	return has_solution;   // actually has a solution
-}
-

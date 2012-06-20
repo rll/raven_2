@@ -16,15 +16,16 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-
 #uncomment if you have defined messages
 rosbuild_genmsg()
 #uncomment if you have defined services
 #rosbuild_gensrv()
 
+add_definitions("-DRAVEN_DATA_DIR=${CMAKE_SOURCE_DIR}/data")
+
 if (CMAKE_COMPILER_IS_GNUCXX)
     # message ("CMAKE_COMPILER_IS_GNUCXX")
-    set(CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} -Wall -ansi -pedantic")
+    #set(CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} -Wall -ansi -pedantic")
 endif()
 
 #common commands for building c++ executables and libraries
@@ -38,9 +39,21 @@ endif()
 include_directories(src/raven)
 include_directories(include)
 include_directories(include/raven)
+#include_directories(include/ik)
+
 
 #set some compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result -Wno-missing-field-initializers")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result -Wno-missing-field-initializers")
+
+#rosbuild_add_library(raven_numerical_ik src/ik/GeneralIK.cpp)
+#target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
+
+find_package(OpenRAVE REQUIRED)
+include_directories(${OpenRAVE_INCLUDE_DIRS})
+link_directories(${OpenRAVE_LIBRARY_DIRS})
+rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
+target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
+
 
 rosbuild_add_executable(r2_control
 #src/raven/asinw.cpp
@@ -81,3 +94,5 @@ src/raven/utils.cpp
 #src/raven/velocity.cpp
 src/raven/saveload.cpp
 )
+
+target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )

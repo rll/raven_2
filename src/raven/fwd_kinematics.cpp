@@ -22,6 +22,7 @@
 
 
 extern int NUM_MECH;
+
 /*
  * fwdKin - wrapper function that checks for correct runlevel
  *   and calls fwdMechKin for each mechanism in device
@@ -34,7 +35,11 @@ void fwdKin(struct device *device0, int runlevel)
 {
     //Always run forward kinematics for each mech
     for (int i = 0; i < NUM_MECH; i++) {
-        fwdMechKin(&(device0->mech[i]));
+    	if (device0->mech[i].type == GOLD_ARM) {
+    		fwdMechKinNew(&(device0->mech[i]));
+    	} else {
+    		fwdMechKin(&(device0->mech[i]));
+    	}
     }
 
     if ((runlevel != RL_PEDAL_DN) && (runlevel != RL_INIT)) {
@@ -58,6 +63,95 @@ void fwdKin(struct device *device0, int runlevel)
         }
     updateMasterRelativeOrigin( device0 );   // Update the origin, to which master-side deltas are added.
   }
+}
+
+void fwdMechKinNew(struct mechanism* mech) {
+	float ths_offset, thr_offset;
+	if (mech->type == GOLD_ARM) {
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI_2;
+	} else {
+		//TODO: fix
+		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+		ths_offset = atan(0.3471/0.9014); //from original URDF
+		thr_offset = M_PI / 4.;
+	}
+
+	float th12 = -A12;
+	float th23 = -A23;
+
+	float dw = 0.012;
+
+	float ths = mech->joint[SHOULDER].jpos;
+	float the = mech->joint[ELBOW].jpos;
+	float   d = mech->joint[Z_INS].jpos;
+	float thr = mech->joint[TOOL_ROT].jpos;
+	//float thr = fix_angle(mech->joint[TOOL_ROT].jpos - M_PI);
+	float thp = mech->joint[WRIST].jpos;
+	float thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
+	//float thy = (mech->joint[GRASP1].jpos - mech->joint[GRASP2].jpos) / 2;
+	float grasp = mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos;
+
+	btTransform ik_world_to_actual_world;
+	if (mech->type == GOLD_ARM) {
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,1,0,
+				-1,0,0,
+				0,0,1)).inverse();
+	} else {
+		//TODO: check
+		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+		ik_world_to_actual_world = btTransform(btMatrix3x3(
+				0,-1,0,
+				1,0,0,
+				0,0,1),
+				btVector3(-.2, 0, 0)).inverse();
+	}
+
+	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Zs = Z(ths + ths_offset,0);
+	btTransform Xu = X(th12,0);
+	btTransform Ze = Z(the,0);
+	btTransform Xf = X(th23,0);
+	btTransform Zr = Z(-thr + thr_offset,0);
+	btTransform Zi = Z(0,-d);
+	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
+	btTransform Zp = Z(thp,0);
+	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
+	btTransform Zy = Z(thy,0);
+	btTransform Tg(btMatrix3x3::getIdentity());
+
+	btTransform tool = ik_world_to_actual_world.inverse() * Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg;
+
+	/*
+		if (_ik_counter % PRINT_EVERY == 0) {
+			btVector3 ins = Tw2b * Zs * Xu * Ze * Xf * btVector3(0,0,-1);
+			float yaw = atan2(ins.y(),ins.x());
+			float pitch = atan2(sqrt(ins.x()*ins.x()+ins.y()*ins.y()), ins.z());
+
+			log_msg("curr roll axis (%0.4f,%0.4f,%0.4f)",
+					yaw * 180 / M_PI,pitch * 180 / M_PI,0);
+
+			btVector3 gpt = (Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Xpy * Zy * Tg).getOrigin();
+			log_msg("gpt (%0.4f,%0.4f,%0.4f)",gpt.x(),gpt.y(),gpt.z());
+		}
+	 */
+
+	btMatrix3x3 temp = tool.getBasis();
+	btVector3 p    = tool.getOrigin();
+
+	mech->pos.x = (int)(p[0] * MICRON_PER_M);
+	mech->pos.y = (int)(p[1] * MICRON_PER_M);
+	mech->pos.z = (int)(p[2] * MICRON_PER_M);
+
+	// copy R matrix
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			mech->ori.R[i][j] = temp[i][j];
+		}
+	}
+
+	mech->ori.grasp = grasp*1000;
 }
 
 
