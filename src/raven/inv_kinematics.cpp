@@ -113,75 +113,6 @@ float cosf(float val);
 //	return R;
 //}
 
-btTransform fwdKin(struct mechanism* mech) {
-	float ths_offset, thr_offset;
-	if (mech->type == GOLD_ARM) {
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI / 4.;
-	} else {
-		//TODO: fix
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI / 4.;
-	}
-
-	float th12 = -A12;
-	float th23 = -A23;
-
-	float dw = 0.012;
-
-	float ths = mech->joint[SHOULDER].jpos;
-	float the = mech->joint[ELBOW].jpos;
-	float   d = mech->joint[Z_INS].jpos;
-	float thr = mech->joint[TOOL_ROT].jpos;
-	float thp = mech->joint[WRIST].jpos;
-	float thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
-	//float grasp = (mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos)/1000;
-
-	btTransform ik_world_to_actual_world;
-	if (mech->type == GOLD_ARM) {
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,1,0,
-				-1,0,0,
-				0,0,1)).inverse();
-	} else {
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,-1,0,
-				1,0,0,
-				0,0,1),
-				btVector3(-.2, 0, 0)).inverse();
-	}
-
-	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Zs = Z(ths + ths_offset,0);
-	btTransform Xu = X(th12,0);
-	btTransform Ze = Z(the,0);
-	btTransform Xf = X(th23,0);
-	btTransform Zr = Z(-thr + thr_offset,0);
-	btTransform Zi = Z(0,-d);
-	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Zp = Z(thp,0);
-	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
-	btTransform Zy = Z(thy,0);
-	btTransform Tg(btMatrix3x3::getIdentity());
-
-	btTransform tool = ik_world_to_actual_world.inverse() * Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg;
-
-	if (_ik_counter % PRINT_EVERY == 0) {
-		btVector3 ins = Tw2b * Zs * Xu * Ze * Xf * btVector3(0,0,-1);
-		float yaw = atan2(ins.y(),ins.x());
-		float pitch = atan2(sqrt(ins.x()*ins.x()+ins.y()*ins.y()), ins.z());
-
-		log_msg("curr roll axis (%0.4f,%0.4f,%0.4f)",
-				yaw * 180 / M_PI,pitch * 180 / M_PI,0);
-
-		btVector3 gpt = (Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Xpy * Zy * Tg).getOrigin();
-		log_msg("gpt (%0.4f,%0.4f,%0.4f)",gpt.x(),gpt.y(),gpt.z());
-	}
-
-	return tool;
-
-}
-
 int invMechKinNew(struct mechanism *mech,bool test) {
 	_ik_counter++;
 	bool print = PRINT || (_prev_rl !=3 && _curr_rl == 3);
@@ -203,7 +134,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btMatrix3x3 actualOrientation = toBt(ori_d->R);
 	btTransform actualPose(actualOrientation,actualPoint);
 
-	btTransform actualPose_fk = fwdKin(mech);
+	btTransform actualPose_fk;// = fwdKin(mech);
 
 	tb_angles currentPoseAngles = get_tb_angles(mech->ori.R);
 	tb_angles actualPoseAngles = get_tb_angles(ori_d->R);

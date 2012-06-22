@@ -44,7 +44,7 @@ static btVector3 _teleop_pos_tracker[2];
 static btMatrix3x3 _teleop_rot_tracker0[2];
 static btMatrix3x3 _teleop_rot_tracker[2];
 static const int PRINT_EVERY_PEDAL_UP   = 1000000000;
-static const int PRINT_EVERY_PEDAL_DOWN = 1000000000;
+static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
 
 volatile int isUpdated; //volatile int instead of atomic_t ///Should we use atomic builtins? http://gcc.gnu.org/onlinedocs/gcc-4.1.2/gcc/Atomic-Builtins.html
@@ -61,6 +61,8 @@ int initLocalioData(void)
     pthread_mutex_init(&data1Mutex,&data1MutexAttr);
 
     pthread_mutex_lock(&data1Mutex);
+    data1.cmdStr[0] = 'a';
+    printf("after init %c\n",data1.cmdStr[0]);
     for (i=0;i<NUM_MECH;i++) {
         data1.xd[i].x = 0;
         data1.xd[i].y = 0;
@@ -227,6 +229,8 @@ int checkLocalUpdates()
 {
     static unsigned long int lastUpdated;
 
+    //printf("check %c %d\n",data1.cmdStr[0],isUpdated);
+
     if (isUpdated || lastUpdated == 0)
     {
         lastUpdated = gTime;
@@ -248,11 +252,14 @@ int checkLocalUpdates()
 // Postcondition: memory location of d1 contains latest DS1 Data from network/toolkit.
 struct param_pass * getRcvdParams(struct param_pass* d1)
 {
+	//printf("Char value: %c\n",data1.cmdStr[0]);
+
     ///TODO: Check performance of trylock / default priority inversion scheme
     if (pthread_mutex_trylock(&data1Mutex)!=0)   //Use trylock since this function is called form rt-thread. return immediately with old values if unable to lock
         return d1;
     //pthread_mutex_lock(&data1Mutex); //Priority inversion enabled. Should force completion of other parts and enter into this section.
     memcpy(d1, &data1, sizeof(struct param_pass));
+
     isUpdated = 0;
     pthread_mutex_unlock(&data1Mutex);
     return d1;
@@ -358,36 +365,75 @@ void jointCallback(const joint_command::ConstPtr& joint_cmd) {
   }
 }
 void ravenCmdCallback(const raven_2_msgs::RavenCommand::ConstPtr& cmd) {
-  //printf("cmd callback!\n");
-  pthread_mutex_lock(&data1Mutex);
-  if (!cmd->pedal_down) {
-	  printf("inactive!\n");
-	  data1.surgeon_mode =  SURGEON_DISENGAGED;
-  } else {
-	  data1.surgeon_mode = SURGEON_ENGAGED;
-	  for (int i=0;i<NUM_MECH;i++) {
-		  if (!cmd->tool_command[i].active) { continue; }
-		  if (i == 0) {
-			  printf("*********active %d!-----------------------------------\n",i);
-		  } else {
-			  printf("*********active %d!XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n",i);
-		  }
-		  data1.xd[i].x += cmd->tool_command[i].tool_pose.position.x;
-		  data1.xd[i].y += cmd->tool_command[i].tool_pose.position.y;
-		  data1.xd[i].z += cmd->tool_command[i].tool_pose.position.z;
-		  const int graspmax = (M_PI/2 * 1000);
-		  const int graspmin = (-20.0 * 1000.0 DEG2RAD);
-		  if (i == 0) {
-			  data1.rd[i].grasp -= cmd->tool_command[i].grasp;
-		  } else {
-			  data1.rd[i].grasp += cmd->tool_command[i].grasp;
-		  }
-		  if (data1.rd[i].grasp>graspmax) { data1.rd[i].grasp=graspmax; }
-		  if (data1.rd[i].grasp<graspmin) { data1.rd[i].grasp=graspmin; }
-	  }
-  }
-  isUpdated = TRUE;
-  pthread_mutex_unlock(&data1Mutex);
+	_localio_counter++;
+	data1.cmdStr[0] = 'b';
+
+	//printf("cmd callback!\n");
+	pthread_mutex_lock(&data1Mutex);
+
+	btVector3 p;
+	btQuaternion rot;
+	btMatrix3x3 rot_mx_temp;
+
+	if (!cmd->pedal_down) {
+		if (_localio_counter % PRINT_EVERY == 0) { printf("inactive!\n"); }
+		data1.surgeon_mode =  SURGEON_DISENGAGED;
+	} else {
+		data1.surgeon_mode = SURGEON_ENGAGED;
+		for (int i=0;i<NUM_MECH;i++) {
+			if (!cmd->tool_command[i].active) { continue; }
+			if (_localio_counter % PRINT_EVERY == 0 || true) {
+				if (i == 0) {
+					//printf("*********active %d!-----------------------------------\n",i);
+				} else {
+					//printf("*********active %d!XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n",i);
+				}
+			}
+			p[0] = cmd->tool_command[i].tool_pose.position.x;
+			p[1] = cmd->tool_command[i].tool_pose.position.y;
+			p[2] = cmd->tool_command[i].tool_pose.position.z;
+
+			data1.xd[i].x += p.x() * MICRON_PER_M;
+			data1.xd[i].y += p.y() * MICRON_PER_M;
+			data1.xd[i].z += p.z() * MICRON_PER_M;
+			_teleop_pos_tracker0[i] += p;
+
+			rot.setX(cmd->tool_command[i].tool_pose.orientation.x);
+			rot.setY(cmd->tool_command[i].tool_pose.orientation.y);
+			rot.setZ(cmd->tool_command[i].tool_pose.orientation.z);
+			rot.setW(cmd->tool_command[i].tool_pose.orientation.w);
+
+			_teleop_rot_tracker0[i].setRotation(rot);
+
+			btMatrix3x3 rot_mx_temp(rot);
+
+			//btMatrix3x3 mat = tb_to_mat(M_PI_4,M_PI_2,0);
+
+			_teleop_pos_tracker[i] += btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * p;
+			rot_mx_temp = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * rot_mx_temp * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+			_teleop_rot_tracker[i] = rot_mx_temp;
+
+
+			const int graspmax = (M_PI/2 * 1000);
+			const int graspmin = (-20.0 * 1000.0 DEG2RAD);
+			if (i == 0) {
+				data1.rd[i].grasp -= cmd->tool_command[i].grasp;
+			} else {
+				data1.rd[i].grasp += cmd->tool_command[i].grasp;
+			}
+			if (data1.rd[i].grasp>graspmax) { data1.rd[i].grasp=graspmax; }
+			if (data1.rd[i].grasp<graspmin) { data1.rd[i].grasp=graspmin; }
+
+			for (int j=0;j<3;j++) {
+				for (int k=0;k<3;k++) {
+					data1.rd[i].R[j][k] = rot_mx_temp[j][k];
+				}
+			}
+		}
+	}
+	isUpdated = TRUE;
+	//printf("after update %c\n",data1.cmdStr[0]);
+	pthread_mutex_unlock(&data1Mutex);
 }
 
 
