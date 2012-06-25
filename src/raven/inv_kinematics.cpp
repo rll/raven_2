@@ -26,7 +26,7 @@
 #define EPS 0.01
 
 static const int PRINT_EVERY_PEDAL_UP   = 1000000;
-static const int PRINT_EVERY_PEDAL_DOWN = 1000000;
+static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
 
 #define PRINT (_ik_counter % PRINT_EVERY == 0)
@@ -37,8 +37,8 @@ int inv_kin_last_err = 0;
 
 int check_joint_limits1(struct mechanism*);
 int check_joint_limits2(struct mechanism*);
-bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp);
-bool check_joint_limits2_new(float ths_act, float the_act, float thr_act);
+bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp,int validity[4]);
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,int validity[3]);
 int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float thy_act, float grasp);
 int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float thr_act);
 
@@ -216,7 +216,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float ths_offset, thr_offset;
 	if (mech->type == GOLD_ARM) {
 		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI_2;
+		thr_offset = M_PI_4;
 	} else {
 		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
 		//TODO: fix
@@ -284,10 +284,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	}
 
 	//check angles
-	bool valid1 = check_joint_limits1_new(d_act,thp_act,thy_act,grasp);
+	int validity[4];
+	bool valid1 = check_joint_limits1_new(d_act,thp_act,thy_act,grasp,validity);
 	if (!valid1) {
 		if (_curr_rl == 3) {
-			printf("ik invalid ---- d %0.4f\tp %0.4f\ty %0.4f\n",d_act,thp_act,thy_act);
+			printf("ik invalid ---- d %0.4f %d\tp %0.4f %d\ty %0.4f %d %d\n",d_act,validity[0],thp_act,validity[1],thy_act,validity[2],validity[3]);
 		}
 		if (print) {
 			log_msg("ik invalid 1");
@@ -388,7 +389,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 			}
 		}
 
-		bool valid2 = check_joint_limits2_new(ths_act,the_act,thr_act);
+		bool valid2 = check_joint_limits2_new(ths_act,the_act,thr_act,validity);
 
 		if (valid2) {
 			float ths_diff, the_diff, d_diff, thr_diff, thp_diff, thg1_diff, thg2_diff;
@@ -452,6 +453,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 //			mech->joint[WRIST].jpos_d = 0;
 
 			return 1;
+		} else {
+			printf("ik invalid **** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",ths_act,validity[0],the_act,validity[1],thr_act,validity[2]);
 		}
 	}
 
@@ -578,7 +581,12 @@ int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float
 	return limits;
 }
 
-bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp) {
+bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float grasp,int validity[4]) {
+	validity[0] = 0;
+	validity[1] = 0;
+	validity[2] = 0;
+	validity[3] = 0;
+
 	bool any_nan = false;
 	if (d_act != d_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("d_act is nan"); } any_nan = true; };
 	if (thp_act != thp_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("thp_act is nan"); } any_nan = true; };
@@ -588,34 +596,46 @@ bool check_joint_limits1_new(float d_act, float thp_act, float thy_act, float gr
 		return false;
 	}
 
+	bool bad = false;
 	if (d_act < Z_INS_MIN_LIMIT) {
-		return false;
+		validity[0] = -1;
+		bad = true;
 	}
 	if (d_act > Z_INS_MAX_LIMIT) {
-		return false;
+		validity[0] = +1;
+		bad = true;
 	}
 	if (thp_act < TOOL_WRIST_MIN_LIMIT) {
-		return false;
+		validity[1] = -1;
+		bad = true;
 	}
 	if (thp_act > TOOL_WRIST_MAX_LIMIT) {
-		return false;
+		validity[1] = +1;
+		bad = true;
 	}
 	if (thy_act + grasp/2 < TOOL_GRASP1_MIN_LIMIT) {
-		return false;
+		validity[2] = -1;
+		bad = true;
 	}
 	if (thy_act + grasp/2 > TOOL_GRASP1_MAX_LIMIT) {
-		return false;
+		validity[2] = +1;
+		bad = true;
 	}
 	if (-thy_act + grasp/2 < TOOL_GRASP2_MIN_LIMIT) {
-		return false;
+		validity[3] = -1;
+		bad = true;
 	}
 	if (-thy_act + grasp/2 > TOOL_GRASP2_MAX_LIMIT) {
-		return false;
+		validity[3] = +1;
+		bad = true;
 	}
-	return true;
+	return !bad;
 }
 
-bool check_joint_limits2_new(float ths_act, float the_act, float thr_act) {
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,int validity[3]) {
+	validity[0] = 0;
+	validity[1] = 0;
+	validity[2] = 0;
 	bool any_nan = false;
 	if (ths_act != ths_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("ths_act is nan"); } any_nan = true; };
 	if (the_act != the_act) { if (_ik_counter % PRINT_EVERY == 0) { log_msg("the_act is nan"); } any_nan = true; };
@@ -624,25 +644,32 @@ bool check_joint_limits2_new(float ths_act, float the_act, float thr_act) {
 		return false;
 	}
 
+	bool bad = false;
 	if (ths_act < SHOULDER_MIN_LIMIT) {
-		return false;
+		validity[0] = -1;
+		bad = true;
 	}
 	if (ths_act > SHOULDER_MAX_LIMIT) {
-		return false;
+		validity[0] = +1;
+		bad = true;
 	}
 	if (the_act < ELBOW_MIN_LIMIT) {
-		return false;
+		validity[1] = -1;
+		bad = true;
 	}
 	if (the_act > ELBOW_MAX_LIMIT) {
-		return false;
+		validity[1] = +1;
+		bad = true;
 	}
 	if (thr_act < TOOL_ROLL_MIN_LIMIT) {
-		return false;
+		validity[2] = -1;
+		bad = true;
 	}
 	if (thr_act > TOOL_ROLL_MAX_LIMIT) {
-		return false;
+		validity[2] = +1;
+		bad = true;
 	}
-	return true;
+	return !bad;
 }
 
 

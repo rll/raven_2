@@ -69,7 +69,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 	float ths_offset, thr_offset;
 	if (mech->type == GOLD_ARM) {
 		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI_2;
+		thr_offset = M_PI_4;
 	} else {
 		//TODO: fix
 		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
@@ -113,7 +113,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 	btTransform Xu = X(th12,0);
 	btTransform Ze = Z(the,0);
 	btTransform Xf = X(th23,0);
-	btTransform Zr = Z(-thr + thr_offset,0);
+	btTransform Zr = Z(fix_angle(-thr + thr_offset),0);
 	btTransform Zi = Z(0,-d);
 	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
 	btTransform Zp = Z(thp,0);

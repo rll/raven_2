@@ -289,23 +289,6 @@ int main(int argc, char **argv)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /** This function dumps device (robot states, torques etc etc) info to FIFO
 * TODO: Should this run at a higher priority?? If the realtime code consumes all cpu cycles, this thread may not run at all and the system will be unable
 * to send any data out

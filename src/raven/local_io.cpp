@@ -39,10 +39,10 @@ pthread_mutexattr_t data1MutexAttr;
 pthread_mutex_t data1Mutex;
 
 static int _localio_counter;
-static btVector3 _teleop_pos_tracker0[2];
-static btVector3 _teleop_pos_tracker[2];
-static btMatrix3x3 _teleop_rot_tracker0[2];
-static btMatrix3x3 _teleop_rot_tracker[2];
+static btVector3 master_raw_position[2];
+static btVector3 master_position[2];
+static btMatrix3x3 master_raw_orientation[2];
+static btMatrix3x3 master_orientation[2];
 static const int PRINT_EVERY_PEDAL_UP   = 1000000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
@@ -61,8 +61,6 @@ int initLocalioData(void)
     pthread_mutex_init(&data1Mutex,&data1MutexAttr);
 
     pthread_mutex_lock(&data1Mutex);
-    data1.cmdStr[0] = 'a';
-    printf("after init %c\n",data1.cmdStr[0]);
     for (i=0;i<NUM_MECH;i++) {
         data1.xd[i].x = 0;
         data1.xd[i].y = 0;
@@ -77,8 +75,8 @@ int initLocalioData(void)
     {
         _localio_counter = 0;
         for (i=0;i<NUM_MECH;i++) {
-        	_teleop_pos_tracker0[i] = btVector3(0,0,0);
-            _teleop_pos_tracker[i] = btVector3(0,0,0);
+        	master_raw_position[i] = btVector3(0,0,0);
+            master_position[i] = btVector3(0,0,0);
             //_teleop_rot_tracker0[i] = btMatrix3x3::getIdentity();
             //_teleop_rot_tracker[i] = btMatrix3x3::getIdentity();
         }
@@ -137,19 +135,19 @@ void teleopIntoDS1(struct u_struct *t)
         rot.setZ( t->Qz[armidx] );
         rot.setW( t->Qw[armidx] );
 
-        _teleop_pos_tracker0[armidx] += p/MICRON_PER_M;
+        master_raw_position[armidx] += p/MICRON_PER_M;
         if (armserial == GOLD_ARM_SERIAL) {
-        	_teleop_rot_tracker0[armidx].setRotation(rot);
+        	master_raw_orientation[armidx].setRotation(rot);
         } else {
-        	_teleop_rot_tracker0[armidx] = _teleop_rot_tracker[armidx] * btMatrix3x3(rot);
+        	master_raw_orientation[armidx] = master_orientation[armidx] * btMatrix3x3(rot);
         }
 
         //print teleop pose
         if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
         	tb_angles angles = get_tb_angles(rot);
-        	tb_angles angles1 = get_tb_angles(_teleop_rot_tracker[armidx]);
+        	tb_angles angles1 = get_tb_angles(master_orientation[armidx]);
         	log_msg("teleop %d (%0.04f %0.04f,%0.04f)  ypr (%0.4f,%0.4f,%0.4f) (%0.4f,%0.4f,%0.4f)",armidx,
-        			_teleop_pos_tracker[armidx].x(),_teleop_pos_tracker[armidx].y(),_teleop_pos_tracker[armidx].z(),
+        			master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z(),
         			angles.yaw_deg,angles.pitch_deg,angles.roll_deg,
         			angles1.yaw_deg,angles1.pitch_deg,angles1.roll_deg);
         }
@@ -157,28 +155,28 @@ void teleopIntoDS1(struct u_struct *t)
 
         if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
         	printf("(%f %f,%f) ",p.x(),p.y(),p.z());
-        	printf("(%f %f,%f)\n",_teleop_pos_tracker0[armidx].x(),_teleop_pos_tracker0[armidx].y(),_teleop_pos_tracker0[armidx].z());
+        	printf("(%f %f,%f)\n",master_raw_position[armidx].x(),master_raw_position[armidx].y(),master_raw_position[armidx].z());
         }
         btQuaternion rot0 = rot;
         fromITP(p, rot, armserial);
         if (!t->surgeon_mode) {
-        	_teleop_rot_tracker[armidx].getRotation(rot);
+        	master_orientation[armidx].getRotation(rot);
         }
         if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
         	printf("(%f %f,%f) ",p.x(),p.y(),p.z());
-        	printf("(%f %f,%f)\n",_teleop_pos_tracker[armidx].x(),_teleop_pos_tracker[armidx].y(),_teleop_pos_tracker[armidx].z());
+        	printf("(%f %f,%f)\n",master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z());
         }
 
 
-        _teleop_rot_tracker[armidx].setRotation(rot);
+        master_orientation[armidx].setRotation(rot);
 
         data1.xd[i].x += p.x();
         data1.xd[i].y += p.y();
         data1.xd[i].z += p.z();
 
-        _teleop_pos_tracker[armidx][0] = data1.xd[i].x/MICRON_PER_M;
-        _teleop_pos_tracker[armidx][1] = data1.xd[i].y/MICRON_PER_M;
-        _teleop_pos_tracker[armidx][2] = data1.xd[i].z/MICRON_PER_M;
+        master_position[armidx][0] = data1.xd[i].x/MICRON_PER_M;
+        master_position[armidx][1] = data1.xd[i].y/MICRON_PER_M;
+        master_position[armidx][2] = data1.xd[i].z/MICRON_PER_M;
 
         //data1.rd[i].grasp = t->buttonstate[armidx];
         const int graspmax = (M_PI/2 * 1000);
@@ -229,8 +227,6 @@ int checkLocalUpdates()
 {
     static unsigned long int lastUpdated;
 
-    //printf("check %c %d\n",data1.cmdStr[0],isUpdated);
-
     if (isUpdated || lastUpdated == 0)
     {
         lastUpdated = gTime;
@@ -252,9 +248,7 @@ int checkLocalUpdates()
 // Postcondition: memory location of d1 contains latest DS1 Data from network/toolkit.
 struct param_pass * getRcvdParams(struct param_pass* d1)
 {
-	//printf("Char value: %c\n",data1.cmdStr[0]);
-
-    ///TODO: Check performance of trylock / default priority inversion scheme
+	///TODO: Check performance of trylock / default priority inversion scheme
     if (pthread_mutex_trylock(&data1Mutex)!=0)   //Use trylock since this function is called form rt-thread. return immediately with old values if unable to lock
         return d1;
     //pthread_mutex_lock(&data1Mutex); //Priority inversion enabled. Should force completion of other parts and enter into this section.
@@ -344,8 +338,8 @@ int init_ravenstate_publishing(ros::NodeHandle &n){
     vis_pub1 = n.advertise<visualization_msgs::Marker>( "visualization_marker1", 0 );
     vis_pub2 = n.advertise<visualization_msgs::Marker>( "visualization_marker2", 0 );
     pub_command_pose = n.advertise<geometry_msgs::PoseStamped>( "command_pose", 1);
-    pub_omni_pose0 = n.advertise<geometry_msgs::PoseStamped>( "omni_pose0", 1);
-    pub_omni_pose = n.advertise<geometry_msgs::PoseStamped>( "omni_pose", 1);
+    pub_omni_pose0 = n.advertise<geometry_msgs::PoseStamped>( "master_pose_raw", 1);
+    pub_omni_pose = n.advertise<geometry_msgs::PoseStamped>( "master_pose", 1);
     return 0;
 }
 
@@ -366,7 +360,6 @@ void jointCallback(const joint_command::ConstPtr& joint_cmd) {
 }
 void ravenCmdCallback(const raven_2_msgs::RavenCommand::ConstPtr& cmd) {
 	_localio_counter++;
-	data1.cmdStr[0] = 'b';
 
 	//printf("cmd callback!\n");
 	pthread_mutex_lock(&data1Mutex);
@@ -380,59 +373,64 @@ void ravenCmdCallback(const raven_2_msgs::RavenCommand::ConstPtr& cmd) {
 		data1.surgeon_mode =  SURGEON_DISENGAGED;
 	} else {
 		data1.surgeon_mode = SURGEON_ENGAGED;
-		for (int i=0;i<NUM_MECH;i++) {
-			if (!cmd->tool_command[i].active) { continue; }
+		for (int mech_ind=0;mech_ind<NUM_MECH;mech_ind++) {
+			int arm_serial = USBBoards.boards[mech_ind];
+			int arm_id = arm_serial==GREEN_ARM_SERIAL ? 1 : 0;
+			if (!cmd->tool_command[arm_id].active) { continue; }
 			if (_localio_counter % PRINT_EVERY == 0 || true) {
-				if (i == 0) {
+				if (arm_id == 0) {
 					//printf("*********active %d!-----------------------------------\n",i);
 				} else {
 					//printf("*********active %d!XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n",i);
 				}
 			}
-			p[0] = cmd->tool_command[i].tool_pose.position.x;
-			p[1] = cmd->tool_command[i].tool_pose.position.y;
-			p[2] = cmd->tool_command[i].tool_pose.position.z;
+			p[0] = cmd->tool_command[arm_id].tool_pose.position.x;
+			p[1] = cmd->tool_command[arm_id].tool_pose.position.y;
+			p[2] = cmd->tool_command[arm_id].tool_pose.position.z;
 
-			data1.xd[i].x += p.x() * MICRON_PER_M;
-			data1.xd[i].y += p.y() * MICRON_PER_M;
-			data1.xd[i].z += p.z() * MICRON_PER_M;
-			_teleop_pos_tracker0[i] += p;
+			master_raw_position[arm_id] += p;
 
-			rot.setX(cmd->tool_command[i].tool_pose.orientation.x);
-			rot.setY(cmd->tool_command[i].tool_pose.orientation.y);
-			rot.setZ(cmd->tool_command[i].tool_pose.orientation.z);
-			rot.setW(cmd->tool_command[i].tool_pose.orientation.w);
+			rot.setX(cmd->tool_command[arm_id].tool_pose.orientation.x);
+			rot.setY(cmd->tool_command[arm_id].tool_pose.orientation.y);
+			rot.setZ(cmd->tool_command[arm_id].tool_pose.orientation.z);
+			rot.setW(cmd->tool_command[arm_id].tool_pose.orientation.w);
 
-			_teleop_rot_tracker0[i].setRotation(rot);
+			master_raw_orientation[arm_id].setRotation(rot);
 
 			btMatrix3x3 rot_mx_temp(rot);
 
-			//btMatrix3x3 mat = tb_to_mat(M_PI_4,M_PI_2,0);
+			p = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * p;
 
-			_teleop_pos_tracker[i] += btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * p;
+			data1.xd[mech_ind].x += p.x() * MICRON_PER_M;
+			data1.xd[mech_ind].y += p.y() * MICRON_PER_M;
+			data1.xd[mech_ind].z += p.z() * MICRON_PER_M;
+
+			master_position[arm_id] += p;
 			rot_mx_temp = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * rot_mx_temp * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
-			_teleop_rot_tracker[i] = rot_mx_temp;
+			master_orientation[arm_id] = rot_mx_temp;
 
-
+			const int grasp_scale_factor = 10;
 			const int graspmax = (M_PI/2 * 1000);
 			const int graspmin = (-20.0 * 1000.0 DEG2RAD);
-			if (i == 0) {
-				data1.rd[i].grasp -= cmd->tool_command[i].grasp;
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				data1.rd[mech_ind].grasp -= grasp_scale_factor*cmd->tool_command[arm_id].grasp;
+				if (data1.rd[mech_ind].grasp>graspmax) data1.rd[mech_ind].grasp=graspmax;
+				else if(data1.rd[mech_ind].grasp<graspmin) data1.rd[mech_ind].grasp=graspmin;
 			} else {
-				data1.rd[i].grasp += cmd->tool_command[i].grasp;
+				data1.rd[mech_ind].grasp += grasp_scale_factor*cmd->tool_command[arm_id].grasp;
+				if (data1.rd[mech_ind].grasp < -graspmax) data1.rd[mech_ind].grasp = -graspmax;
+				else if(data1.rd[mech_ind].grasp > -graspmin) data1.rd[mech_ind].grasp = -graspmin;
 			}
-			if (data1.rd[i].grasp>graspmax) { data1.rd[i].grasp=graspmax; }
-			if (data1.rd[i].grasp<graspmin) { data1.rd[i].grasp=graspmin; }
 
 			for (int j=0;j<3;j++) {
 				for (int k=0;k<3;k++) {
-					data1.rd[i].R[j][k] = rot_mx_temp[j][k];
+					data1.rd[mech_ind].R[j][k] = rot_mx_temp[j][k];
 				}
 			}
 		}
 	}
 	isUpdated = TRUE;
-	//printf("after update %c\n",data1.cmdStr[0]);
+
 	pthread_mutex_unlock(&data1Mutex);
 }
 
@@ -442,7 +440,7 @@ void init_subs(ros::NodeHandle &n) {
     torque_sub1 = n.subscribe("torque_cmd1", 1, torqueCallback1);
     //torque_sub2 = n.subscribe("torque_cmd2", 2, torqueCallback2);
     joint_sub = n.subscribe("joint_cmd", 1, jointCallback);
-    cmd_sub = n.subscribe("/raven_command", 1, ravenCmdCallback);
+    cmd_sub = n.subscribe("raven_command", 1, ravenCmdCallback);
 }
 
 
@@ -451,7 +449,7 @@ void init_subs(ros::NodeHandle &n) {
 *
 *   Copy robot data over to ros message type and publish.
 */
-void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel){
+void publish_ravenstate_ros(struct robot_device *device0,u_08 runlevel,u_08 sublevel){
     static int count=0;
     static raven_state msg_ravenstate;  // satic variables to minimize memory allocation calls
     static ros::Time t1;
@@ -471,29 +469,29 @@ void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel
     msg_ravenstate.dt=d;
     t1=t2;
 
-    publish_joints(dev);
+    publish_joints(device0);
 
     // Copy the robot state to the output datastructure.
     int numdof=8;
     for (int j=0; j<NUM_MECH; j++){
-        msg_ravenstate.type[j]    = dev->mech[j].type;
-        msg_ravenstate.pos[j*3]   = dev->mech[j].pos.x;
-        msg_ravenstate.pos[j*3+1] = dev->mech[j].pos.y;
-        msg_ravenstate.pos[j*3+2] = dev->mech[j].pos.z;
-        msg_ravenstate.pos_d[j*3]   = dev->mech[j].pos_d.x;
-        msg_ravenstate.pos_d[j*3+1] = dev->mech[j].pos_d.y;
-        msg_ravenstate.pos_d[j*3+2] = dev->mech[j].pos_d.z;
+        msg_ravenstate.type[j]    = device0->mech[j].type;
+        msg_ravenstate.pos[j*3]   = device0->mech[j].pos.x;
+        msg_ravenstate.pos[j*3+1] = device0->mech[j].pos.y;
+        msg_ravenstate.pos[j*3+2] = device0->mech[j].pos.z;
+        msg_ravenstate.pos_d[j*3]   = device0->mech[j].pos_d.x;
+        msg_ravenstate.pos_d[j*3+1] = device0->mech[j].pos_d.y;
+        msg_ravenstate.pos_d[j*3+2] = device0->mech[j].pos_d.z;
         for (int i=0; i<numdof; i++){
-            int jtype = dev->mech[j].joint[i].type;
-            msg_ravenstate.encVals[jtype]    = dev->mech[j].joint[i].enc_val;
-            msg_ravenstate.tau[jtype]        = dev->mech[j].joint[i].tau_d;
-            msg_ravenstate.mpos[jtype]       = dev->mech[j].joint[i].mpos RAD2DEG;
-            msg_ravenstate.jpos[jtype]       = dev->mech[j].joint[i].jpos RAD2DEG;
-            msg_ravenstate.mvel[jtype]       = dev->mech[j].joint[i].mvel RAD2DEG;
-            msg_ravenstate.jvel[jtype]       = dev->mech[j].joint[i].jvel RAD2DEG;
-            msg_ravenstate.jpos_d[jtype]     = dev->mech[j].joint[i].jpos_d RAD2DEG;
-            msg_ravenstate.mpos_d[jtype]     = dev->mech[j].joint[i].mpos_d RAD2DEG;
-            msg_ravenstate.encoffsets[jtype] = dev->mech[j].joint[i].enc_offset;
+            int jtype = device0->mech[j].joint[i].type;
+            msg_ravenstate.encVals[jtype]    = device0->mech[j].joint[i].enc_val;
+            msg_ravenstate.tau[jtype]        = device0->mech[j].joint[i].tau_d;
+            msg_ravenstate.mpos[jtype]       = device0->mech[j].joint[i].mpos RAD2DEG;
+            msg_ravenstate.jpos[jtype]       = device0->mech[j].joint[i].jpos RAD2DEG;
+            msg_ravenstate.mvel[jtype]       = device0->mech[j].joint[i].mvel RAD2DEG;
+            msg_ravenstate.jvel[jtype]       = device0->mech[j].joint[i].jvel RAD2DEG;
+            msg_ravenstate.jpos_d[jtype]     = device0->mech[j].joint[i].jpos_d RAD2DEG;
+            msg_ravenstate.mpos_d[jtype]     = device0->mech[j].joint[i].mpos_d RAD2DEG;
+            msg_ravenstate.encoffsets[jtype] = device0->mech[j].joint[i].enc_offset;
         }
     }
     msg_ravenstate.f_secs = d.toSec();
@@ -508,13 +506,13 @@ void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel
     command_pose.header.frame_id = "/0_link";
 
     for (int ind=0;ind<2;ind++) {
-    	if (dev->mech[ind].type != GOLD_ARM) { continue; }
-		command_pose.pose.position.x = ((float)dev->mech[ind].pos_d.x) / MICRON_PER_M;
-		command_pose.pose.position.y = ((float)dev->mech[ind].pos_d.y) / MICRON_PER_M;
-		command_pose.pose.position.z = ((float)dev->mech[ind].pos_d.z) / MICRON_PER_M;
+    	if (device0->mech[ind].type != GOLD_ARM) { continue; }
+		command_pose.pose.position.x = ((float)device0->mech[ind].pos_d.x) / MICRON_PER_M;
+		command_pose.pose.position.y = ((float)device0->mech[ind].pos_d.y) / MICRON_PER_M;
+		command_pose.pose.position.z = ((float)device0->mech[ind].pos_d.z) / MICRON_PER_M;
 
 		btQuaternion rot;
-		toBt(dev->mech[ind].ori_d.R).getRotation(rot);
+		toBt(device0->mech[ind].ori_d.R).getRotation(rot);
 		command_pose.pose.orientation.x = rot.x();
 		command_pose.pose.orientation.y = rot.y();
 		command_pose.pose.orientation.z = rot.z();
@@ -530,12 +528,12 @@ void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel
     	omni_pose0.header.stamp = ros::Time::now();
     	omni_pose0.header.frame_id = "/0_link";
 
-    	omni_pose0.pose.position.x = _teleop_pos_tracker0[0].x();
-    	omni_pose0.pose.position.y = _teleop_pos_tracker0[0].y();
-    	omni_pose0.pose.position.z = _teleop_pos_tracker0[0].z();
+    	omni_pose0.pose.position.x = master_raw_position[0].x();
+    	omni_pose0.pose.position.y = master_raw_position[0].y();
+    	omni_pose0.pose.position.z = master_raw_position[0].z();
 
     	btQuaternion q;
-    	_teleop_rot_tracker0[0].getRotation(q);
+    	master_raw_orientation[0].getRotation(q);
 
     	//    omni_pose.pose.orientation.x = _teleop_rot_tracker0[0].x();
     	//    omni_pose.pose.orientation.y = _teleop_rot_tracker0[0].y();
@@ -553,12 +551,12 @@ void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel
     omni_pose.header.stamp = ros::Time::now();
     omni_pose.header.frame_id = "/0_link";
 
-    omni_pose.pose.position.x = _teleop_pos_tracker[0].x();
-    omni_pose.pose.position.y = _teleop_pos_tracker[0].y();
-    omni_pose.pose.position.z = _teleop_pos_tracker[0].z();
+    omni_pose.pose.position.x = master_position[0].x();
+    omni_pose.pose.position.y = master_position[0].y();
+    omni_pose.pose.position.z = master_position[0].z();
 
     btQuaternion q;
-    _teleop_rot_tracker[0].getRotation(q);
+    master_orientation[0].getRotation(q);
 
 //    omni_pose.pose.orientation.x = _teleop_rot_tracker[0].x();
 //    omni_pose.pose.orientation.y = _teleop_rot_tracker[0].y();
@@ -735,7 +733,7 @@ void publish_marker(struct robot_device* device0)
     marker1.scale.z = 0.020;
 
 
-    // DRAW TEH SPHERE
+    // DRAW The SPHERE
     int draw_L_sphere=0;
     if (draw_L_sphere)
     {
