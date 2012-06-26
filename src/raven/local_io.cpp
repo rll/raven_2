@@ -129,7 +129,7 @@ void teleopIntoDS1(struct u_struct *t)
         p[1] = t->dely[armidx];
         p[2] = t->delz[armidx];
 
-                //set local quaternion from teleop quaternion data
+        //set local quaternion from teleop quaternion data
         rot.setX( t->Qx[armidx] );
         rot.setY( t->Qy[armidx] );
         rot.setZ( t->Qz[armidx] );

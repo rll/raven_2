@@ -215,24 +215,24 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 
 	float ths_offset, thr_offset;
 	if (mech->type == GOLD_ARM) {
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI_4;
+		ths_offset = SHOULDER_OFFSET_GOLD;
+		thr_offset = TOOL_ROT_OFFSET_GOLD;
 	} else {
 		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
 		//TODO: fix
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI / 4.;
+		ths_offset = SHOULDER_OFFSET_GREEN;
+		thr_offset = TOOL_ROT_OFFSET_GREEN;
 	}
 
-	float th12 = -A12;
-	float th23 = -A23;
+	const float th12 = THETA_12;
+	const float th23 = THETA_23;
 
-	float ks12 = sin(th12);
-	float kc12 = cos(th12);
-	float ks23 = sin(th23);
-	float kc23 = cos(th23);
+	const float ks12 = sin(th12);
+	const float kc12 = cos(th12);
+	const float ks23 = sin(th23);
+	const float kc23 = cos(th23);
 
-	float dw = 0.012;
+	const float dw = 0.012;
 
 	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
 	btTransform Xu = X(th12,0);
@@ -288,7 +288,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	bool valid1 = check_joint_limits1_new(d_act,thp_act,thy_act,grasp,validity);
 	if (!valid1) {
 		if (_curr_rl == 3) {
-			printf("ik invalid ---- d %0.4f %d\tp %0.4f %d\ty %0.4f %d %d\n",d_act,validity[0],thp_act,validity[1],thy_act,validity[2],validity[3]);
+			printf("ik invalid --1-- d %0.4f %d\tp %0.4f %d\ty %0.4f %d %d\n",d_act,validity[0],thp_act,validity[1],thy_act,validity[2],validity[3]);
 		}
 		if (print) {
 			log_msg("ik invalid 1");
@@ -454,7 +454,9 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 
 			return 1;
 		} else {
-			printf("ik invalid **** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",ths_act,validity[0],the_act,validity[1],thr_act,validity[2]);
+			if (_curr_rl == 3) {
+				printf("ik invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",ths_act,validity[0],the_act,validity[1],thr_act,validity[2]);
+			}
 		}
 	}
 
@@ -499,6 +501,7 @@ int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float t
 		log_msg("wrist max limit");
 		mech->joint[WRIST].jpos_d = TOOL_WRIST_MAX_LIMIT;
 	}
+	//TODO: limit this elsewhere
 	if (fabs(mech->joint[WRIST].jpos_d - mech->joint[WRIST].jpos) > 10 DEG2RAD) {
 		if (mech->joint[WRIST].jpos_d > mech->joint[WRIST].jpos) {
 			mech->joint[WRIST].jpos_d = mech->joint[WRIST].jpos + 10 DEG2RAD;
@@ -570,6 +573,7 @@ int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float
 		mech->joint[TOOL_ROT].jpos_d = TOOL_ROLL_MAX_LIMIT;
 	}
 
+	//TODO: limit this elsewhere
 	if (fabs(mech->joint[TOOL_ROT].jpos_d - mech->joint[TOOL_ROT].jpos) > 10 DEG2RAD) {
 		if (mech->joint[TOOL_ROT].jpos_d > mech->joint[TOOL_ROT].jpos) {
 			mech->joint[TOOL_ROT].jpos_d = mech->joint[TOOL_ROT].jpos + 10 DEG2RAD;

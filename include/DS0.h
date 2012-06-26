@@ -34,6 +34,8 @@ typedef unsigned int	    u_24;
 typedef unsigned int	    u_32;
 typedef unsigned long long int	    u_64;
 
+#include "raven/defines.h"
+
 /********************************************************
  *
  *  Structs for Cartesian values (formerly cartvals)
@@ -119,6 +121,9 @@ struct mechanism {
   u_08 inputs;                  // input pins
   u_08 outputs;                 // output pins
 };
+
+inline bool mechIsGold(const mechanism& mech) { return mech.type == GOLD_ARM; }
+inline bool mechIsGreen(const mechanism& mech) { return mech.type == GREEN_ARM; }
 
 /********************************************************
  *

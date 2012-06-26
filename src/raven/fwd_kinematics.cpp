@@ -68,19 +68,19 @@ void fwdKin(struct device *device0, int runlevel)
 void fwdMechKinNew(struct mechanism* mech) {
 	float ths_offset, thr_offset;
 	if (mech->type == GOLD_ARM) {
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI_4;
+		ths_offset = SHOULDER_OFFSET_GOLD; //from original URDF
+		thr_offset = TOOL_ROT_OFFSET_GOLD;
 	} else {
 		//TODO: fix
 		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
-		ths_offset = atan(0.3471/0.9014); //from original URDF
-		thr_offset = M_PI / 4.;
+		ths_offset = SHOULDER_OFFSET_GREEN; //from original URDF
+		thr_offset = TOOL_ROT_OFFSET_GREEN;
 	}
 
-	float th12 = -A12;
-	float th23 = -A23;
+	const float th12 = THETA_12;
+	const float th23 = THETA_23;
 
-	float dw = 0.012;
+	const float dw = DW;
 
 	float ths = mech->joint[SHOULDER].jpos;
 	float the = mech->joint[ELBOW].jpos;

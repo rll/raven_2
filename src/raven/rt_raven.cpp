@@ -9,11 +9,6 @@
 
 #include <ros/ros.h>
 
-#include <openrave/openrave.h>
-#include <openrave-core.h>
-#include "stdafx.h"
-#include "GeneralIK.h"
-
 #include "rt_raven.h"
 #include "defines.h"
 
@@ -33,14 +28,10 @@
 #include <cmath>
 
 using namespace std;
-using namespace OpenRAVE;
 
 
 #define STRINGIFY(x) #x
 #define EXPAND(x) STRINGIFY(x)
-
-#define OPEN_RAVE_IK false
-#define OPEN_RAVE_J false
 
 extern int NUM_MECH;
 extern unsigned long int gTime;
@@ -54,7 +45,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
 int applyTorque(struct device *device0, struct param_pass *currParams);
 int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *currParams);
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams);
-NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d);
+//NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d);
 
 extern int initialized;
 
@@ -161,39 +152,13 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     return ret;
 }
 
-EnvironmentBasePtr env;
-RobotBasePtr raven;
-vector<RobotBase::ManipulatorPtr> manips;
-RobotBase::ManipulatorPtr leftarm;
-RobotBase::ManipulatorPtr rightarm;
-GeneralIK* iksolver;
-int ik_test_counter;
-
-void init_open_rave() {
-	if (OPEN_RAVE_IK) {
-		log_msg("init openrave");
-		RaveInitialize(true);
-		env = RaveCreateEnvironment();
-		env->Load(EXPAND(RAVEN_DATA_DIR) "/ravenII_2arm.xml");
-		raven = env->GetRobot("raven_2");
-		manips = 	raven->GetManipulators();
-		leftarm = manips[0];
-		rightarm = manips[1];
-		iksolver = new GeneralIK(env);
-		iksolver->Init(leftarm);
-		ik_test_counter = 0;
-	}
-}
-
 /**
 * raven_cartesian_space_command()
 *     runs pd_control on motor position.
 *     Why is it called "end_effector_control?  Why's your mom so fat?
 */
 int raven_cartesian_space_command(struct device *device0, struct param_pass *currParams){
-	ik_test_counter++;
-
-    struct DOF *_joint = NULL;
+	    struct DOF *_joint = NULL;
     struct mechanism* _mech = NULL;
     int i=0,j=0;
 
@@ -515,86 +480,6 @@ int raven_joint_velocity_control(struct device *device0, struct param_pass *curr
     }
 
     return 0;
-}
-
-inline NEWMAT::ColumnVector cross(NEWMAT::ColumnVector a, NEWMAT::ColumnVector b) {
-	NEWMAT::ColumnVector result(3);
-	result(1) = a(2)*b(3) - a(3)*b(2);
-	result(2) = a(3)*b(1) - a(1)*b(3);
-	result(3) = a(1)*b(2) - a(2)*b(1);
-	return result;
-}
-
-NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d) {
-	NEWMAT::Matrix U01(3,3);
-	NEWMAT::Matrix U12(3,3);
-	NEWMAT::IdentityMatrix U23(3);
-	NEWMAT::IdentityMatrix U3E(3);
-
-	U01(1,1) = cos(theta_s);
-	U01(1,2) = -sin(theta_s) * cos(A12);
-	U01(1,3) = sin(theta_s) * sin(A12);
-	U01(2,1) = sin(theta_s);
-	U01(2,2) = cos(theta_s) * cos(A12);
-	U01(2,3) = -cos(theta_s) * sin(A12);
-	U01(3,1) = 0;
-	U01(3,2) = sin(A12);
-	U01(3,3) = cos(A12);
-
-	U12(1,1) = cos(theta_e);
-	U12(1,2) = -sin(theta_e) * cos(A23);
-	U12(1,3) = sin(theta_e) * sin(A23);
-	U12(2,1) = sin(theta_e);
-	U12(2,2) = cos(theta_e) * cos(A23);
-	U12(2,3) = -cos(theta_e) * sin(A23);
-	U12(3,1) = 0;
-	U12(3,2) = sin(A23);
-	U12(3,3) = cos(A23);
-
-	NEWMAT::ColumnVector p1(3);
-	NEWMAT::ColumnVector p2(3);
-	NEWMAT::ColumnVector p3(3);
-	NEWMAT::ColumnVector pE(3);
-	p1 = 0.;
-	p2 = 0.;
-	p3 = 0.; p3(3) = d;
-	pE = 0.;
-
-	NEWMAT::IdentityMatrix UEE(3);
-
-	NEWMAT::Matrix UE3 = UEE * U3E.t();
-	NEWMAT::Matrix UE2 = UE3 * U23.t();
-	NEWMAT::Matrix UE1 = UE2 * U12.t();
-	NEWMAT::Matrix UE0 = UE1 * U01.t();
-
-	NEWMAT::ColumnVector zhat(3);
-	zhat(1) = 0; zhat(2) = 0; zhat(3) = 1;
-
-	NEWMAT::ColumnVector gammaE1 = UE0 * zhat;
-	NEWMAT::ColumnVector gammaE2 = UE1 * zhat;
-	NEWMAT::ColumnVector gammaE3(3);
-
-	NEWMAT::ColumnVector rEE(3);
-	rEE = 0.0;
-
-	NEWMAT::ColumnVector rE3 = rEE - UEE * pE;
-	NEWMAT::ColumnVector rE2 = rE3 - UE3 * p3;
-	NEWMAT::ColumnVector rE1 = rE2 - UE2 * p2;
-	NEWMAT::ColumnVector rE0 = rE1 - UE1 * p1;
-
-	NEWMAT::ColumnVector betaE1 = cross(gammaE1, -1 * rE0);
-	NEWMAT::ColumnVector betaE2 = cross(gammaE2, -1 * rE1);
-	NEWMAT::ColumnVector betaE3 = UE2 * zhat;
-
-	NEWMAT::Matrix J(6,3);
-	for (int i=1;i<=3;i++) { J(i,1) = gammaE1(i); }
-	for (int i=1;i<=3;i++) { J(i+3,1) = betaE1(i); }
-	for (int i=1;i<=3;i++) { J(i,2) = gammaE2(i); }
-	for (int i=1;i<=3;i++) { J(i+3,2) = betaE2(i); }
-	for (int i=1;i<=3;i++) { J(i,3) = gammaE3(i); }
-	for (int i=1;i<=3;i++) { J(i+3,3) = betaE3(i); }
-
-	return J;
 }
 
 

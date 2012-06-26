@@ -8,6 +8,7 @@
  ************************************************/
 
 #include "struct.h"
+#include "kinematics_defines.h"
 
 void fwdKin(struct device *device0, int runlevel);
 void fwdMechKinNew(struct mechanism *mech);

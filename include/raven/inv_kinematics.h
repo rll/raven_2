@@ -10,11 +10,8 @@
 #define _INV_KIN_H
 
 #include "struct.h"
-#include "defines.h"
+#include "kinematics_defines.h"
 #include "log.h"
-
-#define _A5 0.0087  // 8.7mm
-const double base_tilt = 0 DEG2RAD;  // Accomodates for 25deg offset from zero angle in shoulder
 
 // Constant DH parameters
 const double go_dh_al[6] = {0,              -A12,   M_PI - A23,  0, M_PI/2, -M_PI/2};

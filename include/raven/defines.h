@@ -9,6 +9,8 @@
 #define __DEFINE_H__
 
 #include <math.h>
+#include <string>
+#include <sstream>
 
 #define RAVEN_MODULE_VERSION RAVEN_II_RELEASE_02
 #define device robot_device
@@ -23,6 +25,30 @@
 
 #define GREEN_ARM        GREEN_ARM_SERIAL
 #define GOLD_ARM         GOLD_ARM_SERIAL
+
+#define GOLD_ARM_ID 0
+#define GREEN_ARM_ID 1
+
+inline int armIdFromSerial(int arm_serial) {
+	if (arm_serial == GOLD_ARM_SERIAL) { return GOLD_ARM_ID; }
+	if (arm_serial == GREEN_ARM_SERIAL) { return GREEN_ARM_ID; }
+	return -1;
+}
+
+inline int armIdFromMechType(int mech_type) {
+	if (mech_type == GOLD_ARM_SERIAL) { return GOLD_ARM_ID; }
+	if (mech_type == GREEN_ARM_SERIAL) { return GREEN_ARM_ID; }
+	return -1;
+}
+
+inline std::string getArmNameFromId(int arm_id) {
+	if (arm_id == GOLD_ARM_ID) { return "GOLD"; }
+	if (arm_id == GREEN_ARM_ID) { return "GREEN"; }
+	std::stringstream ss; ss << "UNKNOWN:" << arm_id; return ss.str();
+}
+
+inline std::string getArmNameFromSerial(int arm_serial) { return getArmNameFromId(armIdFromSerial(arm_serial)); }
+inline std::string getArmNameFromMechType(int mech_type) { return getArmNameFromId(armIdFromMechType(mech_type)); }
 
 // Event logging function
 //  Log levels:
@@ -57,9 +83,28 @@
 #define RL_PEDAL_UP  2
 #define RL_PEDAL_DN  3
 
+inline std::string getRunLevelName(int val) {
+	switch (val) {
+	case RL_E_STOP: return "E STOP";
+	case RL_INIT: return "INIT";
+	case RL_PEDAL_UP: return "PEDAL UP";
+	case RL_PEDAL_DN: return "PEDAL DOWN";
+	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	}
+}
+
 #define SL_PD_CTRL   0
 #define SL_DAC_CTRL  1
 #define SL_AUTO_INIT 3
+
+inline std::string getRunSublevelName(int val) {
+	switch (val) {
+	case SL_PD_CTRL: return "PD CTRL";
+	case SL_DAC_CTRL: return "DAC CTRL";
+	case SL_AUTO_INIT: return "AUTO INIT";
+	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	}
+}
 
 //Joint Defines
 #define SHOULDER   0
@@ -71,6 +116,20 @@
 #define GRASP1     6
 #define GRASP2     7
 #define NO_CONNECTION 3
+
+inline std::string getJointIndexName(int val) {
+	switch (val) {
+	case SHOULDER: return "SHOULDER";
+	case ELBOW: return "ELBOW";
+	case Z_INS: return "Z_INS";
+	case TOOL_ROT: return "TOOL_ROT";
+	case WRIST: return "WRIST";
+	case GRASP1: return "GRASP1";
+	case GRASP2: return "GRASP2";
+	case NO_CONNECTION: return "NO_CONNECTION";
+	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	}
+}
 
 //GOLD Arm Defines
 #define SHOULDER_GOLD   0
@@ -93,6 +152,28 @@
 #define GRASP1_GREEN     14
 #define GRASP2_GREEN     15
 #define NO_CONNECTION_GREEN 11
+
+inline std::string getJointTypeName(int val) {
+	switch (val) {
+	case SHOULDER_GOLD: return "SHOULDER_GOLD";
+	case ELBOW_GOLD: return "ELBOW_GOLD";
+	case Z_INS_GOLD: return "Z_INS_GOLD";
+	case TOOL_ROT_GOLD: return "TOOL_ROT_GOLD";
+	case WRIST_GOLD: return "WRIST_GOLD";
+	case GRASP1_GOLD: return "GRASP1_GOLD";
+	case GRASP2_GOLD: return "GRASP2_GOLD";
+	case NO_CONNECTION_GOLD: return "NO_CONNECTION_GOLD";
+	case SHOULDER_GREEN: return "SHOULDER_GREEN";
+	case ELBOW_GREEN: return "ELBOW_GREEN";
+	case Z_INS_GREEN: return "Z_INS_GREEN";
+	case TOOL_ROT_GREEN: return "TOOL_ROT_GREEN";
+	case WRIST_GREEN: return "WRIST_GREEN";
+	case GRASP1_GREEN: return "GRASP1_GREEN";
+	case GRASP2_GREEN: return "GRASP2_GREEN";
+	case NO_CONNECTION_GREEN: return "NO_CONNECTION_GREEN";
+	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	}
+}
 
 //Joint Scale Factors
 #define WRIST_SCALE_FACTOR (float)(1.5) /*used in update_device_state.c on incoming param*/
@@ -224,6 +305,7 @@ const float A12  = 1.30899694;    /*Link1 - 75deg in RAD*/
 #define GRASP1_MAX_ANGLE     120 DEG2RAD
 #define GRASP2_MAX_ANGLE     130 DEG2RAD
 
+//Joint values for Homing
 #define SHOULDER_HOME_ANGLE   M_PI/6
 #define ELBOW_HOME_ANGLE      M_PI/2
 #define Z_INS_HOME_ANGLE      -0.05

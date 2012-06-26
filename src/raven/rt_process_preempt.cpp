@@ -135,9 +135,6 @@ static void *rt_process(void* )
     currParams.runlevel = STOP;
     currParams.sublevel = 0;
 
-    log_msg("setting up OpenRAVE");
-    init_open_rave();
-
     log_msg("Starting RT Process..");
 
     // Initializations (run here and again in init.cpp)
