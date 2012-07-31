@@ -1,0 +1,15 @@
+syntax: glob
+
+__init__.py
+*.pyc
+*.pyo
+*~
+.#*
+msg/*.py
+msg_gen
+_*.py
+build
+bin/*
+err_network.log
+.*project
+*.cmake

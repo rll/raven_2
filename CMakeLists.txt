@@ -51,8 +51,8 @@ include_directories(include/raven)
 find_package(OpenRAVE REQUIRED)
 include_directories(${OpenRAVE_INCLUDE_DIRS})
 link_directories(${OpenRAVE_LIBRARY_DIRS})
-rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
-target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
+#rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
+#target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
 
 rosbuild_add_executable(r2_control
