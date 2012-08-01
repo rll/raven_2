@@ -31,7 +31,7 @@ void getUSBPackets(struct device *device0)
         err = getUSBPacket( USBBoards.boards[i], &(device0->mech[i] ) );
         if (  err == -USB_WRITE_ERROR)
         {
-            log_msg("Error (%d) reading from USB Board %d (%s) on loop %d!\n", err, USBBoards.boards[i], getArmNameFromSerial(USBBoards.boards[i]).c_str(), gTime);
+            log_msg("Error (%d) reading from USB Board %d (%s) on loop %d!\n", err, USBBoards.boards[i], armNameFromSerial(USBBoards.boards[i]).c_str(), gTime);
         }
     }
 }

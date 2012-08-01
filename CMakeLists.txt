@@ -54,6 +54,7 @@ link_directories(${OpenRAVE_LIBRARY_DIRS})
 #rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
 #target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
+rosbuild_add_boost_directories()
 
 rosbuild_add_executable(r2_control
 #src/raven/asinw.cpp
@@ -95,4 +96,7 @@ src/raven/utils.cpp
 src/raven/saveload.cpp
 )
 
-target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
+rosbuild_link_boost(r2_control filesystem system)
+
+#target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
+target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )

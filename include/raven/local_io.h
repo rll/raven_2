@@ -34,7 +34,7 @@ void updateMasterRelativeOrigin(struct device *device0);
 int init_ravenstate_publishing(ros::NodeHandle &n);
 void publish_ravenstate_ros(struct robot_device *dev,u_08 runlevel,u_08 sublevel);
 
-void init_subs(ros::NodeHandle &n);
+void init_subs(ros::NodeHandle &n,struct robot_device *device0);
 void updateJoints(mechanism* mech);
 
 #endif

@@ -26,7 +26,7 @@ void putUSBPackets(struct device *device0)
     for (int i = 0; i < USBBoards.activeAtStart; i++)
     {
         if (putUSBPacket(USBBoards.boards[i], &(device0->mech[i])) == -USB_WRITE_ERROR)
-            log_msg("Error writing to USB Board %d (%s)!\n", USBBoards.boards[i],getArmNameFromSerial(USBBoards.boards[i]).c_str());
+            log_msg("Error writing to USB Board %d (%s)!\n", USBBoards.boards[i],armNameFromSerial(USBBoards.boards[i]).c_str());
     }
 }
 

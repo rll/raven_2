@@ -198,7 +198,7 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     lastJpos[joint->type][0] = joint->jpos;
 
     if (abs(DACVal) > MAX_INST_DAC) {
-    	cerr << "****** DAC error on " << getJointTypeName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ******" << endl;
+    	cerr << "****** DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ******" << endl;
     	cerr << "tau " << tau_d << " = " << endl;
     	cerr << "  p " << pTerm << endl;
     	cerr << " +d " << vTerm << endl;
@@ -277,7 +277,7 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     		cerr << lastJposD[joint->type][i] << " ";
     	}
     	cerr << endl;
-    	cerr << "^^^^^^ DAC error on " << getJointTypeName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ^^^^^^" << endl;
+    	cerr << "^^^^^^ DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ^^^^^^" << endl;
     }
 
 }
@@ -336,10 +336,10 @@ inline float cappedVelocity(DOF* joint) {
 			break;
     }
 	if (mvel > maxVel) {
-		err_msg("Capping joint %s velocity %1.4f at +%f\n",getJointTypeName(joint->type).c_str(),mvel,maxVel);
+		err_msg("Capping joint %s velocity %1.4f at +%f\n",jointIndexAndArmName(joint->type).c_str(),mvel,maxVel);
 		mvel = maxVel;
 	} else if (mvel < -maxVel) {
-		err_msg("Capping joint %s velocity %1.4f at -%f\n",getJointTypeName(joint->type).c_str(),mvel,maxVel);
+		err_msg("Capping joint %s velocity %1.4f at -%f\n",jointIndexAndArmName(joint->type).c_str(),mvel,maxVel);
 		mvel = -maxVel;
 	}
 	return mvel;

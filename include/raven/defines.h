@@ -41,14 +41,14 @@ inline int armIdFromMechType(int mech_type) {
 	return -1;
 }
 
-inline std::string getArmNameFromId(int arm_id) {
+inline std::string armNameFromId(int arm_id) {
 	if (arm_id == GOLD_ARM_ID) { return "GOLD"; }
 	if (arm_id == GREEN_ARM_ID) { return "GREEN"; }
 	std::stringstream ss; ss << "UNKNOWN:" << arm_id; return ss.str();
 }
 
-inline std::string getArmNameFromSerial(int arm_serial) { return getArmNameFromId(armIdFromSerial(arm_serial)); }
-inline std::string getArmNameFromMechType(int mech_type) { return getArmNameFromId(armIdFromMechType(mech_type)); }
+inline std::string armNameFromSerial(int arm_serial) { return armNameFromId(armIdFromSerial(arm_serial)); }
+inline std::string armNameFromMechType(int mech_type) { return armNameFromId(armIdFromMechType(mech_type)); }
 
 // Event logging function
 //  Log levels:
@@ -83,7 +83,7 @@ inline std::string getArmNameFromMechType(int mech_type) { return getArmNameFrom
 #define RL_PEDAL_UP  2
 #define RL_PEDAL_DN  3
 
-inline std::string getRunLevelName(int val) {
+inline std::string runLevelName(int val) {
 	switch (val) {
 	case RL_E_STOP: return "E STOP";
 	case RL_INIT: return "INIT";
@@ -97,7 +97,7 @@ inline std::string getRunLevelName(int val) {
 #define SL_DAC_CTRL  1
 #define SL_AUTO_INIT 3
 
-inline std::string getRunSublevelName(int val) {
+inline std::string runSublevelName(int val) {
 	switch (val) {
 	case SL_PD_CTRL: return "PD CTRL";
 	case SL_DAC_CTRL: return "DAC CTRL";
@@ -117,7 +117,7 @@ inline std::string getRunSublevelName(int val) {
 #define GRASP2     7
 #define NO_CONNECTION 3
 
-inline std::string getJointIndexName(int val) {
+inline std::string jointIndexName(int val) {
 	switch (val) {
 	case SHOULDER: return "SHOULDER";
 	case ELBOW: return "ELBOW";
@@ -153,7 +153,7 @@ inline std::string getJointIndexName(int val) {
 #define GRASP2_GREEN     15
 #define NO_CONNECTION_GREEN 11
 
-inline std::string getJointTypeName(int val) {
+inline std::string jointIndexAndArmName(int val) {
 	switch (val) {
 	case SHOULDER_GOLD: return "SHOULDER_GOLD";
 	case ELBOW_GOLD: return "ELBOW_GOLD";
@@ -172,6 +172,56 @@ inline std::string getJointTypeName(int val) {
 	case GRASP2_GREEN: return "GRASP2_GREEN";
 	case NO_CONNECTION_GREEN: return "NO_CONNECTION_GREEN";
 	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	}
+}
+
+inline int combinedJointIndex(int armId,int jointId) {
+	if (armId == GOLD_ARM_ID) {
+		switch (jointId) {
+		case SHOULDER: return SHOULDER_GOLD;
+		case ELBOW: return ELBOW_GOLD;
+		case Z_INS: return Z_INS_GOLD;
+		case TOOL_ROT: return TOOL_ROT_GOLD;
+		case WRIST: return WRIST_GOLD;
+		case GRASP1: return GRASP1_GOLD;
+		case GRASP2: return GRASP2_GOLD;
+		case NO_CONNECTION: return NO_CONNECTION_GOLD;
+		default: return -1;
+		}
+	} else {
+		switch (jointId) {
+		case SHOULDER: return SHOULDER_GREEN;
+		case ELBOW: return ELBOW_GREEN;
+		case Z_INS: return Z_INS_GREEN;
+		case TOOL_ROT: return TOOL_ROT_GREEN;
+		case WRIST: return WRIST_GREEN;
+		case GRASP1: return GRASP1_GREEN;
+		case GRASP2: return GRASP2_GREEN;
+		case NO_CONNECTION: return NO_CONNECTION_GREEN;
+		default: return -1;
+		}
+	}
+}
+
+inline void getArmAndJointIndices(int combinedId,int& armId,int& jointId) {
+	switch (combinedId) {
+	case SHOULDER_GOLD: jointId = SHOULDER; armId = GOLD_ARM_ID; return;
+	case ELBOW_GOLD: jointId = ELBOW; armId = GOLD_ARM_ID; return;
+	case Z_INS_GOLD: jointId = Z_INS; armId = GOLD_ARM_ID; return;
+	case TOOL_ROT_GOLD: jointId = TOOL_ROT; armId = GOLD_ARM_ID; return;
+	case WRIST_GOLD: jointId = WRIST; armId = GOLD_ARM_ID; return;
+	case GRASP1_GOLD: jointId = GRASP1; armId = GOLD_ARM_ID; return;
+	case GRASP2_GOLD: jointId = GRASP2; armId = GOLD_ARM_ID; return;
+	case NO_CONNECTION_GOLD: jointId = NO_CONNECTION; armId = GOLD_ARM_ID; return;
+	case SHOULDER_GREEN: jointId = SHOULDER; armId = GREEN_ARM_ID; return;
+	case ELBOW_GREEN: jointId = ELBOW; armId = GREEN_ARM_ID; return;
+	case Z_INS_GREEN: jointId = Z_INS; armId = GREEN_ARM_ID; return;
+	case TOOL_ROT_GREEN: jointId = TOOL_ROT; armId = GREEN_ARM_ID; return;
+	case WRIST_GREEN: jointId = WRIST; armId = GREEN_ARM_ID; return;
+	case GRASP1_GREEN: jointId = GRASP1; armId = GREEN_ARM_ID; return;
+	case GRASP2_GREEN: jointId = GRASP2; armId = GREEN_ARM_ID; return;
+	case NO_CONNECTION_GREEN: jointId = NO_CONNECTION; armId = GREEN_ARM_ID; return;
+	default: armId = -1; jointId = -1; return;
 	}
 }
 

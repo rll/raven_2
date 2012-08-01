@@ -243,7 +243,7 @@ int init_ros(int argc, char **argv)
     init_ravenstate_publishing(n);
     init_ravengains(n, &device0);
     saveDOFInfo();
-    init_subs(n);
+    init_subs(n,&device0);
 
     return 0;
 }

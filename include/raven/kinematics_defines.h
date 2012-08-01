@@ -15,11 +15,13 @@ const double base_tilt = 0 DEG2RAD;
 #define BASE_TILT 0 DEG2RAD
 
 #define SHOULDER_OFFSET_GOLD atan(0.3471/0.9014) //from original URDF
-#define TOOL_ROT_OFFSET_GOLD M_PI_4
+#define TOOL_ROT_OFFSET_GOLD -M_PI_2 //M_PI_4
+#define WRIST_OFFSET_GOLD M_PI/6.
 
 //TODO: these are probably incorrect
 #define SHOULDER_OFFSET_GREEN atan(0.3471/0.9014)//from original URDF
 #define TOOL_ROT_OFFSET_GREEN M_PI_4
+#define WRIST_OFFSET_GREEN 0
 
 #define THETA_12 -A12
 #define THETA_23 -A23

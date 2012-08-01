@@ -108,7 +108,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         // Check to see if we've reached the joint limit.
         if( check_homing_condition(_joint) )
         {
-            log_msg("Found limit on joint %s", getJointTypeName(_joint->type).c_str(), _joint->current_cmd, DOF_types[_joint->type].DAC_max);
+            log_msg("Found limit on joint %s", jointIndexAndArmName(_joint->type).c_str(), _joint->current_cmd, DOF_types[_joint->type].DAC_max);
             _joint->state = jstate_hard_stop;
             _joint->current_cmd = 0;
             stop_trajectory(_joint);
@@ -245,7 +245,7 @@ void homing(struct DOF* _joint)
             if ( !update_position_trajectory(_joint) )
             {
                 _joint->state = jstate_ready;
-                log_msg("Joint %s ready", getJointTypeName(_joint->type).c_str());
+                log_msg("Joint %s ready", jointIndexAndArmName(_joint->type).c_str());
             }
             break;
 

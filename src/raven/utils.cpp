@@ -112,6 +112,24 @@ float fix_angle(float angle,float center) {
 	return test_angle;
 }
 
+float saturatef(float value,float min,float max) {
+	if (value > max) {
+		return max;
+	} else if (value < min) {
+		return min;
+	}
+	return value;
+}
+
+int saturate(int value,int min,int max) {
+	if (value > max) {
+		return max;
+	} else if (value < min) {
+		return min;
+	}
+	return value;
+}
+
 btTransform Z(float theta,float d) {
 	btMatrix3x3 rot(
 			cos(theta), -sin(theta), 0,

@@ -40,6 +40,14 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
         currParams->rd[i].grasp = rcvdParams->rd[i].grasp;
     }
 
+    /*
+    for (int i = 0; i < NUM_MECH; i++) {
+    	for (int j=0; j < MAX_DOF_PER_MECH; j++) {
+    		device0->mech[i].joint[j].jvel_d = 0;
+    	}
+    }
+    */
+
     // set desired mech position in pedal_down runlevel
     if (currParams->runlevel == RL_PEDAL_DN)
     {
@@ -54,6 +62,19 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
                 for (int k=0;k<3;k++)
                 device0->mech[i].ori_d.R[j][k]  = rcvdParams->rd[i].R[j][k];
         }
+
+        /*
+        for (int i = 0; i < NUM_MECH; i++) {
+        	for (int j=0; j < MAX_DOF_PER_MECH; j++) {
+        		int armId = armIdFromMechType(device0->mech[i].type);
+        		float jvel_d = rcvdParams->jvel_d[getCombinedJointIndex(armId,j)];
+        		device0->mech[i].joint[j].jvel_d = jvel_d;
+        		if (jvel_d) {
+        			//std::cout << "joint " << getJointIndexName(j) << " on " << getArmNameFromId(armId) << " is " << jvel_d << std::endl;
+        		}
+        	}
+        }
+        */
     }
 
     // Switch control modes only in pedal up or init.

@@ -66,15 +66,17 @@ void fwdKin(struct device *device0, int runlevel)
 }
 
 void fwdMechKinNew(struct mechanism* mech) {
-	float ths_offset, thr_offset;
+	float ths_offset, thr_offset, thp_offset;
 	if (mech->type == GOLD_ARM) {
 		ths_offset = SHOULDER_OFFSET_GOLD; //from original URDF
 		thr_offset = TOOL_ROT_OFFSET_GOLD;
+		thp_offset = WRIST_OFFSET_GOLD;
 	} else {
 		//TODO: fix
 		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
 		ths_offset = SHOULDER_OFFSET_GREEN; //from original URDF
 		thr_offset = TOOL_ROT_OFFSET_GREEN;
+		thp_offset = WRIST_OFFSET_GREEN;
 	}
 
 	const float th12 = THETA_12;
@@ -116,7 +118,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 	btTransform Zr = Z(fix_angle(-thr + thr_offset),0);
 	btTransform Zi = Z(0,-d);
 	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Zp = Z(thp,0);
+	btTransform Zp = Z(thp + thp_offset,0);
 	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
 	btTransform Zy = Z(thy,0);
 	btTransform Tg(btMatrix3x3::getIdentity());
