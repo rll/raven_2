@@ -63,8 +63,8 @@ inline btMatrix3x3 toBt(float R[3][3]) {
 	return btR;
 }
 
-btTransform Z(float theta,float d);
-btTransform X(float alpha,float a);
+//btTransform Z(float theta,float d);
+//btTransform X(float alpha,float a);
 
 template <typename T> int sgn(T val) {
 	return (T(0) < val) - (val < T(0));

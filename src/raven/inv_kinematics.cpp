@@ -135,7 +135,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btMatrix3x3 actualOrientation = toBt(ori_d->R);
 	btTransform actualPose(actualOrientation,actualPoint);
 
-	btTransform actualPose_fk;// = fwdKin(mech);
+	btTransform actualPose_fk = actualPose;// = fwdKin(mech);
 
 	tb_angles currentPoseAngles = get_tb_angles(mech->ori.R);
 	tb_angles actualPoseAngles = get_tb_angles(ori_d->R);
@@ -190,26 +190,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	 * Therefore, we need <base to actual_world> to get <base to gripper>.
 	 * <base to actual_world> is inverse of <actual_world to base>
 	 */
-	btTransform ik_world_to_actual_world;
-	if (mech->type == GOLD_ARM) {
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,1,0,
-				-1,0,0,
-				0,0,1)).inverse();
-	} else {
-		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,-1,0,
-				1,0,0,
-				0,0,1),
-				btVector3(-.2, 0, 0)).inverse();
-	}
-
 	btTransform ik_pose;
 	if (test) {
-		ik_pose = ik_world_to_actual_world * actualPose_fk;
+		ik_pose = ik_world_to_actual_world(armIdFromMechType(mech->type)) * actualPose_fk;
 	} else {
-		ik_pose = ik_world_to_actual_world * actualPose;
+		ik_pose = ik_world_to_actual_world(armIdFromMechType(mech->type)) * actualPose;
 	}
 
 	btMatrix3x3 ik_orientation = ik_pose.getBasis();
@@ -243,14 +228,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	const float ks23 = sin(th23);
 	const float kc23 = cos(th23);
 
-	const float dw = 0.012;
-
-	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Xu = X(th12,0);
-	btTransform Xf = X(th23,0);
-	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
-	btTransform Tg(btMatrix3x3::getIdentity());
+	const float dw = DW;
 
 	btTransform Tworld_to_gripper = ik_pose;
 	btTransform Tgripper_to_world = ik_pose.inverse();
@@ -318,12 +296,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	}
 
 
-	btTransform Zi = Z(0,d);
-	btTransform Zp = Z(thp,0);
-	btTransform Zy = Z(thy,0);
-
-	btVector3 z_roll_in_world = (Zi * Xip * Zp * Xpy * Zy * Tg * Tgripper_to_world).invXform(btVector3(0,0,1));
-	btVector3 x_roll_in_world = (Zi * Xip * Zp * Xpy * Zy * Tg * Tgripper_to_world).invXform(btVector3(1,0,0));
+	btVector3 z_roll_in_world = btTransform(Zi(d) * Xip * Zp(thp) * Xpy * Zy(thy) * Tg * Tgripper_to_world).invXform(btVector3(0,0,1));
+	btVector3 x_roll_in_world = btTransform(Zi(d) * Xip * Zp(thp) * Xpy * Zy(thy) * Tg * Tgripper_to_world).invXform(btVector3(1,0,0));
 
 	float zx = z_roll_in_world.x();
 	float zy = z_roll_in_world.y();

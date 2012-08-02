@@ -94,36 +94,8 @@ void fwdMechKinNew(struct mechanism* mech) {
 	//float thy = (mech->joint[GRASP1].jpos - mech->joint[GRASP2].jpos) / 2;
 	float grasp = mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos;
 
-	btTransform ik_world_to_actual_world;
-	if (mech->type == GOLD_ARM) {
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,1,0,
-				-1,0,0,
-				0,0,1)).inverse();
-	} else {
-		//TODO: check
-		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
-		ik_world_to_actual_world = btTransform(btMatrix3x3(
-				0,-1,0,
-				1,0,0,
-				0,0,1),
-				btVector3(-.2, 0, 0)).inverse();
-	}
-
-	btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Zs = Z(ths + ths_offset,0);
-	btTransform Xu = X(th12,0);
-	btTransform Ze = Z(the,0);
-	btTransform Xf = X(th23,0);
-	btTransform Zr = Z(fix_angle(-thr + thr_offset),0);
-	btTransform Zi = Z(0,-d);
-	btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-	btTransform Zp = Z(thp + thp_offset,0);
-	btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
-	btTransform Zy = Z(thy,0);
-	btTransform Tg(btMatrix3x3::getIdentity());
-
-	btTransform tool = ik_world_to_actual_world.inverse() * Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg;
+	//btTransform tool = actual_world_to_ik_world(armIdFromMechType(mech->type)) * Tw2b * Zs(ths + ths_offset) * Xu * Ze(the) * Xf * Zr(fix_angle(-thr + thr_offset)) * Zi(-d) * Xip * Zp(thp + thp_offset) * Xpy * Zy(thy) * Tg;
+	btTransform tool = Tw2g(armIdFromMechType(mech->type), ths + ths_offset, the, fix_angle(-thr + thr_offset), -d, thp + thp_offset, thy);
 
 	/*
 		if (_ik_counter % PRINT_EVERY == 0) {

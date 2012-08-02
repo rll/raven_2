@@ -20,10 +20,10 @@
 #define MAX_DOF_PER_MECH 8
 #define MAX_MECH_PER_DEV 2
 
-#define STATE_OFF        0
-#define STATE_UNINIT     1
-#define STATE_READY      2
-#define STATE_I_OVERLOAD 3
+const int STATE_OFF        =0;
+const int STATE_UNINIT     =1;
+const int STATE_READY      =2;
+const int STATE_I_OVERLOAD =3;
 
 // for our coding convenience on ix86 platforms:
 typedef int	            s_24;

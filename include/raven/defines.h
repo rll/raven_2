@@ -11,6 +11,7 @@
 #include <math.h>
 #include <string>
 #include <sstream>
+#include <stdio.h>
 
 #define RAVEN_MODULE_VERSION RAVEN_II_RELEASE_02
 #define device robot_device
@@ -36,8 +37,8 @@ inline int armIdFromSerial(int arm_serial) {
 }
 
 inline int armIdFromMechType(int mech_type) {
-	if (mech_type == GOLD_ARM_SERIAL) { return GOLD_ARM_ID; }
-	if (mech_type == GREEN_ARM_SERIAL) { return GREEN_ARM_ID; }
+	if (mech_type == GOLD_ARM) { return GOLD_ARM_ID; }
+	if (mech_type == GREEN_ARM) { return GREEN_ARM_ID; }
 	return -1;
 }
 
@@ -153,8 +154,8 @@ inline std::string jointIndexName(int val) {
 #define GRASP2_GREEN     15
 #define NO_CONNECTION_GREEN 11
 
-inline std::string jointIndexAndArmName(int val) {
-	switch (val) {
+inline std::string jointIndexAndArmName(int combinedType) {
+	switch (combinedType) {
 	case SHOULDER_GOLD: return "SHOULDER_GOLD";
 	case ELBOW_GOLD: return "ELBOW_GOLD";
 	case Z_INS_GOLD: return "Z_INS_GOLD";
@@ -171,8 +172,30 @@ inline std::string jointIndexAndArmName(int val) {
 	case GRASP1_GREEN: return "GRASP1_GREEN";
 	case GRASP2_GREEN: return "GRASP2_GREEN";
 	case NO_CONNECTION_GREEN: return "NO_CONNECTION_GREEN";
-	default: std::stringstream ss; ss << "UNKNOWN:" << val; return ss.str();
+	default: std::stringstream ss; ss << "UNKNOWN:" << combinedType; return ss.str();
 	}
+}
+
+inline int jointTypeFromCombinedType(int combinedType) {
+	switch (combinedType) {
+		case SHOULDER_GOLD: return SHOULDER;
+		case ELBOW_GOLD: return ELBOW;
+		case Z_INS_GOLD: return Z_INS;
+		case TOOL_ROT_GOLD: return TOOL_ROT;
+		case WRIST_GOLD: return WRIST;
+		case GRASP1_GOLD: return GRASP1;
+		case GRASP2_GOLD: return GRASP2;
+		case NO_CONNECTION_GOLD: return NO_CONNECTION;
+		case SHOULDER_GREEN: return SHOULDER;
+		case ELBOW_GREEN: return ELBOW;
+		case Z_INS_GREEN: return Z_INS;
+		case TOOL_ROT_GREEN: return TOOL_ROT;
+		case WRIST_GREEN: return WRIST;
+		case GRASP1_GREEN: return GRASP1;
+		case GRASP2_GREEN: return GRASP2;
+		case NO_CONNECTION_GREEN: return NO_CONNECTION;
+		default: printf("UNKNOWN COMBINED TYPE: %d\n",combinedType); return -1;
+		}
 }
 
 inline int combinedJointIndex(int armId,int jointId) {

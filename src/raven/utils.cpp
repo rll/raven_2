@@ -130,6 +130,7 @@ int saturate(int value,int min,int max) {
 	return value;
 }
 
+/*
 btTransform Z(float theta,float d) {
 	btMatrix3x3 rot(
 			cos(theta), -sin(theta), 0,
@@ -147,6 +148,7 @@ btTransform X(float alpha,float a) {
 	btVector3 shift(a,0,0);
 	return btTransform(rot,shift);
 }
+*/
 
 
 /*
