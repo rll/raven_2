@@ -21,6 +21,7 @@ active use.
 #include <string.h>
 #include <pthread.h>
 #include <ros/ros.h>
+#include <tf/transform_listener.h>
 #include <tf/transform_datatypes.h>
 #include <iostream>
 
@@ -310,6 +311,7 @@ void updateMasterRelativeOrigin(struct device *device0)
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/JointState.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseArray.h>
 
 
 void publish_joints(struct robot_device*);
@@ -326,9 +328,10 @@ ros::Publisher joint_publisher;
 ros::Publisher vis_pub1;
 ros::Publisher vis_pub2;
 ros::Publisher pub_command_pose;
-ros::Publisher pub_tool_pose;
+ros::Publisher pub_tool_pose[2];
 ros::Publisher pub_master_pose_raw;
 ros::Publisher pub_master_pose;
+ros::Publisher pub_poses;
 
 
 ros::Subscriber torque_sub1;
@@ -337,6 +340,8 @@ ros::Subscriber joint_sub;
 ros::Subscriber cmd_sub;
 
 ros::Publisher pub_ravenstate2;
+
+tf::TransformListener* tf_listener;
 
 /**
 *    init_ravenstate_publishing()  - initialize publishing data to ros.
@@ -348,9 +353,11 @@ int init_ravenstate_publishing(ros::NodeHandle &n){
     vis_pub1 = n.advertise<visualization_msgs::Marker>( "visualization_marker1", 0 );
     vis_pub2 = n.advertise<visualization_msgs::Marker>( "visualization_marker2", 0 );
     pub_command_pose = n.advertise<geometry_msgs::PoseStamped>( "command_pose", 1);
-    pub_tool_pose = n.advertise<geometry_msgs::PoseStamped>( "tool_pose_L", 1);
+    pub_tool_pose[0] = n.advertise<geometry_msgs::PoseStamped>( "tool_pose_L", 1);
+    pub_tool_pose[1] = n.advertise<geometry_msgs::PoseStamped>( "tool_pose_R", 1);
     pub_master_pose_raw = n.advertise<geometry_msgs::PoseStamped>( "master_pose_raw", 1);
     pub_master_pose = n.advertise<geometry_msgs::PoseStamped>( "master_pose", 1);
+    pub_poses = n.advertise<geometry_msgs::PoseArray>( "poses", 1);
     return 0;
 }
 
@@ -395,7 +402,7 @@ void ravenCmdCallback(const raven_2_msgs::RavenCommand::ConstPtr& cmd) {
 		for (int mech_ind=0;mech_ind<NUM_MECH;mech_ind++) {
 			int arm_serial = USBBoards.boards[mech_ind];
 			int arm_id = armIdFromSerial(arm_serial);
-			if (!cmd->arms[arm_id].tool_command.active) { continue; }
+			if (!cmd->arms[arm_id].active) { continue; }
 			if (_localio_counter % PRINT_EVERY == 0 || true) {
 				if (arm_id == 0) {
 					//printf("*********active %d!-----------------------------------\n",i);
@@ -404,29 +411,61 @@ void ravenCmdCallback(const raven_2_msgs::RavenCommand::ConstPtr& cmd) {
 				}
 			}
 
+			tf::Transform tool_pose_raw;
+			tf::poseMsgToTF(cmd->arms[arm_id].tool_command.tool_pose,tool_pose_raw);
+
+			tf::StampedTransform to0link;
+			try {
+				tf_listener->lookupTransform("0_link",cmd->header.frame_id,ros::Time(0),to0link);
+			} catch (tf::TransformException& ex) {
+				ROS_ERROR("%s",ex.what());
+				continue;
+			}
+
+			btTransform tool_pose = to0link * tool_pose_raw;
+
+			p = tool_pose.getOrigin();
+			/*
 			p[0] = cmd->arms[arm_id].tool_command.tool_pose.position.x;
 			p[1] = cmd->arms[arm_id].tool_command.tool_pose.position.y;
 			p[2] = cmd->arms[arm_id].tool_command.tool_pose.position.z;
+			*/
 
-			master_raw_position[arm_id] += p;
+			if (cmd->arms[arm_id].tool_command.absolute) {
+				master_raw_position[arm_id] = p;
+			} else {
+				master_raw_position[arm_id] += p;
+			}
 
+			rot = tool_pose.getRotation();
+			/*
 			rot.setX(cmd->arms[arm_id].tool_command.tool_pose.orientation.x);
 			rot.setY(cmd->arms[arm_id].tool_command.tool_pose.orientation.y);
 			rot.setZ(cmd->arms[arm_id].tool_command.tool_pose.orientation.z);
 			rot.setW(cmd->arms[arm_id].tool_command.tool_pose.orientation.w);
+			*/
 
 			master_raw_orientation[arm_id].setRotation(rot);
 
 			btMatrix3x3 rot_mx_temp(rot);
 
-			p = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * p;
+			//p = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * p;
 
-			data1.xd[mech_ind].x += p.x() * MICRON_PER_M;
-			data1.xd[mech_ind].y += p.y() * MICRON_PER_M;
-			data1.xd[mech_ind].z += p.z() * MICRON_PER_M;
+			if (cmd->arms[arm_id].tool_command.absolute) {
+				data1.xd[mech_ind].x = p.x() * MICRON_PER_M;
+				data1.xd[mech_ind].y = p.y() * MICRON_PER_M;
+				data1.xd[mech_ind].z = p.z() * MICRON_PER_M;
 
-			master_position[arm_id] += p;
-			rot_mx_temp = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * rot_mx_temp * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+				master_position[arm_id] = p;
+			} else {
+				data1.xd[mech_ind].x += p.x() * MICRON_PER_M;
+				data1.xd[mech_ind].y += p.y() * MICRON_PER_M;
+				data1.xd[mech_ind].z += p.z() * MICRON_PER_M;
+
+				master_position[arm_id] += p;
+			}
+			//rot_mx_temp = btMatrix3x3(0,1,0,  -1,0,0,  0,0,1) * rot_mx_temp * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+			rot_mx_temp = rot_mx_temp * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
 			master_orientation[arm_id] = rot_mx_temp;
 
 			const int grasp_scale_factor = 10;
@@ -490,6 +529,8 @@ void init_subs(ros::NodeHandle &n,struct robot_device *device0) {
     //torque_sub2 = n.subscribe("torque_cmd2", 2, torqueCallback2);
     joint_sub = n.subscribe("joint_cmd", 1, jointCallback);
     cmd_sub = n.subscribe("raven_command", 1, ravenCmdCallback);
+
+    tf_listener = new tf::TransformListener();
 }
 
 bool checkRate(ros::Time& last_pub,ros::Duration interval,ros::Duration& since_last_pub) {
@@ -506,9 +547,9 @@ bool checkRate(ros::Time& last_pub,ros::Duration interval,ros::Duration& since_l
 	}
 }
 
-inline geometry_msgs::Pose toRos(position pos,orientation ori) {
+inline geometry_msgs::Pose toRos(position pos,orientation ori,btMatrix3x3 transform=btMatrix3x3::getIdentity()) {
 	btQuaternion rot;
-	(toBt(ori.R) * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1)).getRotation(rot);
+	(toBt(ori.R) * transform).getRotation(rot);
 	geometry_msgs::Point p;
 	p.x = ((float)pos.x) / MICRON_PER_M;
 	p.y = ((float)pos.y) / MICRON_PER_M;
@@ -524,7 +565,6 @@ inline geometry_msgs::Pose toRos(position pos,orientation ori) {
 	return pose;
 }
 
-
 /*
 * publish_ravenstate_ros()
 *
@@ -536,7 +576,7 @@ void publish_ravenstate_ros(struct robot_device *device0,u_08 runlevel,u_08 subl
     static raven_2_msgs::RavenState raven_state;
     raven_state.arms.clear();
 
-    if (runlevel == RL_INIT) {
+    if (runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP) {
     	hasHomed = true;
     }
 
@@ -546,7 +586,7 @@ void publish_ravenstate_ros(struct robot_device *device0,u_08 runlevel,u_08 subl
     if (!checkRate(last_pub,interval,since_last_pub)) { return; }
 
     //Only publish these if we've homed already
-    if (hasHomed && runlevel != RL_INIT) {
+    if (hasHomed) {
     	publish_joints(device0);
     	//publish_marker(device0);
     	publish_command_pose(device0);
@@ -589,18 +629,27 @@ void publish_ravenstate_ros(struct robot_device *device0,u_08 runlevel,u_08 subl
     //raven_state 2
 
     raven_state.header.stamp = ros::Time::now();
+    raven_state.header.frame_id = "/0_link";
     raven_state.runlevel = runlevel;
     raven_state.sublevel = sublevel;
     raven_state.surgeon_mode = device0->surgeon_mode;
     for (int m = 0; m < NUM_MECH; m++) {
     	raven_2_msgs::ArmState arm_state;
     	uint8_t arm_type;
+    	btMatrix3x3 transform;
     	switch (device0->mech[m].type) {
-    	case GOLD_ARM: arm_type = raven_2_msgs::Constants::ARM_TYPE_GOLD; break;
-    	case GREEN_ARM: arm_type = raven_2_msgs::Constants::ARM_TYPE_GREEN; break;
+    	case GOLD_ARM:
+    		arm_type = raven_2_msgs::Constants::ARM_TYPE_GOLD;
+    		transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+    		break;
+    	case GREEN_ARM:
+    		arm_type = raven_2_msgs::Constants::ARM_TYPE_GREEN;
+    		transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+    		break;
     	}
+    	arm_state.type = arm_type;
 
-    	arm_state.base_pose = toRos(device0->mech[m].base_pos,device0->mech[m].base_ori);
+    	arm_state.base_pose = toRos(device0->mech[m].base_pos,device0->mech[m].base_ori,transform);
 
     	switch (device0->mech[m].type) {
     	case TOOL_NONE: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_NONE; break;
@@ -608,8 +657,8 @@ void publish_ravenstate_ros(struct robot_device *device0,u_08 runlevel,u_08 subl
     	case TOOL_GRASPER_8MM: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_GRASPER_8MM; break;
     	}
 
-    	arm_state.tool_pose = toRos(device0->mech[m].pos,device0->mech[m].ori);
-    	arm_state.tool_pose_desired = toRos(device0->mech[m].pos_d,device0->mech[m].ori_d);
+    	arm_state.tool_pose = toRos(device0->mech[m].pos,device0->mech[m].ori,transform);
+    	arm_state.tool_pose_desired = toRos(device0->mech[m].pos_d,device0->mech[m].ori_d,transform);
 
     	int grasp1_index=-1;
     	int grasp2_index=-1;
@@ -690,7 +739,8 @@ void publish_command_pose(struct robot_device* device0) {
 		command_pose.pose.position.z = ((float)device0->mech[ind].pos_d.z) / MICRON_PER_M;
 
 		btQuaternion rot;
-		(toBt(device0->mech[ind].ori_d.R) * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1)).getRotation(rot);
+		//(toBt(device0->mech[ind].ori_d.R) * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1)).getRotation(rot);
+		(toBt(device0->mech[ind].ori_d.R) * TOOL_POSE_AXES_TRANSFORM.getBasis()).getRotation(rot);
 
 		command_pose.pose.orientation.x = rot.x();
 		command_pose.pose.orientation.y = rot.y();
@@ -712,21 +762,106 @@ void publish_tool_pose(struct robot_device* device0) {
 	tool_pose.header.frame_id = "/0_link";
 
 	for (int ind=0;ind<2;ind++) {
-		if (device0->mech[ind].type != GOLD_ARM) { continue; }
-		tool_pose.pose.position.x = ((float)device0->mech[ind].pos.x) / MICRON_PER_M;
-		tool_pose.pose.position.y = ((float)device0->mech[ind].pos.y) / MICRON_PER_M;
-		tool_pose.pose.position.z = ((float)device0->mech[ind].pos.z) / MICRON_PER_M;
+		int armId = armIdFromMechType(device0->mech[ind].type);
 
+		btVector3 pos = btVector3((float)device0->mech[ind].pos.x,(float)device0->mech[ind].pos.y,(float)device0->mech[ind].pos.z)/MICRON_PER_M;
 		btQuaternion rot;
-		(toBt(device0->mech[ind].ori.R) * btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1)).getRotation(rot);
+		toBt(device0->mech[ind].ori.R).getRotation(rot);
+		btTransform pose = btTransform(rot,pos) * TOOL_POSE_AXES_TRANSFORM;
 
-		tool_pose.pose.orientation.x = rot.x();
-		tool_pose.pose.orientation.y = rot.y();
-		tool_pose.pose.orientation.z = rot.z();
-		tool_pose.pose.orientation.w = rot.w();
+		/*
+		mechanism* mech = &(device0->mech[ind]);
+		float ths_offset, thr_offset, thp_offset;
+		if (mech->type == GOLD_ARM) {
+			ths_offset = SHOULDER_OFFSET_GOLD; //from original URDF
+			thr_offset = TOOL_ROT_OFFSET_GOLD;
+			thp_offset = WRIST_OFFSET_GOLD;
+		} else {
+			//TODO: fix
+			//log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+			ths_offset = SHOULDER_OFFSET_GREEN; //from original URDF
+			thr_offset = TOOL_ROT_OFFSET_GREEN;
+			thp_offset = WRIST_OFFSET_GREEN;
+		}
+
+		const float th12 = THETA_12;
+		const float th23 = THETA_23;
+
+		const float dw = DW;
+
+		float ths, the;
+		if (mech->type == GOLD_ARM) {
+			ths = mech->joint[SHOULDER].jpos + ths_offset;
+			the = mech->joint[ELBOW].jpos;
+		} else {
+			ths = fix_angle(M_PI - mech->joint[SHOULDER].jpos - ths_offset);
+			//ths = fix_angle(-mech->joint[SHOULDER].jpos - ths_offset);
+			the = (-mech->joint[ELBOW].jpos);
+		}
+		float   d = mech->joint[Z_INS].jpos;
+		float thr;
+		if (mech->type == GOLD_ARM) {
+			thr = -mech->joint[TOOL_ROT].jpos + TOOL_ROT_OFFSET_GOLD;
+		} else {
+			thr = (mech->joint[TOOL_ROT].jpos+TOOL_ROT_OFFSET_GREEN) - 0.37732519171346124;
+		}
+		//float thr = fix_angle(mech->joint[TOOL_ROT].jpos - M_PI);
+		float thp;
+		if (mech->type == GOLD_ARM) {
+			thp = mech->joint[WRIST].jpos + WRIST_OFFSET_GOLD;
+		} else {
+			thp = mech->joint[WRIST].jpos;
+		}
+		float thy;
+		if (mech->type == GOLD_ARM) {
+			thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
+		} else {
+			thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
+		}
+		//float thy = (mech->joint[GRASP1].jpos - mech->joint[GRASP2].jpos) / 2;
+		float grasp = mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos;
+
+		btTransform pose;
+		geometry_msgs::Pose pose_msg;
+
+		btTransform Xu_, Xf_;
+		if (mech->type == GOLD_ARM) {
+			Xu_ = X(THETA_12,0);
+			Xf_ = X(THETA_23,0);
+		} else {
+			Xu_ = X(-THETA_12,0);
+			Xf_ = X(-THETA_23,0);
+		}
+
+		btTransform actual_world_to_ik;
+		if (mech->type == GOLD_ARM) {
+			actual_world_to_ik = btTransform(btMatrix3x3(0,-1,0,1,0,0, 0,0,1),btVector3(0.2, 0, 0));
+		} else {
+			actual_world_to_ik = actual_world_to_ik_world(armIdFromMechType(mech->type));
+		}
+
+		pose = actual_world_to_ik_world(armIdFromMechType(mech->type))  * Tw2b * Zs(ths) * Xu * Ze(the) * Xf * Zr(thr) * Zi(-d) * Xip * Zp(thp) * Xpy * Zy(thy) * btTransform(TOOL_POSE_AXES_TRANSFORM);
+
+		pose = actual_world_to_ik_world(armId)
+				* Tw2b
+				* Zs(THS_TO_IK(armId,mech->joint[SHOULDER].jpos))
+				* Xu
+				* Ze(THE_TO_IK(armId,mech->joint[ELBOW].jpos))
+				* Xf
+				* Zr(THR_TO_IK(armId,mech->joint[TOOL_ROT].jpos))
+				* Zi(D_TO_IK(armId,mech->joint[Z_INS].jpos))
+				* Xip
+				* Zp(THP_TO_IK(armId,mech->joint[WRIST].jpos))
+				* Xpy
+				* Zy(THY_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos))
+				* Tg
+				* TOOL_POSE_AXES_TRANSFORM;
+
+*/
+		tf::poseTFToMsg(pose,tool_pose.pose);
+
+		pub_tool_pose[armId].publish(tool_pose);
 	}
-
-	pub_tool_pose.publish(tool_pose);
 }
 
 void publish_master_pose(struct robot_device* device0) {
@@ -816,12 +951,14 @@ void publish_joints(struct robot_device* device0){
     joint_state.name.push_back("grasper_yaw_L");
     joint_state.position.push_back(fix_angle(device0->mech[left].joint[GRASP1].jpos - device0->mech[left].joint[GRASP2].jpos,0) / 2);
     joint_state.name.push_back("grasper_L");
-    joint_state.position.push_back(device0->mech[left].joint[GRASP2].jpos + device0->mech[left].joint[GRASP1].jpos);
+    joint_state.position.push_back(device0->mech[left].joint[GRASP1].jpos + device0->mech[left].joint[GRASP2].jpos);
 //======================RIGHT ARM===========================
     joint_state.name.push_back("shoulder_R");
     joint_state.position.push_back(device0->mech[right].joint[SHOULDER].jpos);
+    //joint_state.position.push_back(M_PI-device0->mech[right].joint[SHOULDER].jpos-2*SHOULDER_OFFSET_GREEN);
     joint_state.name.push_back("elbow_R");
     joint_state.position.push_back(device0->mech[right].joint[ELBOW].jpos);
+    //joint_state.position.push_back(-device0->mech[right].joint[ELBOW].jpos);
     joint_state.name.push_back("insertion_R");
     joint_state.position.push_back(device0->mech[right].joint[Z_INS].jpos);
     joint_state.name.push_back("tool_roll_R");

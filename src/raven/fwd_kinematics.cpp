@@ -35,7 +35,7 @@ void fwdKin(struct device *device0, int runlevel)
 {
     //Always run forward kinematics for each mech
     for (int i = 0; i < NUM_MECH; i++) {
-    	if (device0->mech[i].type == GOLD_ARM) {
+    	if (true || device0->mech[i].type == GOLD_ARM) {
     		fwdMechKinNew(&(device0->mech[i]));
     	} else {
     		fwdMechKin(&(device0->mech[i]));
@@ -66,37 +66,6 @@ void fwdKin(struct device *device0, int runlevel)
 }
 
 void fwdMechKinNew(struct mechanism* mech) {
-	float ths_offset, thr_offset, thp_offset;
-	if (mech->type == GOLD_ARM) {
-		ths_offset = SHOULDER_OFFSET_GOLD; //from original URDF
-		thr_offset = TOOL_ROT_OFFSET_GOLD;
-		thp_offset = WRIST_OFFSET_GOLD;
-	} else {
-		//TODO: fix
-		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
-		ths_offset = SHOULDER_OFFSET_GREEN; //from original URDF
-		thr_offset = TOOL_ROT_OFFSET_GREEN;
-		thp_offset = WRIST_OFFSET_GREEN;
-	}
-
-	const float th12 = THETA_12;
-	const float th23 = THETA_23;
-
-	const float dw = DW;
-
-	float ths = mech->joint[SHOULDER].jpos;
-	float the = mech->joint[ELBOW].jpos;
-	float   d = mech->joint[Z_INS].jpos;
-	float thr = mech->joint[TOOL_ROT].jpos;
-	//float thr = fix_angle(mech->joint[TOOL_ROT].jpos - M_PI);
-	float thp = mech->joint[WRIST].jpos;
-	float thy = (mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos) / 2;
-	//float thy = (mech->joint[GRASP1].jpos - mech->joint[GRASP2].jpos) / 2;
-	float grasp = mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos;
-
-	//btTransform tool = actual_world_to_ik_world(armIdFromMechType(mech->type)) * Tw2b * Zs(ths + ths_offset) * Xu * Ze(the) * Xf * Zr(fix_angle(-thr + thr_offset)) * Zi(-d) * Xip * Zp(thp + thp_offset) * Xpy * Zy(thy) * Tg;
-	btTransform tool = Tw2g(armIdFromMechType(mech->type), ths + ths_offset, the, fix_angle(-thr + thr_offset), -d, thp + thp_offset, thy);
-
 	/*
 		if (_ik_counter % PRINT_EVERY == 0) {
 			btVector3 ins = Tw2b * Zs * Xu * Ze * Xf * btVector3(0,0,-1);
@@ -110,6 +79,22 @@ void fwdMechKinNew(struct mechanism* mech) {
 			log_msg("gpt (%0.4f,%0.4f,%0.4f)",gpt.x(),gpt.y(),gpt.z());
 		}
 	 */
+
+	int armId = armIdFromMechType(mech->type);
+
+	btTransform tool = actual_world_to_ik_world(armId)
+					* Tw2b
+					* Zs(THS_TO_IK(armId,mech->joint[SHOULDER].jpos))
+					* Xu
+					* Ze(THE_TO_IK(armId,mech->joint[ELBOW].jpos))
+					* Xf
+					* Zr(THR_TO_IK(armId,mech->joint[TOOL_ROT].jpos))
+					* Zi(D_TO_IK(armId,mech->joint[Z_INS].jpos))
+					* Xip
+					* Zp(THP_TO_IK(armId,mech->joint[WRIST].jpos))
+					* Xpy
+					* Zy(THY_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos))
+					* Tg;
 
 	btMatrix3x3 temp = tool.getBasis();
 	btVector3 p    = tool.getOrigin();
@@ -125,7 +110,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 		}
 	}
 
-	mech->ori.grasp = grasp*1000;
+	mech->ori.grasp = GRASP_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos)*1000;
 }
 
 

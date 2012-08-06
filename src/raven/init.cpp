@@ -171,6 +171,8 @@ void initDOFs(struct device *device0)
     for (int i = 0; i < NUM_MECH; i++)
     {
 
+    	btTransform basePose;
+
         /// Initialize joint types
         if ( device0->mech[i].type == GOLD_ARM)
         {
@@ -184,6 +186,8 @@ void initDOFs(struct device *device0)
             device0->mech[i].joint[GRASP1].type   = GRASP1_GOLD;
             device0->mech[i].joint[GRASP2].type   = GRASP2_GOLD;
             device0->mech[i].joint[NO_CONNECTION].type   = NO_CONNECTION_GOLD;
+
+            basePose = btTransform::getIdentity();
         }
         else if (device0->mech[i].type == GREEN_ARM)
         {
@@ -196,6 +200,18 @@ void initDOFs(struct device *device0)
             device0->mech[i].joint[GRASP1].type   = GRASP1_GREEN;
             device0->mech[i].joint[GRASP2].type   = GRASP2_GREEN;
             device0->mech[i].joint[NO_CONNECTION].type   = NO_CONNECTION_GREEN;
+
+            basePose = GREEN_ARM_BASE_POSE;
+        }
+
+        device0->mech[i].base_pos.x = basePose.getOrigin().x();
+        device0->mech[i].base_pos.y = basePose.getOrigin().y();
+        device0->mech[i].base_pos.z = basePose.getOrigin().z();
+
+        for (int i = 0; i < 3; i++) {
+        	for (int j = 0; j < 3; j++) {
+        		device0->mech[i].base_ori.R[i][j] = basePose.getBasis()[i][j];
+        	}
         }
 
 

@@ -135,6 +135,10 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btMatrix3x3 actualOrientation = toBt(ori_d->R);
 	btTransform actualPose(actualOrientation,actualPoint);
 
+	if (mech->type == GREEN_ARM) {
+		actualPose = GREEN_ARM_BASE_POSE.inverse() * actualPose;
+	}
+
 	btTransform actualPose_fk = actualPose;// = fwdKin(mech);
 
 	tb_angles currentPoseAngles = get_tb_angles(mech->ori.R);
@@ -213,8 +217,6 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		thr_offset = TOOL_ROT_OFFSET_GOLD;
 		thp_offset = WRIST_OFFSET_GOLD;
 	} else {
-		log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
-		//TODO: fix
 		ths_offset = SHOULDER_OFFSET_GREEN;
 		thr_offset = TOOL_ROT_OFFSET_GREEN;
 		thp_offset = WRIST_OFFSET_GREEN;
@@ -347,11 +349,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 			the_act = the_opt[i];
 			thr_act = fix_angle(-thr_opt[i] + thr_offset);
 		} else {
-			log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
+			//log_msg("GREEN ARM KINEMATICS NOT IMPLEMENTED");
 			//TODO: fix
-			ths_act = ths_opt[i] - ths_offset;
-			the_act = the_opt[i];
-			thr_act = -thr_opt[i] + thr_offset;
+			ths_act = fix_angle(-ths_opt[i] - ths_offset);
+			the_act = fix_angle(the_opt[i] + M_PI);
+			thr_act = fix_angle(-thr_opt[i] + thr_offset);
 		}
 
 		if (print) {
