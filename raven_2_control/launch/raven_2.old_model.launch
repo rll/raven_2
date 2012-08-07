@@ -1,0 +1,8 @@
+<launch>
+    <arg name="model" default="$(find raven_2)/data/ravenII_2arm.original.urdf"/>
+    <param name="robot_description" textfile="$(arg model)" />
+    <rosparam file="$(find raven_2)/params/r2params.yaml" command="load" output="screen" />
+    <node name ="r2_control" pkg="raven_2" type="r2_control" output="screen" />
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" output="screen" />
+
+</launch>

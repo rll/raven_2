@@ -1,0 +1,19 @@
+<package>
+  <description brief="raven_2_trajectory">
+
+     raven_2_trajectory
+
+  </description>
+  <author>Ben Kehoe</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_trajectory</url>
+  <depend package="rospy"/>
+  <depend package="tf"/>
+  <depend package="geometry_msgs"/>
+  <depend package="sensor_msgs"/>
+  <depend package="raven_2_msgs"/>
+
+</package>
+
+

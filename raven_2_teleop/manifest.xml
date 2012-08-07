@@ -1,0 +1,21 @@
+<package>
+  <description brief="raven_2_teleop">
+
+     raven_2_teleop
+
+  </description>
+  <author>Animesh Garg</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_teleop</url>
+  <depend package="rospy"/>
+  <depend package="roscpp"/>
+  <depend package="sixense"/>
+  <depend package="raven_2_msgs"/>
+  <depend package="visualization_msgs"/>
+  <depend package="raven_2_trajectory"/>
+  <depend package="tf"/>
+
+</package>
+
+

@@ -1,0 +1,10 @@
+<launch>
+  <arg name="model" default="$(find raven_2_params)/data/ravenII_2arm.urdf"/>
+  <include file="$(find raven_2_control)/launch/raven_2.pub.launch">
+    <arg name="model" value="$(arg model)"/>
+  </include>
+
+  <rosparam file="$(find raven_2_params)/params/r2params.yaml" command="load" output="screen" />
+  <node name ="r2_control" pkg="raven_2_control" type="r2_control" output="screen" />
+
+</launch>

@@ -1,0 +1,18 @@
+<package>
+  <description brief="raven_2_msgs">
+
+     raven_2_msgs
+
+  </description>
+  <author>Animesh Garg</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_msgs</url>
+
+  <depend package="std_msgs"/>
+  <depend package="geometry_msgs"/>
+  <depend package="rospy"/>
+  <depend package="roscpp"/>
+</package>
+
+

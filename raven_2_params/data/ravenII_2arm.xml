@@ -1,0 +1,12 @@
+<robot> 
+   <robot file="ravenII_2arm.dae"></robot> 
+   <manipulator name="left_arm">   
+     <base>base_link_L</base>   
+     <effector>grasper1_L</effector>
+   </manipulator>
+   <manipulator name="right_arm">   
+     <base>base_link_R</base>   
+     <effector>grasper1_R</effector>
+   </manipulator>
+
+</robot>

@@ -1,10 +1,15 @@
 __init__.py
 *.pyc
+*.pyo
 *~
 .#*
 msg/*.py
 msg_gen
+srv_gen
 _*.py
 build
 bin/*
 err_network.log
+.*project
+*.cmake
+.settings/
