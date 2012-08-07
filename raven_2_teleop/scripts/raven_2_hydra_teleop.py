@@ -147,7 +147,8 @@ class HydraTeleop:
                     if paddle.joy[1] and not self.last_msg.paddles[i].joy[1]:
                         print "Insertion active"
                     j_cmd = JointCommand()
-                    j_cmd.velocity = paddle.joy[1]
+                    j_cmd.command_type = JointCommand.COMMAND_TYPE_VELOCITY
+                    j_cmd.value = paddle.joy[1]
                     arm_cmd.joint_types.append(Constants.JOINT_TYPE_INSERTION)
                     arm_cmd.joint_commands.append(j_cmd)
 
