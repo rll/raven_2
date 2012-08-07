@@ -82,14 +82,10 @@ void invKin(struct device *device0, struct param_pass* currParams)
 
   //Run inverse kinematics for each mech
   for (int i = 0; i < NUM_MECH; i++) {
-	  bool testNew = false;
-	  if ((!testNew) && device0->mech[i].type == GOLD_ARM) {
+	  if (true || device0->mech[i].type == GREEN_ARM) {
 		  ret = invMechKinNew(&(device0->mech[i]));
 	  } else {
-		  ret=invMechKin( &(device0->mech[i]));
-	  }
-	  if (testNew && ret == 1 && device0->mech[i].type == GOLD_ARM) {
-		  invMechKinNew(&(device0->mech[i]),true);
+		  ret=0;//invMechKin( &(device0->mech[i]));
 	  }
 	  if (ret < 0) {
 		  //    	log_msg("inv_kin failed with %d", ret);
@@ -128,6 +124,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		//log_msg("time since last call: %1.4f",since_last_call.toSec());
 	}
 
+	int armId = armIdFromMechType(mech->type);
+
 
 	// desired tip position
 	btVector3 currentPoint = btVector3(mech->pos.x,mech->pos.y,mech->pos.z) / MICRON_PER_M;
@@ -136,7 +134,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btTransform actualPose(actualOrientation,actualPoint);
 
 	if (mech->type == GREEN_ARM) {
-		actualPose = GREEN_ARM_BASE_POSE.inverse() * actualPose;
+		//actualPose = GREEN_ARM_BASE_POSE.inverse() * actualPose;
 	}
 
 	btTransform actualPose_fk = actualPose;// = fwdKin(mech);
@@ -144,7 +142,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	tb_angles currentPoseAngles = get_tb_angles(mech->ori.R);
 	tb_angles actualPoseAngles = get_tb_angles(ori_d->R);
 
-	float grasp = ((float)mech->ori_d.grasp)/1000.0f;
+	float grasp = GRASP_TO_IK(armId,mech->ori_d.grasp);
 
 	if (print) {
 		log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
@@ -196,9 +194,9 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	 */
 	btTransform ik_pose;
 	if (test) {
-		ik_pose = ik_world_to_actual_world(armIdFromMechType(mech->type)) * actualPose_fk;
+		ik_pose = ik_world_to_actual_world(armId) * actualPose_fk;
 	} else {
-		ik_pose = ik_world_to_actual_world(armIdFromMechType(mech->type)) * actualPose;
+		ik_pose = ik_world_to_actual_world(armId) * actualPose;
 	}
 
 	btMatrix3x3 ik_orientation = ik_pose.getBasis();
@@ -260,6 +258,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float d = -pz / sin(thp);
 
 	float d_act, thp_act, thy_act, g1_act, g2_act;
+	/*
 	if (mech->type == GOLD_ARM) {
 		d_act = -d;
 		thp_act = thp - thp_offset;
@@ -273,6 +272,12 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		g1_act = -thy + grasp/2;
 		g2_act =  thy + grasp/2;
 	}
+	*/
+	d_act = D_FROM_IK(armId,d);
+	thp_act = THP_FROM_IK(armId,thp);
+	thy_act = THY_FROM_IK(armId,thy,grasp);
+	g1_act = FINGER1_FROM_IK(armId,thy,grasp);
+	g2_act = FINGER2_FROM_IK(armId,thy,grasp);
 
 	//check angles
 	int validity[4];
@@ -309,6 +314,9 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float xy = x_roll_in_world.y();
 	float xz = x_roll_in_world.z();
 
+	if (_curr_rl == 3) {
+	}
+
 	float cthe = (zy + kc12*kc23) / (ks12*ks23);
 
 	float the_1 = acos(cthe);
@@ -320,6 +328,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 
 	float ths_opt[2];
 	float thr_opt[2];
+
+	bool opts_valid[2];
 
 	for (int i=0;i<2;i++) {
 		float sthe_tmp = sin(the_opt[i]);
@@ -344,6 +354,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				(xx + C6 * xy / C5) / (-C6*C4/C5 - C7));
 
 		float ths_act, the_act, thr_act;
+		/*
 		if (mech->type == GOLD_ARM) {
 			ths_act = ths_opt[i] - ths_offset;
 			the_act = the_opt[i];
@@ -354,7 +365,10 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 			ths_act = fix_angle(-ths_opt[i] - ths_offset);
 			the_act = fix_angle(the_opt[i] + M_PI);
 			thr_act = fix_angle(-thr_opt[i] + thr_offset);
-		}
+		}*/
+		ths_act = THS_FROM_IK(armId,ths_opt[i]);
+		the_act = THE_FROM_IK(armId,the_opt[i]);
+		thr_act = THR_FROM_IK(armId,thr_opt[i]);
 
 		if (print) {
 			if (test) {
@@ -374,7 +388,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 						mech->joint[TOOL_ROT].jpos RAD2DEG,
 						mech->joint[Z_INS].jpos,
 						mech->joint[WRIST].jpos RAD2DEG,
-						fix_angle(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos,0) / 2  RAD2DEG,
+						THY_MECH_FROM_FINGERS(armIdFromMechType(mech->type),mech->joint[GRASP2].jpos, mech->joint[GRASP1].jpos),//fix_angle(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos,0) / 2  RAD2DEG,
+						mech->ori.grasp * 1000. RAD2DEG,
 						fix_angle(mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos,0) RAD2DEG,
 						mech->joint[GRASP1].jpos RAD2DEG, mech->joint[GRASP2].jpos RAD2DEG);
 			}
@@ -397,6 +412,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		}
 
 		bool valid2 = check_joint_limits2_new(ths_act,the_act,thr_act,validity);
+		opts_valid[i] = valid2;
 
 		if (valid2) {
 			float ths_diff, the_diff, d_diff, thr_diff, thp_diff, thg1_diff, thg2_diff;
@@ -466,13 +482,23 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 //			mech->joint[TOOL_ROT].jpos_d = 0;
 //			mech->joint[WRIST].jpos_d = 0;
 
+			if (i==1 && _curr_rl == 3) {
+				//printf("ik ok! %d\n",_ik_counter);
+			}
 			return 1;
 		} else {
 			if (_curr_rl == 3) {
-				printf("ik invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
+				/*printf("ik invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
 						ths_act RAD2DEG,validity[0],
 						the_act RAD2DEG,validity[1],
 						thr_act RAD2DEG,validity[2]);
+				printf("%7d          d %0.4f  \tp %0.4f  \ty %0.4f\n",_ik_counter,
+									d_act,thp_act RAD2DEG,thy_act RAD2DEG);
+				printf("x (%f, %f, %f)  z (%f, %f, %f) %f\n",xx,xy,xz,zx,zy,zz,cthe);
+				printf("norms %f %f\n",x_roll_in_world.length(),z_roll_in_world.length());
+				printf("(zy + kc12*kc23): %f (%f, %f)\n",(zy + kc12*kc23),zy, kc12*kc23);
+				printf("(ks12*ks23): %f\n",(ks12*ks23));
+				*/
 			}
 		}
 	}

@@ -203,7 +203,7 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
-        if (currParams->runlevel != RL_PEDAL_DN || _mech->type == GREEN_ARM) {
+        if (currParams->runlevel != RL_PEDAL_DN) {
             _joint->tau_d=0;
         } else {
             mpos_PD_control(_joint);
@@ -219,13 +219,13 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     return 0;
 }
 
-device* device0ptr;
+//device* device0ptr;
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams){
   device0->surgeon_mode=1;
     //Inverse Cable Coupling
     invCableCoupling(device0, currParams->runlevel);
 
-    device0ptr = device0;
+    //device0ptr = device0;
     ros::spinOnce();
     TorqueToDAC(device0);
 

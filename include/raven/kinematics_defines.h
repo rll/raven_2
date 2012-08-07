@@ -47,8 +47,8 @@ inline float THE_FROM_IK(int armId,float the) { return (armId == GOLD_ARM_ID ? t
 
 const btTransform Xf = X(THETA_23,0);
 
-inline float THR_TO_IK(  int armId,float thr) { return (armId == GOLD_ARM_ID ? -thr + TOOL_ROT_OFFSET_GOLD : thr + TOOL_ROT_OFFSET_GREEN - 0.37732519171346124); }
-inline float THR_FROM_IK(int armId,float thr) { return (armId == GOLD_ARM_ID ? -thr + TOOL_ROT_OFFSET_GOLD : thr - TOOL_ROT_OFFSET_GREEN + 0.37732519171346124); }
+inline float THR_TO_IK(  int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr + TOOL_ROT_OFFSET_GREEN - 0.37732519171346124)); }
+inline float THR_FROM_IK(int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr - TOOL_ROT_OFFSET_GREEN + 0.37732519171346124)); }
 #define Zr(thr) Z(thr,0)
 
 inline float D_TO_IK(  int armId,float d) { return -d; }
@@ -63,10 +63,16 @@ inline float THP_FROM_IK(int armId,float thp) { return (armId == GOLD_ARM_ID ? f
 
 const btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(DW,0,0));
 
-inline float THY_FROM_FINGERS(  int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 - g1) / 2 : (g2 - g1) / 2); }
-inline float GRASP_FROM_FINGERS(int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 + g1) / 2 : (g2 + g1) / 2); }
-inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ? -thy + grasp/2 : -thy + grasp/2); }
-inline float FINGER2_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ?  thy + grasp/2 :  thy + grasp/2); }
+inline int MECH_GRASP_FROM_MECH_FINGERS(int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 + g1) : (g2 + g1))*1000.; }
+inline float GRASP_TO_IK(int armId,int grasp) { return (armId == GOLD_ARM_ID ? grasp : -grasp) / 1000.; }
+
+inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ? -thy + grasp/2 : -( thy + grasp/2)); }
+inline float FINGER2_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ?  thy + grasp/2 : -(-thy + grasp/2)); }
+
+inline float THY_MECH_FROM_FINGERS(  int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 - g1) / 2 : -(g2 - g1) / 2); }
+inline float THY_TO_IK_FROM_FINGERS(  int armId,float g1, float g2) { return THY_MECH_FROM_FINGERS(armId,g1,g2); }
+inline float THY_FROM_IK(int armId, float thy, float grasp) { return thy; }
+
 #define Zy(thy) Z(thy,0)
 
 const btTransform Tg(btMatrix3x3::getIdentity());

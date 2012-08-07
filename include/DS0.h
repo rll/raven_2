@@ -67,6 +67,14 @@ enum jointState{
     jstate_last_type
 };
 
+enum JointCommandType {
+	JOINT_COMMAND_TYPE_POSITION,
+	JOINT_COMMAND_TYPE_VELOCITY,
+	JOINT_COMMAND_TYPE_MOTOR_POSITION,
+	JOINT_COMMAND_TYPE_MOTOR_VELOCITY,
+	JOINT_COMMAND_TYPE_TORQUE
+};
+
 /*************************************************************************
  *
  *  Degree of Freedom Struct
@@ -78,6 +86,7 @@ struct DOF {
   jointState state;            // is this DoF enabled?
   s_24 enc_val;		// encoder value
   s_16 current_cmd;	// DAC command to achieve tau at actuator
+  JointCommandType cmd_type;
   float jpos;		// actual DOF coordinate (rad)
   float mpos;
   //  float jpos_old;       // previous DOF coordinate (rad)

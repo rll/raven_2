@@ -208,9 +208,9 @@ void initDOFs(struct device *device0)
         device0->mech[i].base_pos.y = basePose.getOrigin().y();
         device0->mech[i].base_pos.z = basePose.getOrigin().z();
 
-        for (int i = 0; i < 3; i++) {
+        for (int i_ = 0; i_ < 3; i_++) {
         	for (int j = 0; j < 3; j++) {
-        		device0->mech[i].base_ori.R[i][j] = basePose.getBasis()[i][j];
+        		device0->mech[i_].base_ori.R[i_][j] = basePose.getBasis()[i_][j];
         	}
         }
 
@@ -222,6 +222,8 @@ void initDOFs(struct device *device0)
             struct DOF_type *_dof = &(DOF_types[dofindex]);
 
             _dof->speed_limit = fabs(_dof->max_position - _dof->home_position)/5; // total range of motion in 5 seconds
+
+            _joint->cmd_type = JOINT_COMMAND_TYPE_TORQUE;
 
             //Initialize joint and motor position variables
             _joint->jpos = 0;

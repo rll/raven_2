@@ -79,6 +79,7 @@ src/raven/overdrive_detect.cpp
 src/raven/parallel.cpp
 src/raven/pid_control.cpp
 src/raven/put_USB_packet.cpp
+src/raven/ros_io.cpp
 src/raven/rt_process_preempt.cpp
 src/raven/rt_raven.cpp
 src/raven/state_estimate.cpp

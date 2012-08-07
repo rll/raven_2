@@ -27,6 +27,7 @@
 #include <sys/stat.h> //Needed for umask
 
 #include <ros/ros.h>     // Use ROS
+#include "ros_io.h"
 
 #include "rt_process_preempt.h"
 #include "console_process.h"
@@ -197,7 +198,7 @@ static void *rt_process(void* )
         putUSBPackets(&device0); //disable usb for par port test
 
         //Publish current raven state
-        publish_ravenstate_ros(&device0,currParams.runlevel,currParams.sublevel);   // from local_io
+        publish_ros(&device0,currParams.runlevel,currParams.sublevel);   // from local_io
 
         ros::spinOnce();
 
@@ -240,10 +241,9 @@ int init_ros(int argc, char **argv)
     ros::init(argc, argv, "r2_control");
     ros::NodeHandle n;
 //    rosrt::init();
-    init_ravenstate_publishing(n);
     init_ravengains(n, &device0);
     saveDOFInfo();
-    init_subs(n,&device0);
+    init_ros_topics(n,&device0);
 
     return 0;
 }

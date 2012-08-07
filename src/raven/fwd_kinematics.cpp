@@ -20,6 +20,14 @@
 #include "utils.h"
 #include "defines.h"
 
+static const int PRINT_EVERY_PEDAL_UP   = 1000000;
+static const int PRINT_EVERY_PEDAL_DOWN = 1000;
+static int PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
+
+#define PRINT (_ik_counter % 200 == 0)
+
+static int _ik_counter = 0;
+
 
 extern int NUM_MECH;
 
@@ -80,6 +88,9 @@ void fwdMechKinNew(struct mechanism* mech) {
 		}
 	 */
 
+	_ik_counter++;
+	bool print = PRINT;
+
 	int armId = armIdFromMechType(mech->type);
 
 	btTransform tool = actual_world_to_ik_world(armId)
@@ -93,7 +104,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 					* Xip
 					* Zp(THP_TO_IK(armId,mech->joint[WRIST].jpos))
 					* Xpy
-					* Zy(THY_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos))
+					* Zy(THY_TO_IK_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos))
 					* Tg;
 
 	btMatrix3x3 temp = tool.getBasis();
@@ -110,7 +121,11 @@ void fwdMechKinNew(struct mechanism* mech) {
 		}
 	}
 
-	mech->ori.grasp = GRASP_FROM_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos)*1000;
+	mech->ori.grasp = MECH_GRASP_FROM_MECH_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos);
+
+	if (mech->type == GREEN_ARM && print) {
+		printf("ori: %d  d: %d\n",mech->ori.grasp,mech->ori_d.grasp);
+	}
 }
 
 
