@@ -10,7 +10,8 @@ from raven_2_msgs.msg import *
 from geometry_msgs.msg import Pose, Point, Quaternion
 from raven_2_trajectory.srv import RecordTrajectory, RecordTrajectoryResponse
 
-SIDES = ['left','right']
+SIDE_ACTIVE = [False,True]
+SIDE_NAMES = ['left','right']
 
 BASE_FRAME = '/0_link'
 END_EFFECTOR_FRAME_PREFIX = '/instrument_shaft_'
@@ -43,14 +44,19 @@ class HydraTeleop:
 
         # set up tf listener
         self.listener = listener
+        
+        if SIDE_ACTIVE[0]:
+        	end_effector_frame = END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[0]
+    	else:
+    		end_effector_frame = END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[1]
 
-        print "waiting for transform from {0} to {1}".format(BASE_FRAME, END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[0])
+        print "waiting for transform from {0} to {1}".format(BASE_FRAME, end_effector_frame)
         tries = 0
         while not rospy.is_shutdown():
             tries += 1
             #print "Try #%d" % tries
             try:
-                self.listener.waitForTransform(BASE_FRAME, END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[0], rospy.Time(0), rospy.Duration(5.0))
+                self.listener.waitForTransform(BASE_FRAME, end_effector_frame, rospy.Time(0), rospy.Duration(5.0))
                 break
             except tf.Exception, e:
                 continue
@@ -78,15 +84,17 @@ class HydraTeleop:
         grip = [0,0]
 
         for i in xrange(2):
+        		
             arm_cmd = ArmCommand()
             tool_cmd = ToolCommand()
             tool_cmd.absolute = False
             paddle = msg.paddles[i]
 
             if paddle.trigger and not self.last_msg.paddles[i].trigger:
-                print "That's the %s controller!" % SIDES[i]
+                print "That's the %s controller!" % SIDE_NAMES[i]
 
-            if paddle.buttons[CalibPaddle.BUMPER] and not self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
+            if SIDE_ACTIVE[i] and paddle.buttons[CalibPaddle.BUMPER] and not self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
+                print "%s tool active" % SIDE_NAMES[i]
                 # calculate current position of robot
                 try:
                     (trans,rot) = self.listener.lookupTransform(BASE_FRAME, END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[i], rospy.Time(0))
@@ -96,7 +104,6 @@ class HydraTeleop:
                     else:
                         print "no transform for right!"
                     return
-                print "%s tool active" % SIDES[i]
                 xcur, ycur, zcur = trans[0],trans[1],trans[2]
                 xcmd, ycmd, zcmd = (paddle.transform.translation.x * self.scale,
                                     paddle.transform.translation.y * self.scale,
@@ -106,11 +113,11 @@ class HydraTeleop:
 
                 #print "engaging %s arm"%self.arms[i].lr
             elif not paddle.buttons[CalibPaddle.BUMPER] and self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
-                print "%s tool inactive" % SIDES[i]
+                print "%s tool inactive" % SIDE_NAMES[i]
 
 
             active[i] = False
-            if paddle.buttons[CalibPaddle.BUMPER] and self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
+            if SIDE_ACTIVE[i] and paddle.buttons[CalibPaddle.BUMPER] and self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
                 active[i] = True
 
                 dx = (paddle.transform.translation.x  - self.last_msg.paddles[i].transform.translation.x) * self.scale
@@ -160,7 +167,7 @@ class HydraTeleop:
                 if paddle.buttons[CalibPaddle.START] or paddle.joy[0] or paddle.joy[1]:
                     tool_cmd.tool_pose.position = Point(0,0,0)
 
-            arm_cmd.active = active[i]
+            arm_cmd.active = active[i] and SIDE_ACTIVE[i]
             tool_cmd.grasp = grip[i]
             arm_cmd.tool_command = tool_cmd
             raven_command.arms[i] = arm_cmd
