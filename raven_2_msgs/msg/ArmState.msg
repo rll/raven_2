@@ -7,6 +7,9 @@ uint8 tool_type
 geometry_msgs/Pose tool_pose
 geometry_msgs/Pose tool_pose_desired
 
+float32 grasp
+float32 grasp_desired
+
 JointState[] joints
 
 uint8 input_pins
