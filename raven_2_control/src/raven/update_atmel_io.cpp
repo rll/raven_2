@@ -46,8 +46,9 @@ void updateAtmelOutputs(struct device *device0, int runlevel)
     }
 
     //Write Changes
-    for (i = 0; i < NUM_MECH; i++)
-        device0->mech[i].outputs = outputs;
+    for (i = 0; i < NUM_MECH; i++) {
+    	device0->mech[i].outputs = outputs;
+    }
 
     counter++;
 }

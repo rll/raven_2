@@ -11,6 +11,7 @@
 #include "USB_init.h"
 #include "update_atmel_io.h"
 
+extern bool disable_arm_id[2];
 extern unsigned long int gTime;
 extern USBStruct USBBoards;
 
@@ -50,14 +51,21 @@ int putUSBPacket(int id, struct mechanism *mech)
 
     for (i = 0; i < MAX_DOF_PER_MECH; i++)
     {
-        //Factor in offset since we are in midrange operation
-        mech->joint[i].current_cmd += DAC_OFFSET;
+    	s_16 cmd = mech->joint[i].current_cmd;
+    	if (disable_arm_id[armIdFromMechType(mech->type)]) {
+    		cmd = 0;
+    	}
+    	//Factor in offset since we are in midrange operation
+        //mech->joint[i].current_cmd += DAC_OFFSET;
+    	cmd += DAC_OFFSET;
 
-        buffer_out[2*i+2] = (char)(mech->joint[i].current_cmd);
-        buffer_out[2*i+3] = (char)(mech->joint[i].current_cmd >> 8);
+
+
+        buffer_out[2*i+2] = (char)(cmd);
+        buffer_out[2*i+3] = (char)(cmd >> 8);
 
         //Remove offset
-        mech->joint[i].current_cmd -= DAC_OFFSET;
+        //mech->joint[i].current_cmd -= DAC_OFFSET;
     }
 
     // Set PortF outputs

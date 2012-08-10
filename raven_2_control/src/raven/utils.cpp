@@ -15,6 +15,7 @@
 #include "log.h"
 
 extern int NUM_MECH;
+extern bool disable_arm_id[2];
 
 btMatrix3x3 tb_to_mat(float yaw, float pitch, float roll) {
 	btMatrix3x3 Ryaw(
@@ -181,6 +182,25 @@ int toShort(int value, short int *target)
     }
 }
 
+int loop_over_mechs(struct robot_device* device0, struct mechanism*& _mech, int& mechnum) {
+	// Initialize iterators
+	if (_mech == NULL) {
+		mechnum = 0;
+	} else if (mechnum >= (NUM_MECH-1)) {
+		return 0;
+	} else {
+		mechnum++;
+	}
+	while (disable_arm_id[armIdFromMechType(device0->mech[mechnum].type)]) {
+		if (mechnum >= (NUM_MECH-1)) {
+			return 0;
+		} else {
+			mechnum++;
+		}
+	}
+	_mech = &(device0->mech[mechnum]);
+	return 1;
+}
 
 /**
 *    Iterate over all joints of all mechanisms.
@@ -223,6 +243,16 @@ int loop_over_joints(struct robot_device* device0, struct mechanism*& _mech, str
         if (jnum == NO_CONNECTION) jnum++;
     }
 
+    //check if mech disabled
+    while (disable_arm_id[armIdFromMechType(device0->mech[mechnum].type)]) {
+    	if (mechnum >= (NUM_MECH-1)) {
+    		return 0;
+    	} else {
+    		mechnum++;
+    		jnum=0;
+    	}
+    }
+
     // Set return structs
     _mech = &(device0->mech[mechnum]);
     _joint =&(device0->mech[mechnum].joint[jnum]);
@@ -245,6 +275,9 @@ int loop_over_joints(struct robot_device* device0, struct mechanism*& _mech, str
 */
 int loop_over_joints(struct mechanism* _mech, struct DOF*& _joint, int& jnum)
 {
+	if (disable_arm_id[armIdFromMechType(_mech->type)]) {
+		return 0;
+	}
     // Initialize iterators
     if (_joint == NULL)
     {
@@ -288,6 +321,9 @@ int is_toolDOF(int jointType)
 }
 int tools_ready(struct mechanism *mech)
 {
+	if (disable_arm_id[armIdFromMechType(mech->type)]) {
+		return 1;
+	}
     if ( mech->joint[TOOL_ROT].state != jstate_ready )
         return 0;
     if ( mech->joint[WRIST].state    != jstate_ready )
@@ -309,6 +345,9 @@ int robot_ready(struct robot_device* device0)
 
     while ( loop_over_joints(device0, _mech, _joint, i, j) )
     {
+    	if (disable_arm_id[armIdFromMechType(_mech->type)]) {
+    		continue;
+    	}
         if (_joint->state != jstate_ready)
             return 0;
     }

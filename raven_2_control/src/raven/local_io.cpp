@@ -32,22 +32,30 @@ active use.
 #include "itp_teleoperation.h"
 #include "kinematics_defines.h"
 
+extern bool disable_arm_id[2];
 extern int NUM_MECH;
 extern USBStruct USBBoards;
 extern unsigned long int gTime;
+
+#define GOLD_ARM_TELEOP_ID GOLD_ARM_ID
+#define GREEN_ARM_TELEOP_ID GREEN_ARM_ID
 
 static param_pass data1;
 pthread_mutexattr_t data1MutexAttr;
 pthread_mutex_t data1Mutex;
 
+btVector3 master_raw_position[2];
+btVector3 master_position[2];
+btMatrix3x3 master_raw_orientation[2];
+btMatrix3x3 master_orientation[2];
+
 static int _localio_counter;
-static btVector3 master_raw_position[2];
-static btVector3 master_position[2];
-static btMatrix3x3 master_raw_orientation[2];
-static btMatrix3x3 master_orientation[2];
+
+#define DISABLE_ALL_PRINTING true
 static const int PRINT_EVERY_PEDAL_UP   = 1000000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
+#define PRINT (_localio_counter % PRINT_EVERY == 0 && !(DISABLE_ALL_PRINTING))
 
 volatile int isUpdated; //volatile int instead of atomic_t ///Should we use atomic builtins? http://gcc.gnu.org/onlinedocs/gcc-4.1.2/gcc/Atomic-Builtins.html
 
@@ -79,8 +87,6 @@ int initLocalioData(void)
         for (i=0;i<NUM_MECH;i++) {
         	master_raw_position[i] = btVector3(0,0,0);
             master_position[i] = btVector3(0,0,0);
-            //_teleop_rot_tracker0[i] = btMatrix3x3::getIdentity();
-            //_teleop_rot_tracker[i] = btMatrix3x3::getIdentity();
         }
     }
     pthread_mutex_unlock(&data1Mutex);
@@ -107,108 +113,104 @@ int recieveUserspace(void *u,int size)
 //
 void teleopIntoDS1(struct u_struct *t)
 {
-    _localio_counter++;
+	static long int last_call = -1;
 
-    if (_localio_counter % PRINT_EVERY == 0) {
-        //print_u_struct_pos(t,0);
-        //print_u_struct_pos(t,1);
-    	//std::cout << "grasp " << t->grasp[0] << " " << data1.rd[0].grasp << " | " << t->grasp[1] << " " << data1.rd[1].grasp << " | " << t->surgeon_mode << std::endl;
-    }
+	unsigned long int now = gTime;
+	if (last_call < 0) { last_call = now; return; }
+	float since_last_call = ((float)(now-last_call)) / 1000.;
+	last_call = now;
 
-    btVector3 p;
-    int i, armidx, armserial;
-    pthread_mutex_lock(&data1Mutex);
-    btQuaternion rot;
+	pthread_mutex_lock(&data1Mutex);
+	_localio_counter++;
+
+	if (PRINT) {
+		//print_u_struct_pos(t,0);
+		//print_u_struct_pos(t,1);
+		//std::cout << "grasp " << t->grasp[0] << " " << data1.rd[0].grasp << " | " << t->grasp[1] << " " << data1.rd[1].grasp << " | " << t->surgeon_mode << std::endl;
+	}
+
+	btVector3 p_raw, p;
+	int mechnum, teleopArmId, armidx, armserial;
+	btQuaternion rot_raw, rot;
     btMatrix3x3 rot_mx_temp;
 
-    for (i=0;i<NUM_MECH;i++)
+    for (mechnum=0;mechnum<NUM_MECH;mechnum++)
     {
-        armserial = USBBoards.boards[i]==GREEN_ARM_SERIAL ? GREEN_ARM_SERIAL : GOLD_ARM_SERIAL;
-        armidx    = USBBoards.boards[i]==GREEN_ARM_SERIAL ? 1 : 0;
+        armserial = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_SERIAL : GOLD_ARM_SERIAL;
+        teleopArmId    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GOLD_ARM_TELEOP_ID : GREEN_ARM_TELEOP_ID;
+        armidx    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_ID : GOLD_ARM_ID;
 
-        // apply mapping to teleop data
-        p[0] = t->delx[armidx];
-        p[1] = t->dely[armidx];
-        p[2] = t->delz[armidx];
-
-        //set local quaternion from teleop quaternion data
-        rot.setX( t->Qx[armidx] );
-        rot.setY( t->Qy[armidx] );
-        rot.setZ( t->Qz[armidx] );
-        rot.setW( t->Qw[armidx] );
-
-        master_raw_position[armidx] += p/MICRON_PER_M;
-        if (armserial == GOLD_ARM_SERIAL) {
-        	master_raw_orientation[armidx].setRotation(rot);
-        } else {
-        	master_raw_orientation[armidx] = master_orientation[armidx] * btMatrix3x3(rot);
+        if (PRINT && !disable_arm_id[armidx]) {
+        	printf("teleop %d -------------------------------\n",armidx);
+        	print_u_struct(t,teleopArmId);
         }
 
+        // apply mapping to teleop data
+        p_raw[0] = t->delx[teleopArmId];
+        p_raw[1] = t->dely[teleopArmId];
+        p_raw[2] = t->delz[teleopArmId];
+
+        //set local quaternion from teleop quaternion data
+        rot_raw.setX( t->Qx[teleopArmId] );
+        rot_raw.setY( t->Qy[teleopArmId] );
+        rot_raw.setZ( t->Qz[teleopArmId] );
+        rot_raw.setW( t->Qw[teleopArmId] );
+
+        master_raw_position[armidx] += p_raw / MICRON_PER_M;
+        master_raw_orientation[armidx].setRotation(rot_raw);
+
         //print teleop pose
-        if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
-        	tb_angles angles = get_tb_angles(rot);
-        	tb_angles angles1 = get_tb_angles(master_orientation[armidx]);
-        	log_msg("teleop %d (%0.04f %0.04f,%0.04f)  ypr (%0.4f,%0.4f,%0.4f) (%0.4f,%0.4f,%0.4f)",armidx,
-        			master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z(),
+        if (PRINT && !disable_arm_id[armidx]) {
+        	tb_angles angles = get_tb_angles(rot_raw);
+        	tb_angles angles1 = get_tb_angles(master_raw_orientation[armidx]);
+        	printf("teleop %d raw (% 1.3f,% 1.3f,% 1.3f)  ypr (% 3.1f,% 3.1f,% 3.1f) (% 3.1f,% 3.1f,% 3.1f)\n",armidx,
+        			master_raw_position[armidx].x(),master_raw_position[armidx].y(),master_raw_position[armidx].z(),
         			angles.yaw_deg,angles.pitch_deg,angles.roll_deg,
         			angles1.yaw_deg,angles1.pitch_deg,angles1.roll_deg);
         }
 
 
-        if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
-        	printf("(%f %f,%f) ",p.x(),p.y(),p.z());
-        	printf("(%f %f,%f)\n",master_raw_position[armidx].x(),master_raw_position[armidx].y(),master_raw_position[armidx].z());
-        }
-        btQuaternion rot0 = rot;
+        p = p_raw;
+        rot = rot_raw;
         fromITP(p, rot, armserial);
-        if (!t->surgeon_mode) {
-        	master_orientation[armidx].getRotation(rot);
-        }
-        if (_localio_counter % PRINT_EVERY == 0 && armserial == GOLD_ARM_SERIAL) {
-        	printf("(%f %f,%f) ",p.x(),p.y(),p.z());
-        	printf("(%f %f,%f)\n",master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z());
-        }
 
+        if (!t->surgeon_mode) {
+        	//master_orientation[armidx].getRotation(rot);
+        }
 
         master_orientation[armidx].setRotation(rot);
 
-        data1.xd[i].x += p.x();
-        data1.xd[i].y += p.y();
-        data1.xd[i].z += p.z();
+        data1.xd[mechnum].x += p.x();
+        data1.xd[mechnum].y += p.y();
+        data1.xd[mechnum].z += p.z();
 
-        master_position[armidx][0] = data1.xd[i].x/MICRON_PER_M;
-        master_position[armidx][1] = data1.xd[i].y/MICRON_PER_M;
-        master_position[armidx][2] = data1.xd[i].z/MICRON_PER_M;
+        master_position[armidx] += p / MICRON_PER_M;
 
-        //data1.rd[i].grasp = t->buttonstate[armidx];
+        if (PRINT && !disable_arm_id[armidx]) {
+        	tb_angles angles = get_tb_angles(master_orientation[armidx]);
+        	printf("teleop %d     (% 1.3f,% 1.3f,% 1.3f)  ypr (% 3.1f,% 3.1f,% 3.1f)\n",armidx,
+        	        			master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z(),
+        	        			angles.yaw_deg,angles.pitch_deg,angles.roll_deg);
+        }
+
+        float grasp_scale_factor = 500 * since_last_call;
+        if (grasp_scale_factor < 1) {
+        	grasp_scale_factor = 1;
+        }
         const int graspmax = (M_PI/2 * 1000);
         const int graspmin = (-20.0 * 1000.0 DEG2RAD);
-        if (armserial == GOLD_ARM_SERIAL)
-        {
-            data1.rd[i].grasp -= t->grasp[armidx];
-            if (data1.rd[i].grasp>graspmax) data1.rd[i].grasp=graspmax;
-            else if(data1.rd[i].grasp<graspmin) data1.rd[i].grasp=graspmin;
-        }
-        else
-        {
-            data1.rd[i].grasp += t->grasp[armidx];
-            if (data1.rd[i].grasp < -graspmax) data1.rd[i].grasp = -graspmax;
-            else if(data1.rd[i].grasp > -graspmin) data1.rd[i].grasp = -graspmin;
-        }
-
-
-        //Add quaternion increment
         if (armserial == GOLD_ARM_SERIAL) {
-        	rot_mx_temp.setRotation(rot);
+        	data1.rd[mechnum].grasp = saturate(data1.rd[mechnum].grasp + grasp_scale_factor*t->grasp[teleopArmId],graspmin,graspmax);
         } else {
-        	Q_ori[armidx]= rot*Q_ori[armidx];
-        	rot_mx_temp.setRotation(Q_ori[armidx]);
+        	data1.rd[mechnum].grasp = saturate(data1.rd[mechnum].grasp - grasp_scale_factor*t->grasp[teleopArmId],-graspmax,-graspmin);
         }
+
+        rot_mx_temp.setRotation(rot);
 
         // Set rotation command
         for (int j=0;j<3;j++)
             for (int k=0;k<3;k++)
-                data1.rd[i].R[j][k] = rot_mx_temp[j][k];
+                data1.rd[mechnum].R[j][k] = rot_mx_temp[j][k];
     }
 
 //    log_msg("updated d1.xd to: (%d,%d,%d)/(%d,%d,%d)",

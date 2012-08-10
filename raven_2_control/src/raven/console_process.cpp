@@ -175,121 +175,148 @@ int getkey() {
 }
 
 void outputRobotState(){
-    cout<<"Runevel: "<< static_cast<unsigned short int>(device0.runlevel)<<"\n";
-    for (int j = 0; j < 2; j++)
-    {
-        if (device0.mech[j].type == GOLD_ARM)
+    cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
+    mechanism* _mech = NULL;
+    int mechnum=0;
+    while (loop_over_mechs(&device0,_mech,mechnum)) {
+        if (_mech->type == GOLD_ARM)
             cout << "Gold arm:\t";
-        else if (device0.mech[j].type == GREEN_ARM)
+        else if (_mech->type == GREEN_ARM)
             cout << "Green arm:\t";
         else
             cout << "Unknown arm:\t";
 
-        cout<<"Board "<<j<<", type "<<device0.mech[j].type << ":\n";
+        cout << "Board " << mechnum << ", type " << _mech->type << ":" << endl;
 //
 //        cout<<"pos:\t";
-//        cout<<device0.mech[j].pos.x<<"\t";
-//        cout<<device0.mech[j].pos.y<<"\t";
-//        cout<<device0.mech[j].pos.z<<"\n";
+//        cout<<_mech->pos.x<<"\t";
+//        cout<<_mech->pos.y<<"\t";
+//        cout<<_mech->pos.z<<"\n";
 //
 //        cout<<"pos_d:\t";
-//        cout<<device0.mech[j].pos_d.x<<"\t";
-//        cout<<device0.mech[j].pos_d.y<<"\t";
-//        cout<<device0.mech[j].pos_d.z<<"\n";
+//        cout<<_mech->pos_d.x<<"\t";
+//        cout<<_mech->pos_d.y<<"\t";
+//        cout<<_mech->pos_d.z<<"\n";
+
+        DOF* _joint = NULL;
+        int jnum=0;
 
         cout<<"type:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<device0.mech[j].joint[i].type<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << _joint->type<<"\t";
+        cout << endl;
 
         cout<<"enc_val:\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<device0.mech[j].joint[i].enc_val<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << _joint->enc_val<<"\t";
+        cout << endl;
 
         cout<<"enc_off:\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<device0.mech[j].joint[i].enc_offset<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << _joint->enc_offset<<"\t";
+        cout << endl;
 
         cout<<"mpos:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].mpos <<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(2)<<_joint->mpos <<"\t";
+        cout << endl;
 
         cout<<"mpos_d:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].mpos_d <<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(2)<<_joint->mpos_d <<"\t";
+        cout << endl;
 
         cout<<"mvel:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(0)<<device0.mech[j].joint[i].mvel <<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(0)<<_joint->mvel <<"\t";
+        cout << endl;
 
         cout<<"mvel_d:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(0)<<device0.mech[j].joint[i].mvel_d <<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(0)<<_joint->mvel_d <<"\t";
+        cout << endl;
 
         cout<<"jpos:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            if (i!=2)
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jpos <<"\t";
-            else
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jpos<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	if (jnum != Z_INS)
+        		cout<<fixed<<setprecision(2)<<_joint->jpos <<"\t";
+        	else
+        		cout<<fixed<<setprecision(2)<<_joint->jpos<<"\t";
+        cout << endl;
 
         cout<<"jpos_d:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            if (i!=2)
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jpos_d <<"\t";
-            else
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jpos_d<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	if (jnum != Z_INS)
+        		cout<<fixed<<setprecision(2)<<_joint->jpos_d <<"\t";
+        	else
+        		cout<<fixed<<setprecision(2)<<_joint->jpos_d<<"\t";
+        cout << endl;
 
         cout<<"jvel:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            if (i!=2)
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jvel <<"\t";
-            else
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jvel<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	if (jnum != Z_INS)
+        		cout<<fixed<<setprecision(2)<<_joint->jvel <<"\t";
+        	else
+        		cout<<fixed<<setprecision(2)<<_joint->jvel<<"\t";
+        cout << endl;
 
         cout<<"jvel_d:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            if (i!=2)
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jvel_d <<"\t";
-            else
-                cout<<fixed<<setprecision(2)<<device0.mech[j].joint[i].jvel_d<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	if (jnum != Z_INS)
+        		cout<<fixed<<setprecision(2)<<_joint->jvel_d <<"\t";
+        	else
+        		cout<<fixed<<setprecision(2)<<_joint->jvel_d<<"\t";
+        cout << endl;
 
         cout<<"tau_d:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(3)<<device0.mech[j].joint[i].tau_d<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(3)<<_joint->tau_d<<"\t";
+        cout << endl;
 
         cout<<"DAC:\t\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(3)<<device0.mech[j].joint[i].current_cmd<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(3)<<_joint->current_cmd<<"\t";
+        cout << endl;
 
         cout<<"KP gains:\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(3)<<DOF_types[j*MAX_DOF_PER_MECH+i].KP<<"\t";
-        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(3)<<DOF_types[mechnum*MAX_DOF_PER_MECH+jnum].KP<<"\t";
+        cout << endl;
 
         cout<<"KD gains:\t";
-        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-            cout<<fixed<<setprecision(3)<<DOF_types[j*MAX_DOF_PER_MECH+i].KD<<"\t";
-        cout<<"\n";
-//
-//        cout<<"enc_offset:\t";
-//        for (int i=0;i<MAX_DOF_PER_MECH;i++)
-//            cout<<device0.mech[j].joint[i].enc_offset<<"\t";
-//        cout<<"\n";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+            cout<<fixed<<setprecision(3)<<DOF_types[mechnum*MAX_DOF_PER_MECH+jnum].KD<<"\t";
+        cout << endl;
 
-        cout<<"\n";
+        cout<<"KI gains:\t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(3)<<DOF_types[mechnum*MAX_DOF_PER_MECH+jnum].KI<<"\t";
+        cout << endl;
+
+//        cout<<"enc_offset:\t";
+//        _joint = NULL; jnum=0;
+//        while (loop_over_joints(_mech,_joint,jnum))
+//            cout<<_joint->enc_offset<<"\t";
+//        cout << endl;
+
+
+        cout << endl;
     }
 }
 

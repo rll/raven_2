@@ -31,6 +31,7 @@ static float friction_comp_torque[16] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
 
 float cappedVelocity(DOF* joint);
+float cappedPositionError(DOF* joint);
 
 #define HIST_SIZE 75 //200
 void mpos_PD_control(struct DOF *joint, int reset_I)
@@ -65,7 +66,8 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     /* PD CONTROL LAW */
 
     //Calcualte error
-    err    = joint->mpos_d - joint->mpos;
+    //err    = joint->mpos_d - joint->mpos;
+    err = cappedPositionError(joint);
 
 
     float mvel = cappedVelocity(joint);
@@ -322,6 +324,25 @@ float jvel_PI_control(struct DOF *_joint, int resetI){
     _joint->tau_d = ( kv[_joint->type]*jVelErr + ki*jVelIntErr[_joint->type] );
 
     return jVelIntErr[_joint->type];
+}
+
+inline float cappedPositionError(DOF* joint) {
+	float err = joint->mpos_d - joint->mpos;
+	float maxErr = 100000;
+	switch (jointTypeFromCombinedType(joint->type)) {
+		case GRASP1:
+		case GRASP2:
+			maxErr = DOF_types[joint->type].TR * 40 DEG2RAD;
+			break;
+    }
+	if (err > maxErr) {
+		err_msg("Capping joint %s pos error %1.4f at +%f\n",jointIndexAndArmName(joint->type).c_str(),err,maxErr);
+		err = maxErr;
+	} else if (err < -maxErr) {
+		err_msg("Capping joint %s pos error %1.4f at -%f\n",jointIndexAndArmName(joint->type).c_str(),err,maxErr);
+		err = -maxErr;
+	}
+	return err;
 }
 
 inline float cappedVelocity(DOF* joint) {

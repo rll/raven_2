@@ -4,6 +4,7 @@ import rospy
 import rosbag
 import math, time
 import tf
+from raven_2_msgs.msg import *
 from geometry_msgs.msg import *
 from sensor_msgs.msg import JointState
 from tf.msg import tfMessage
@@ -11,10 +12,17 @@ import sys
 
 from raven_2_trajectory.srv import *
 
-BASE_FRAME = '/0_link'
-END_EFFECTOR_FRAME = '/tool_L'
+ARMS = ['R'] #lr = ['L','R']
 
-tools = ['L'] #lr = ['L','R']
+BASE_FRAME = '/0_link'
+END_EFFECTOR_FRAME = 'tool_' + ARMS[0]
+
+RAVEN_STATE_TOPIC = "raven_state"
+
+RAVEN_COMMAND_TOPIC = "raven_command";
+
+COMMAND_POSE_TOPIC = "tool_pose/command/%s";
+TOOL_POSE_TOPIC = "tool_pose/%s";
 
 class TrajectoryRecorder:
     
@@ -39,16 +47,27 @@ class TrajectoryRecorder:
         
         self.service = rospy.Service("record_trajectory",RecordTrajectory,self.service_callback)
         
+        self.raven_state = None
+        self.raven_state_sub = rospy.Subscriber(RAVEN_STATE_TOPIC,RavenState,self.raven_state_callback)
+        
         self.joint_state = None
-        self.joint_state_sub = rospy.Subscriber("/joint_states",JointState,self.joint_callback)
+        self.joint_state_sub = rospy.Subscriber("joint_states",JointState,self.joint_callback)
 
         self.tf = None
         self.tf_sub = rospy.Subscriber("/tf",tfMessage,self.tf_callback)
+        
+        self.raven_command = None
+        self.raven_command_sub = rospy.Subscriber(COMMAND_TOPIC,RavenCommand,raven_command_callback)
+
+        self.cmd_pose = {}
+        self.cmd_pose_sub = {}
+        for arm in ARMS:
+            self.cmd_pose_sub[arm] = rospy.Subscriber(COMMAND_POSE_TOPIC % arm,PoseStamped,lambda msg: self.cmd_pose_callback(msg,arm))
 
         self.tool_pose = {}
         self.tool_pose_sub = {}
-        for tool in tools:
-            self.tool_pose_sub[tool] = rospy.Subscriber("tool_pose_%s" % tool,PoseStamped,lambda msg: self.tool_pose_callback(msg,tool))
+        for arm in ARMS:
+            self.tool_pose_sub[arm] = rospy.Subscriber(TOOL_POSE_TOPIC % arm,PoseStamped,lambda msg: self.tool_pose_callback(msg,arm))
 
         print "let's do this!"
     
@@ -89,11 +108,20 @@ class TrajectoryRecorder:
     def joint_callback(self,msg):
         self.joint_state = msg
 
+    def raven_state_callback(self,msg):
+        self.raven_state = msg
+
     def tf_callback(self,msg):
         self.tf = msg
 
-    def tool_pose_callback(self,msg,tool):
-        self.tool_pose[tool] = msg
+    def raven_command_callback(self,msg):
+        self.raven_command = msg
+
+    def tool_pose_callback(self,msg,arm):
+        self.tool_pose[arm] = msg
+
+    def cmd_pose_callback(self,msg,arm):
+        self.cmd_pose[arm] = msg
 
     def close(self):
         if self.bag is not None:
@@ -105,23 +133,29 @@ class TrajectoryRecorder:
         if not self.active: return
         try:
             #print "writing..."
-            self.bag.write('/joint_states',self.joint_state)
-            self.bag.write('/tf',self.tf)
-            for tool in tools:
-                self.bag.write("tool_pose_%s" % tool,self.tool_pose[tool])
+            self.bagwrite('joint_states',self.joint_state)
+            self.bagwrite(RAVEN_STATE_TOPIC,self.raven_state)
+            self.bagwrite('/tf',self.tf)
+            self.bagwrite(RAVEN_COMMAND_TOPIC, self.raven_command)
+            for arm in ARMS:
+            	self.bagwrite(COMMAND_POSE_TOPIC % arm,self.cmd_pose[arm])
+                self.bagwrite(TOOL_POSE_TOPIC % arm,self.tool_pose[arm])
             now = self.joint_state.header.stamp
-            for side in lr:
-                #(trans,rot) = self.listener.lookupTransform('/0_link', '/tool_'+side, rospy.Time(0))
-                (trans,rot) = self.listener.lookupTransform('/0_link', '/tool_'+side, now)
+            for arm in ARMS:
+                (trans,rot) = self.listener.lookupTransform('/0_link', 'tool_'+arm, now)
                 tool_pose = PoseStamped()
                 tool_pose.header.stamp = now
                 tool_pose.header.frame_id = "/0_link"
                 tool_pose.pose.position = Point(*trans)
                 tool_pose.pose.orientation = Quaternion(*rot)
-                self.bag.write('tool_pose_'+side,tool_pose)
+                self.bagwrite('tool_pose_'+arm,tool_pose)
                 self.pub.publish(tool_pose)
         except (tf.LookupException, tf.ConnectivityException), e:
             print "exception!",e
+    
+    def bagwrite(self,topic,msg):
+    	if msg:
+    		self.bag.write(topic, msg)
 
 if __name__ == "__main__":
     rospy.init_node("raven_2_trajectory_recorder")
@@ -131,7 +165,7 @@ if __name__ == "__main__":
     tr = TrajectoryRecorder(listener)
 
     if len(sys.argv) > 1:
-        tr.default_fileprefix = sys.argv[1]
+    	tr.default_fileprefix = sys.argv[-1]
 
     try:
         rate = rospy.Rate(50)

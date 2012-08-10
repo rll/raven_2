@@ -74,6 +74,7 @@ float fix_angle(float angle,float center = 0);
 float saturatef(float value,float min,float max);
 int saturate(int value,int min,int max);
 
+int loop_over_mechs(struct robot_device* device0, struct mechanism*& _mech, int& mechnum);
 int loop_over_joints(struct robot_device*, struct mechanism*&, struct DOF*&, int&, int&);
 int loop_over_joints(struct mechanism* _mech, struct DOF*& _joint, int& jnum);
 

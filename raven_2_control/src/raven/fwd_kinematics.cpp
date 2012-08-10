@@ -39,6 +39,7 @@ extern int NUM_MECH;
  *         runlevel - current runlevel
  *
  */
+void setToHome(struct mechanism* mech);
 void fwdKin(struct device *device0, int runlevel)
 {
     //Always run forward kinematics for each mech
@@ -128,6 +129,13 @@ void fwdMechKinNew(struct mechanism* mech) {
 	}
 }
 
+void setToHome(struct mechanism* mech) {
+	mech->joint[SHOULDER].jpos;
+	mech->joint[ELBOW].jpos;
+		double j3 = mech->joint[Z_INS].jpos;
+		double j4 = mech->joint[TOOL_ROT].jpos;
+		double j5 = mech->joint[WRIST].jpos;
+}
 
 
 

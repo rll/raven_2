@@ -33,6 +33,7 @@ using namespace std;
 #define STRINGIFY(x) #x
 #define EXPAND(x) STRINGIFY(x)
 
+extern bool disable_arm_id[2];
 extern int NUM_MECH;
 extern unsigned long int gTime;
 extern struct DOF_type DOF_types[];
@@ -158,7 +159,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 *     Why is it called "end_effector_control?  Why's your mom so fat?
 */
 int raven_cartesian_space_command(struct device *device0, struct param_pass *currParams){
-	    struct DOF *_joint = NULL;
+	struct DOF *_joint = NULL;
     struct mechanism* _mech = NULL;
     int i=0,j=0;
 
@@ -203,7 +204,7 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
-        if (currParams->runlevel != RL_PEDAL_DN) {
+        if (currParams->runlevel != RL_PEDAL_DN || disable_arm_id[armIdFromMechType(_mech->type)]) {
             _joint->tau_d=0;
         } else {
             mpos_PD_control(_joint);
@@ -246,21 +247,20 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
 //    const float f_magnitude[8] = {0 DEG2RAD, 0 DEG2RAD, 0.0, 9999999, 0 DEG2RAD, 25 DEG2RAD, 0 DEG2RAD, 0 DEG2RAD};
     const float f_magnitude[8] = {10 DEG2RAD, 10 DEG2RAD, 0.02, 9999999, 20 DEG2RAD, 10 DEG2RAD, 10 DEG2RAD, 10 DEG2RAD};
 
+    struct DOF *_joint = NULL;
+    struct mechanism* _mech = NULL;
+    int i=0,j=0;
+
     // If we're not in pedal down or init.init then do nothing.
     if (! ( currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
     {
         controlStart = 0;
         delay = gTime;
         // Set all joints to zero torque, and mpos_d = mpos
-        for (int i=0; i < NUM_MECH; i++)
-        {
-            for (int j = 0; j < MAX_DOF_PER_MECH; j++)
-            {
-                struct DOF* _joint =  &(device0->mech[i].joint[j]);
+        while (loop_over_joints(device0, _mech, _joint, i,j) ) {
                 _joint->mpos_d = _joint->mpos;
                 _joint->jpos_d = _joint->jpos;
                 _joint->tau_d = 0;
-            }
         }
         return 0;
     }
@@ -269,15 +269,13 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
     if (gTime - delay < 800)
         return 0;
 
+    _joint = NULL;
+    _mech = NULL;
     // Set trajectory on all the joints
-    for (int i=0; i < NUM_MECH; i++)
-    {
-        for (int j = 0; j < MAX_DOF_PER_MECH; j++)
-        {
-            struct DOF * _joint =  &(device0->mech[i].joint[j]);
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
             int sgn = 1;
 
-            if (device0->mech[i].type == GREEN_ARM)
+            if (_mech->type == GREEN_ARM)
                 sgn = -1;
 
             // initialize trajectory
@@ -286,24 +284,19 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
 
             // Get trajectory update
             update_sinusoid_position_trajectory(_joint);
-        }
     }
 
     //Inverse Cable Coupling
     invCableCoupling(device0, currParams->runlevel);
 
+    _joint = NULL;
+    _mech = NULL;
     // Do PD control on all the joints
-    for (int i=0; i < NUM_MECH; i++)
-    {
-        for (int j = 0; j < MAX_DOF_PER_MECH; j++)
-        {
-            struct DOF * _joint =  &(device0->mech[i].joint[j]);
-
-            // Do PD control
-            mpos_PD_control(_joint);
-	    if (_joint->type == TOOL_ROT_GREEN || _joint->type == TOOL_ROT_GOLD)
-		_joint->tau_d = 0;
-        }
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	// Do PD control
+    	mpos_PD_control(_joint);
+    	if (_joint->type == TOOL_ROT_GREEN || _joint->type == TOOL_ROT_GOLD)
+    		_joint->tau_d = 0;
     }
 
 
@@ -321,28 +314,24 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
 */
 int applyTorque(struct device *device0, struct param_pass *currParams)
 {
-    // Only run in runlevel 1.2
-    if ( ! (currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
-        return 0;
+	// Only run in runlevel 1.2
+	if ( ! (currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
+		return 0;
 
-    for (int i=0;i<NUM_MECH;i++)
-    {
-        for (int j=0;j<MAX_DOF_PER_MECH;j++)
-        {
-            if (device0->mech[i].type == GOLD_ARM)
-            {
-                device0->mech[i].joint[j].tau_d = (1.0/1000.0) * (float)(currParams->torque_vals[j]);  // convert from mNm to Nm
-            }
-            else
-            {
-                device0->mech[i].joint[j].tau_d = (1.0/1000.0) * (float)(currParams->torque_vals[MAX_DOF_PER_MECH+j]);
-            }
-        }
-    }
-    // gravComp(device0);
-    TorqueToDAC(device0);
+	struct DOF *_joint = NULL;
+	struct mechanism* _mech = NULL;
+	int i=0,j=0;
+	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+		if (_mech->type == GOLD_ARM) {
+			_joint->tau_d = (1.0/1000.0) * (float)(currParams->torque_vals[j]);  // convert from mNm to Nm
+		} else {
+			_joint->tau_d = (1.0/1000.0) * (float)(currParams->torque_vals[MAX_DOF_PER_MECH+j]);
+		}
+	}
+	// gravComp(device0);
+	TorqueToDAC(device0);
 
-    return 0;
+	return 0;
 }
 
 
@@ -405,9 +394,9 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
         // Do PD control
         mpos_PD_control(_joint);
 
-        if (device0->mech[i].type == GOLD_ARM) {
-            _joint->tau_d=0;
-        }
+//        if (device0->mech[i].type == GOLD_ARM) {
+//            _joint->tau_d=0;
+//        }
     }
 
     TorqueToDAC(device0);
@@ -425,39 +414,33 @@ int raven_joint_velocity_control(struct device *device0, struct param_pass *curr
     static int controlStart;
     static unsigned long int delay=0;
 
+    struct DOF *_joint = NULL;
+    struct mechanism* _mech = NULL;
+    int i=0,j=0;
+
     // Run velocity control
     if ( currParams->runlevel == RL_PEDAL_DN ||
             ( currParams->runlevel == RL_INIT &&
-              currParams->sublevel == SL_AUTO_INIT ))
-    {
+              currParams->sublevel == SL_AUTO_INIT )) {
         // delay the start of control for 300ms b/c the amps have to turn on.
         if (gTime - delay < 800)
-            return 0;
+        	return 0;
 
-        for (int i=0; i < NUM_MECH; i++)
-        {
-            for (int j = 0; j < MAX_DOF_PER_MECH; j++)
-            {
-                struct DOF * _joint =  &(device0->mech[i].joint[j]);
+        while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+        	if (device0->mech[i].type == GOLD_ARM) {
+        		// initialize velocity trajectory
+        		if (!controlStart)
+        			start_trajectory(_joint);
 
-                if (device0->mech[i].type == GOLD_ARM)
-                {
-                    // initialize velocity trajectory
-                    if (!controlStart)
-                        start_trajectory(_joint);
+        		// Get the desired joint velocities
+        		update_linear_sinusoid_velocity_trajectory(_joint);
 
-                    // Get the desired joint velocities
-                    update_linear_sinusoid_velocity_trajectory(_joint);
+        		// Run PI control
+        		jvel_PI_control(_joint, !controlStart);
 
-                    // Run PI control
-                    jvel_PI_control(_joint, !controlStart);
-
-                }
-                else
-                {
-                    _joint->tau_d = 0;
-                }
-            }
+        	} else {
+        		_joint->tau_d = 0;
+        	}
         }
 
         if (!controlStart)
@@ -465,18 +448,13 @@ int raven_joint_velocity_control(struct device *device0, struct param_pass *curr
 
         // Convert joint torque to DAC value.
         TorqueToDAC(device0);
-    }
-
-    else
-    {
-        delay=gTime;
-        controlStart = 0;
-        for (int i=0; i < NUM_MECH; i++)
-            for (int j = 0; j < MAX_DOF_PER_MECH; j++)
-            {
-                device0->mech[i].joint[j].tau_d=0;
-            }
-        TorqueToDAC(device0);
+    } else {
+    	delay=gTime;
+    	controlStart = 0;
+    	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    		_joint->tau_d=0;
+    	}
+    	TorqueToDAC(device0);
     }
 
     return 0;

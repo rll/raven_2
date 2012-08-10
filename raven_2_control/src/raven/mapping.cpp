@@ -59,21 +59,18 @@ void masterToSlave(struct position *pos, int type) // struct mechanism *mech)
 ///
 void fromITP(btVector3& pos, btQuaternion& q, int armserial)
 {
-	const btMatrix3x3 ITP2Gold_pos(1,0,0, 0,1,0, 0,0,1);
-    const btMatrix3x3 ITP2Gold_rotL(0,0,1, 0,-1,0, 1,0,0);
-    const btMatrix3x3 ITP2Gold_rotR(0,-1,0, 0,0,1, -1,0,0);
+	const btMatrix3x3 ITP2world_pos(-1,0,0, 0,0,1, 0,1,0);
+
+	const btMatrix3x3 ITP2world_rotL(0,0,1, 0,-1,0, 1,0,0);
+
+	const btMatrix3x3 ITP2world_rotR = btMatrix3x3(0,-1,0, 0,0,1, -1,0,0) * btMatrix3x3(1,0,0, 0,-1,0, 0,0,-1);
+
     const btMatrix3x3 ITP2Green( 0,0,-1,  1,0,0,  0,-1,0);
 
-        btMatrix3x3 rot(q);
+    btMatrix3x3 rot(q);
 
-    if (armserial == GOLD_ARM_SERIAL) {
-        // Multiply the position vector by the rotation matrix to convert from ITP frame to R_II gold/green frame
-        pos = btMatrix3x3(-1,0,0, 0,0,1, 0,1,0) * pos;
-        rot = ITP2Gold_rotL * rot * ITP2Gold_rotR * btMatrix3x3(1,0,0, 0,-1,0, 0,0,-1);
-    } else {
-        pos = ITP2Green * pos;
-        rot = ITP2Green * rot;
-    }
+    pos = ITP2world_pos * pos;
+    rot = ITP2world_rotL * rot * ITP2world_rotR;
 
     rot.getRotation(q);
 

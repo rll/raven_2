@@ -25,12 +25,16 @@
 #define EPS2 0.00001
 #define EPS 0.01
 
+#define DISABLE_ALL_PRINTING false
+
 static const int PRINT_EVERY_PEDAL_UP   = 1000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
 
-#define PRINT (_ik_counter % PRINT_EVERY == 0)
+#define PRINT (_ik_counter % PRINT_EVERY == 0 && !(DISABLE_ALL_PRINTING))
 
+
+extern bool disable_arm_id[2];
 extern unsigned long int gTime;
 extern int NUM_MECH;
 int inv_kin_last_err = 0;
@@ -81,9 +85,10 @@ void invKin(struct device *device0, struct param_pass* currParams)
 #endif
 
   //Run inverse kinematics for each mech
-  for (int i = 0; i < NUM_MECH; i++) {
-	  if (true || device0->mech[i].type == GREEN_ARM) {
-		  ret = invMechKinNew(&(device0->mech[i]));
+  int mechnum=0; mechanism* _mech=NULL;
+  while(loop_over_mechs(device0,_mech,mechnum)) {
+	  if (true || _mech->type == GREEN_ARM) {
+		  ret = invMechKinNew(_mech);
 	  } else {
 		  ret=0;//invMechKin( &(device0->mech[i]));
 	  }
@@ -132,10 +137,6 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btVector3 actualPoint = btVector3(pos_d->x,pos_d->y,pos_d->z) / MICRON_PER_M;
 	btMatrix3x3 actualOrientation = toBt(ori_d->R);
 	btTransform actualPose(actualOrientation,actualPoint);
-
-	if (mech->type == GREEN_ARM) {
-		//actualPose = GREEN_ARM_BASE_POSE.inverse() * actualPose;
-	}
 
 	btTransform actualPose_fk = actualPose;// = fwdKin(mech);
 
@@ -191,13 +192,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	 * The ik world frame is the base frame.
 	 * Therefore, we need <base to actual_world> to get <base to gripper>.
 	 * <base to actual_world> is inverse of <actual_world to base>
+	 *
+	 * Since the ik is based on the yaw frame (to which the gripper is fixed), we
+	 * take the pose of the yaw frame, not the gripper frame
 	 */
-	btTransform ik_pose;
-	if (test) {
-		ik_pose = ik_world_to_actual_world(armId) * actualPose_fk;
-	} else {
-		ik_pose = ik_world_to_actual_world(armId) * actualPose;
-	}
+	btTransform ik_pose = ik_world_to_actual_world(armId) * actualPose * Tg.inverse();
 
 	btMatrix3x3 ik_orientation = ik_pose.getBasis();
 	btVector3 ik_point = ik_pose.getOrigin();
@@ -258,21 +257,6 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float d = -pz / sin(thp);
 
 	float d_act, thp_act, thy_act, g1_act, g2_act;
-	/*
-	if (mech->type == GOLD_ARM) {
-		d_act = -d;
-		thp_act = thp - thp_offset;
-		thy_act = thy;
-		g1_act = -thy + grasp/2;
-		g2_act =  thy + grasp/2;
-	} else {
-		d_act = -d;
-		thp_act = thp - thp_offset;
-		thy_act = thy;
-		g1_act = -thy + grasp/2;
-		g2_act =  thy + grasp/2;
-	}
-	*/
 	d_act = D_FROM_IK(armId,d);
 	thp_act = THP_FROM_IK(armId,thp);
 	thy_act = THY_FROM_IK(armId,thy,grasp);
@@ -280,19 +264,15 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	g2_act = FINGER2_FROM_IK(armId,thy,grasp);
 
 	//check angles
-	int validity[4];
-	bool valid1 = check_joint_limits1_new(d_act,thp_act,g1_act,g2_act,validity);
+	int validity1[4];
+	bool valid1 = check_joint_limits1_new(d_act,thp_act,g1_act,g2_act,validity1);
 	if (!valid1) {
-		if (_curr_rl == 3) {
-			printf("ik invalid --1-- d %0.4f %d\tp %0.4f %d\ty %0.4f [%d %d]\n",
-					d_act,validity[0],
-					thp_act RAD2DEG,validity[1],
-					thy_act RAD2DEG,validity[2],validity[3]);
-		}
-		if (print) {
-			log_msg("ik invalid 1");
-			log_msg("  act d %0.4f\tp %0.4f\ty %0.4f",mech->joint[Z_INS].jpos_d,mech->joint[WRIST].jpos_d,thy_act);
-			log_msg("  ik  d %0.4f\tp %0.4f\ty %0.4f",d_act,thp_act,thy_act);
+		if (_curr_rl == 3 && !(DISABLE_ALL_PRINTING)) {
+			printf("ik %d invalid --1-- d %0.4f %d\tp %0.4f %d\ty %0.4f [%d %d]\n",
+					armId,
+					d_act,validity1[0],
+					thp_act RAD2DEG,validity1[1],
+					thy_act RAD2DEG,validity1[2],validity1[3]);
 		}
 		return 0;
 	}
@@ -330,6 +310,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float thr_opt[2];
 
 	bool opts_valid[2];
+	int validity2[2][4];
+
+	float ths_act[2];
+	float the_act[2];
+	float thr_act[2];
 
 	for (int i=0;i<2;i++) {
 		float sthe_tmp = sin(the_opt[i]);
@@ -353,7 +338,6 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				(xx - C7 * xy / C4) / (C6 + C7*C5/C4),
 				(xx + C6 * xy / C5) / (-C6*C4/C5 - C7));
 
-		float ths_act, the_act, thr_act;
 		/*
 		if (mech->type == GOLD_ARM) {
 			ths_act = ths_opt[i] - ths_offset;
@@ -366,23 +350,12 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 			the_act = fix_angle(the_opt[i] + M_PI);
 			thr_act = fix_angle(-thr_opt[i] + thr_offset);
 		}*/
-		ths_act = THS_FROM_IK(armId,ths_opt[i]);
-		the_act = THE_FROM_IK(armId,the_opt[i]);
-		thr_act = THR_FROM_IK(armId,thr_opt[i]);
+		ths_act[i] = THS_FROM_IK(armId,ths_opt[i]);
+		the_act[i] = THE_FROM_IK(armId,the_opt[i]);
+		thr_act[i] = THR_FROM_IK(armId,thr_opt[i]);
 
 		if (print) {
-			if (test) {
-				log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
-						mech->joint[SHOULDER].jpos_d RAD2DEG,
-						mech->joint[ELBOW].jpos_d RAD2DEG,
-						mech->joint[TOOL_ROT].jpos_d RAD2DEG,
-						mech->joint[Z_INS].jpos_d,
-						mech->joint[WRIST].jpos_d RAD2DEG,
-						fix_angle(mech->joint[GRASP2].jpos_d - mech->joint[GRASP1].jpos_d,0) / 2  RAD2DEG,
-						fix_angle(mech->joint[GRASP1].jpos_d + mech->joint[GRASP2].jpos_d,0) RAD2DEG,
-						mech->joint[GRASP1].jpos_d RAD2DEG, mech->joint[GRASP2].jpos_d RAD2DEG);
-			} else {
-				log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
+			log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
 						mech->joint[SHOULDER].jpos RAD2DEG,
 						mech->joint[ELBOW].jpos RAD2DEG,
 						mech->joint[TOOL_ROT].jpos RAD2DEG,
@@ -392,11 +365,10 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 						mech->ori.grasp * 1000. RAD2DEG,
 						fix_angle(mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos,0) RAD2DEG,
 						mech->joint[GRASP1].jpos RAD2DEG, mech->joint[GRASP2].jpos RAD2DEG);
-			}
 			log_msg("%d s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",i,
-					ths_act RAD2DEG,
-					the_act RAD2DEG,
-					thr_act RAD2DEG,
+					ths_act[i] RAD2DEG,
+					the_act[i] RAD2DEG,
+					thr_act[i] RAD2DEG,
 					d_act,
 					thp_act RAD2DEG,
 					thy_act RAD2DEG,
@@ -411,24 +383,23 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 			}
 		}
 
-		bool valid2 = check_joint_limits2_new(ths_act,the_act,thr_act,validity);
+		bool valid2 = check_joint_limits2_new(ths_act[i],the_act[i],thr_act[i],validity2[i]);
 		opts_valid[i] = valid2;
 
 		if (valid2) {
 			float ths_diff, the_diff, d_diff, thr_diff, thp_diff, thg1_diff, thg2_diff;
-			if (!test) {
 				//set joints
 				set_joints_with_limits1(mech,d_act,thp_act,g1_act,g2_act);
-				set_joints_with_limits2(mech,ths_act,the_act,thr_act);
+				set_joints_with_limits2(mech,ths_act[i],the_act[i],thr_act[i]);
 
-				ths_diff = mech->joint[SHOULDER].jpos - ths_act;
-				the_diff = mech->joint[ELBOW].jpos    - the_act;
+				ths_diff = mech->joint[SHOULDER].jpos - ths_act[i];
+				the_diff = mech->joint[ELBOW].jpos    - the_act[i];
 				d_diff = mech->joint[Z_INS].jpos    - d_act;
-				thr_diff = mech->joint[TOOL_ROT].jpos - thr_act;
+				thr_diff = mech->joint[TOOL_ROT].jpos - thr_act[i];
 				thp_diff = mech->joint[WRIST].jpos    - thp_act;
 				thg1_diff = mech->joint[GRASP1].jpos   - g1_act;
 				thg2_diff = mech->joint[GRASP2].jpos   - g2_act;
-			} else {
+			/*
 				ths_diff = mech->joint[SHOULDER].jpos_d - ths_act;
 				the_diff = mech->joint[ELBOW].jpos_d    - the_act;
 				d_diff = mech->joint[Z_INS].jpos_d    - d_act;
@@ -436,7 +407,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				thp_diff = mech->joint[WRIST].jpos_d    - thp_act;
 				thg1_diff = mech->joint[GRASP1].jpos_d   - g1_act;
 				thg2_diff = mech->joint[GRASP2].jpos_d   - g2_act;
-			}
+			*/
 
 			if (print) {
 				log_msg("%d s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f        g % 2.1f g1 % 2.1f g2 % 2.1f",i,
@@ -448,11 +419,6 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 						grasp RAD2DEG,
 						mech->joint[GRASP1].jpos_d RAD2DEG,
 						mech->joint[GRASP2].jpos_d RAD2DEG);
-//				log_msg("diffs: ths %0.4f  the %0.4f  thr %0.4f  d %0.4f  thp %0.4f  g1 %0.4f  g2 %0.4f",
-//						ths_diff,the_diff,thr_diff,d_diff,thp_diff,thg1_diff,thg2_diff);
-//				log_msg("  deg: ths %0.4f  the %0.4f  thr %0.4f  d %0.4f  thp %0.4f  g1 %0.4f  g2 %0.4f",
-//						ths_diff*180/M_PI,the_diff*180/M_PI,thr_diff*180/M_PI,d_diff,
-//						thp_diff*180/M_PI,thg1_diff*180/M_PI,thg2_diff*180/M_PI);
 				log_msg("diff:");
 				log_msg("R s %0.4f e %0.4f r %0.4f d %0.4f p %0.4f                     g1 %0.4f  g2 %0.4f",
 						ths_diff,the_diff,thr_diff,d_diff,thp_diff,thg1_diff,thg2_diff);
@@ -460,58 +426,48 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 						ths_diff*180/M_PI,the_diff*180/M_PI,thr_diff*180/M_PI,d_diff,
 						thp_diff*180/M_PI,thg1_diff*180/M_PI,thg2_diff*180/M_PI);
 
-//				btTransform Tw2b(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-//				btTransform Zs = Z(ths_act + ths_offset,0);
-//				btTransform Xu = X(th12,0);
-//				btTransform Ze = Z(the_act,0);
-//				btTransform Xf = X(th23,0);
-//				btTransform Zr = Z(-thr_act + thr_offset,0);
-//				btTransform Zi = Z(0,-d_act);
-//				btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
-//				btTransform Zp = Z(thp_act,0);
-//				btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(dw,0,0));
-//				btTransform Zy = Z(thy_act,0);
-//				btTransform Tg(btMatrix3x3::getIdentity());
-//
-//				btTransform tool = ik_world_to_actual_world.inverseTimes(Tw2b * Zs * Xu * Ze * Xf * Zr * Zi * Xip * Zp * Xpy * Zy * Tg);
-
-
 			}
-//			mech->joint[GRASP1].jpos_d = grasp/2;
-//			mech->joint[GRASP2].jpos_d = grasp/2;
-//			mech->joint[TOOL_ROT].jpos_d = 0;
-//			mech->joint[WRIST].jpos_d = 0;
 
 			if (i==1 && _curr_rl == 3) {
 				//printf("ik ok! %d\n",_ik_counter);
 			}
-			return 1;
-		} else {
-			if (_curr_rl == 3) {
-				/*printf("ik invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
-						ths_act RAD2DEG,validity[0],
-						the_act RAD2DEG,validity[1],
-						thr_act RAD2DEG,validity[2]);
-				printf("%7d          d %0.4f  \tp %0.4f  \ty %0.4f\n",_ik_counter,
-									d_act,thp_act RAD2DEG,thy_act RAD2DEG);
-				printf("x (%f, %f, %f)  z (%f, %f, %f) %f\n",xx,xy,xz,zx,zy,zz,cthe);
-				printf("norms %f %f\n",x_roll_in_world.length(),z_roll_in_world.length());
-				printf("(zy + kc12*kc23): %f (%f, %f)\n",(zy + kc12*kc23),zy, kc12*kc23);
-				printf("(ks12*ks23): %f\n",(ks12*ks23));
-				*/
-			}
 		}
 	}
 
-	if (_curr_rl == 3) {
-		printf("ik invalid **** %d\n",_ik_counter);
+	if (opts_valid[0]) {
+		return 1;
+	} else if (opts_valid[1]) {
+		bool ENABLE_PARTIAL_INVALID_IK_PRINTING = false;
+		if (ENABLE_PARTIAL_INVALID_IK_PRINTING && (_curr_rl == 3 || print) && !(DISABLE_ALL_PRINTING)) {
+			printf("ik %d    ok   **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
+					armId,
+					ths_act[0] RAD2DEG,validity2[0][0],
+					the_act[0] RAD2DEG,validity2[0][1],
+					thr_act[0] RAD2DEG,validity2[0][2]);
+			/*
+			printf("%7d          d %0.4f  \tp %0.4f  \ty %0.4f\n",_ik_counter,
+								d_act,thp_act RAD2DEG,thy_act RAD2DEG);
+			printf("x (%f, %f, %f)  z (%f, %f, %f) %f\n",xx,xy,xz,zx,zy,zz,cthe);
+			printf("norms %f %f\n",x_roll_in_world.length(),z_roll_in_world.length());
+			printf("(zy + kc12*kc23): %f (%f, %f)\n",(zy + kc12*kc23),zy, kc12*kc23);
+			printf("(ks12*ks23): %f\n",(ks12*ks23));
+			 */
+		}
+		return 1;
+	} else {
+		if ((_curr_rl == 3 || print) && !(DISABLE_ALL_PRINTING)) {
+			printf("ik %d invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
+					armId,
+					ths_act[0] RAD2DEG,validity2[0][0],
+					the_act[0] RAD2DEG,validity2[0][1],
+					thr_act[0] RAD2DEG,validity2[0][2]);
+			printf("                   s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
+					ths_act[1] RAD2DEG,validity2[1][0],
+					the_act[1] RAD2DEG,validity2[1][1],
+					thr_act[1] RAD2DEG,validity2[1][2]);
+		}
+		return 0;
 	}
-	if (print) {
-		log_msg("ik invalid");
-	}
-
-		//no joints were valid
-	return 0;
 }
 
 int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float g1_act, float g2_act) {
@@ -608,11 +564,11 @@ int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float
 
 	if (mech->joint[TOOL_ROT].jpos_d < TOOL_ROLL_MIN_LIMIT) {
 		limits++;
-		log_msg("roll %1.4fdeg under min limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
+		log_msg("roll % 3.1fdeg under min limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
 		mech->joint[TOOL_ROT].jpos_d = TOOL_ROLL_MIN_LIMIT;
 	} else if (mech->joint[TOOL_ROT].jpos_d > TOOL_ROLL_MAX_LIMIT) {
 		limits++;
-		log_msg("roll %1.4fdeg over max limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
+		log_msg("roll % 3.1fdeg over max limit",mech->joint[TOOL_ROT].jpos_d RAD2DEG);
 		mech->joint[TOOL_ROT].jpos_d = TOOL_ROLL_MAX_LIMIT;
 	}
 

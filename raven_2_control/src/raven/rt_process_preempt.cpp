@@ -57,6 +57,8 @@ int    mech_gravcomp_done[2]={0};
 
 int NUM_MECH=0;   // Define NUM_MECH as a C variable, not a c++ variable
 
+bool disable_arm_id[2] = {false,false};
+
 pthread_t rt_thread;
 pthread_t net_thread;
 pthread_t fiforcv_thread;
@@ -250,7 +252,22 @@ int init_ros(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-
+	for (int i=0;i<argc;i++) {
+		//printf("%s\n",argv[i]);
+	}
+	if (argc > 1) {
+		if (strcmp(argv[1],"gold")==0) {
+			printf("**** GOLD ARM ONLY ****\n");
+			disable_arm_id[GREEN_ARM_ID] = true;
+		} else if (strcmp(argv[1],"green")==0) {
+			printf("**** GREEN ARM ONLY ****\n");
+			disable_arm_id[GOLD_ARM_ID] = true;
+		} else if (strcmp(argv[1],"both")==0) {
+			printf("**** BOTH ARMS ****\n");
+			disable_arm_id[GOLD_ARM_ID] = false;
+			disable_arm_id[GREEN_ARM_ID] = false;
+		}
+	}
     //signal( SIGINT,&sigTrap);                // catch ^C for graceful close.  Unused under ROS
     ioperm(PORT,1,1);                        // set parallelport permissions
     if ( init_module() )
@@ -281,207 +298,3 @@ int main(int argc, char **argv)
 
     exit(0);
 }
-
-
-
-
-
-/** This function dumps device (robot states, torques etc etc) info to FIFO
-* TODO: Should this run at a higher priority?? If the realtime code consumes all cpu cycles, this thread may not run at all and the system will be unable
-* to send any data out
-DEPRECATED since we're not using the toolkit anymore.  Besides, it's stupid to output status info from a different thread.
-TODO: Deleteme
-*/
-/*
-void *data_fifo_send_process(void *)
-{
-    int fd=0;
-    int dummy_rd_fd=0;
-    struct sched_param param;                    // priority settings
-    param.sched_priority = 0;
-    if (sched_setscheduler(0, SCHED_OTHER, &param)==-1)
-    {
-        perror("data_fifo_send_process: sched_setscheduler failed in ");
-        exit(-1);
-    }
-    unlink("/tmp/fifosend");
-    umask(0);
-    fd=mkfifo("/tmp/fifosend",S_IWUSR|S_IRUSR|S_IROTH|S_IWOTH);
-    if (fd<0)
-    {
-        printf("recieve fifo error\n");
-        return 0;
-    }
-    fd=open("/tmp/fifosend",O_WRONLY); //OPen writing end with blocking writes
-    if (fd==-1)
-    {
-        cout<<"Invalid write fifo\n";
-        return 0;
-    }
-    dummy_rd_fd=open("/tmp/fifosend",O_RDONLY); ///TODO: Figure out a better mechanism to prevent sigpipe when toolkit closes pipe after ning//Open dummy
-    ///file to suppress broken pipe signal when the toolkit closes.
-
-    while (ros::ok())
-    {
-        senddatafromoutputbuffer(fd);
-    }
-    log_msg("Data output is shutdown");
-
-    return NULL;
-}
-*/
-
-/** This function recieves toolkit information
-* TODO: Should this run at a higher priority?? If the realtime code consumes all cpu cycles, this thread may not run at all and the system will be unable
-* to respond to the toolkit. But if we are using all cpu cycles for control, we shouldn't be doing this anyway.
-*/
-/*
-DEPRECATED since we're not using a toolkit.
-TODO: Deleteme
-void *data_fifo_rcv_process(void *)
-{
-    int fd=0;
-    int dummy_wr_fd=0;
-    struct sched_param param;                    // priority settings
-    param.sched_priority = 0;
-    if (sched_setscheduler(0, SCHED_OTHER, &param)==-1)
-    {
-        perror("sched_setscheduler failed");
-        exit(-1);
-    }
-    unlink("/tmp/fiforcv");
-    umask(0);
-    fd=mkfifo("/tmp/fiforcv",S_IRUSR|S_IWOTH);
-    if (fd<0)
-    {
-        printf("recieve fifo error\n");
-        return 0;
-    }
-    fd=open("/tmp/fiforcv",O_RDONLY);
-    if (fd==-1)
-    {
-        cout<<"Invalid write fifo\n";
-        return 0;
-    }
-    dummy_wr_fd=open("/tmp/fiforcv",O_WRONLY); ///TODO: Figure out way to detect close of other end. Keep open to prevent continuous EOF reads since closed pipe returns EOF on read and causes loop to run quickly.
-    while (ros::ok())
-    {
-        if (recieveToolkit(fd)==-1)
-        {
-            //usleep(1e4); //Reading fifo failed. Wait for sometime.
-        }
-    }
-
-    log_msg("Data input process is shutdown");
-    return (NULL);
-}
-
-*/
-
-/// Trap ctrl-C
-// unused.  Now trapped by ROS
-/*void sigTrap(int sig)
-{
-    runable = 0;
-    usleep(10e3);
-    pthread_cancel(rt_thread);
-}*/
-
-
-
-/*
-
-SAMPLE CODE FOR TESTING f/inv kinematics
-{0.386,	0.057,	-0.921},
-{-0.201,	-0.969,	-0.144},
-{-0.900,	0.240,	-0.363}}
-
-            printf("\n\n Test 1:-------------\n");
-            struct mechanism mechTest;
-            mechTest.type=GREEN_ARM;
-            mechTest.pos_d.x = 6382;
-            mechTest.pos_d.y = 1367;
-            mechTest.pos_d.z = 2531;
-            double o[3][3] = {{0.386,	0.057,	-0.921},{-0.201,	-0.969,	-0.144},{-0.900,	0.240,	-0.363}};
-            for (int i=0;i<3;i++)
-                for (int j=0; j<3; j++)
-                    mechTest.ori_d.R[i][j]=o[i][j];
-            mechTest.ori_d.grasp = 0;
-            mechTest.joint[GRASP1].tau = 0;
-            mechTest.joint[GRASP2].tau = 0;
-            printf("pos_d: (%d,\t%d\t%d)\nori_d:\t(%.3f,\t%.3f,\t%.3f)\n\t(%.3f,\t%.3f,\t%.3f)\n\t(%.3f,\t%.3f,\t%.3f)\n",
-                mechTest.pos_d.x,mechTest.pos_d.y,mechTest.pos_d.z,
-                mechTest.ori_d.R[0][0],mechTest.ori_d.R[0][1],mechTest.ori_d.R[0][2],
-                mechTest.ori_d.R[1][0],mechTest.ori_d.R[1][1],mechTest.ori_d.R[1][2],
-                mechTest.ori_d.R[2][0],mechTest.ori_d.R[2][1],mechTest.ori_d.R[2][2]);
-
-            int ret=invMechKin(&mechTest);
-            printf("\ninv kin returned: %d\n", ret);
-            for(int i=0;i<MAX_DOF_PER_MECH;i++){
-                mechTest.joint[i].jpos=0;
-                printf("joint (p/d) %d: %.3f\t %.3f\n",i, mechTest.joint[i].jpos,mechTest.joint[i].jpos_d);
-                mechTest.joint[i].jpos=mechTest.joint[i].jpos_d;
-            }
-            fwdMechKin(&mechTest);
-            printf("\nfwd kin returned.\n");
-
-            printf("pos: (%d,\t%d\t%d)\nori:\t(%.3f,\t%.3f,\t%.3f)\n\t(%.3f,\t%.3f,\t%.3f)\n\t(%.3f,\t%.3f,\t%.3f)\n",
-                mechTest.pos.x,mechTest.pos.y,mechTest.pos.z,
-                mechTest.ori.R[0][0],mechTest.ori.R[0][1],mechTest.ori.R[0][2],
-                mechTest.ori.R[1][0],mechTest.ori.R[1][1],mechTest.ori.R[1][2],
-                mechTest.ori.R[2][0],mechTest.ori.R[2][1],mechTest.ori.R[2][2]);
-
-
-            printf("\n\n Test 2:-------------\n");
-            mechTest.pos_d.x=mechTest.pos.x;
-            mechTest.pos_d.y=mechTest.pos.y;
-            mechTest.pos_d.z=mechTest.pos.z;
-
-            printf("set pos_d=pos\n");
-            ret=invMechKin(&mechTest);
-            printf("inv kin returned: %d\n", ret);
-            for(int i=0;i<MAX_DOF_PER_MECH;i++){
-                printf("joint (p/d) %d: %.3f\t %.3f\n",i, mechTest.joint[i].jpos,mechTest.joint[i].jpos_d);
-            }
-            printf("\n\n\n");
-            break;
-*/
-
-
-
-/*
-
-This code snippet moved to rt_raven.cpp
-
-            //Initialization code
-            initSurgicalArms(&device0, currParams.runlevel, &currParams);
-
-            //Inverse kinematics
-            invKin(&device0, &currParams);
-
-            //Inverse Cable Coupling
-            invCableCoupling(&device0, currParams.runlevel);
-
-            //Compute Velocities
-            //computeVelocity(&device0);
-            stateEstimate(&device0);
-
-            //Run Control
-            // PD control should run in auto-init run/sublevel.
-            // PD control should run in pedal-down runlevel.
-            if ( currParams.runlevel == RL_PEDAL_DN ||
-                    ( currParams.runlevel == RL_INIT &&
-                      currParams.sublevel == SL_AUTO_INIT ))
-            {
-                pdController(&device0, MOTOR_PD_CTRL, currParams.runlevel);
-                gravComp(&device0);
-                TorqueToDAC(&device0);
-            }
-
-            //Foward Cable Coupling
-            fwdCableCoupling(&device0, currParams.runlevel);
-
-            //Forward kinematics
-            fwdKin(&device0, currParams.runlevel);
-
-*/

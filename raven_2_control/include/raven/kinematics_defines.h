@@ -63,7 +63,7 @@ inline float THP_FROM_IK(int armId,float thp) { return (armId == GOLD_ARM_ID ? f
 
 const btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(DW,0,0));
 
-inline int MECH_GRASP_FROM_MECH_FINGERS(int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 + g1) : (g2 + g1))*1000.; }
+inline int MECH_GRASP_FROM_MECH_FINGERS(int armId,float g1, float g2) { return 1000.*(armId == GOLD_ARM_ID ? (g2 + g1) : (g2 + g1)); }
 inline float GRASP_TO_IK(int armId,int grasp) { return (armId == GOLD_ARM_ID ? grasp : -grasp) / 1000.; }
 
 inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ? -thy + grasp/2 : -( thy + grasp/2)); }
@@ -75,7 +75,7 @@ inline float THY_FROM_IK(int armId, float thy, float grasp) { return thy; }
 
 #define Zy(thy) Z(thy,0)
 
-const btTransform Tg(btMatrix3x3::getIdentity());
+const btTransform Tg(btMatrix3x3::getIdentity(),btVector3(0.01,0,0));
 
 #define Tikw2g(ths,the,thr,d,thp,thy) btTransform(Tw2b * Zs(ths) * Xu * Ze(the) * Xf * Zr(thr) * Zi(d) * Xip * Zp(thp) * Xpy * Zy(thy) * Tg)
 #define Tw2g(armId,ths,the,thr,d,thp,thy) btTransform(actual_world_to_ik_world(armId) * Tikw2g(ths,the,thr,d,thp,thy))

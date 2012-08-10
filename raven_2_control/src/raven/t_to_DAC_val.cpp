@@ -30,19 +30,20 @@ extern unsigned int soft_estopped;
  */
 int TorqueToDAC(struct device *device0)
 {
-    int i, j;
+	struct DOF *_joint = NULL;
+	struct mechanism* _mech = NULL;
+    int i=0, j=0;
 
     // for each arm
-    for (i=0; i < NUM_MECH; i++)
-        for (j=0; j < MAX_DOF_PER_MECH ; j++) {
-            if (device0->mech[i].joint[j].type == NO_CONNECTION_GOLD || device0->mech[i].joint[j].type == NO_CONNECTION_GREEN)
-                continue;
-            device0->mech[i].joint[j].current_cmd = tToDACVal( &(device0->mech[i].joint[j]) );  // Convert torque to DAC value
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	if (_joint->type == NO_CONNECTION_GOLD || _joint->type == NO_CONNECTION_GREEN)
+    		continue;
+    	_joint->current_cmd = tToDACVal( _joint );  // Convert torque to DAC value
 
-            if ( soft_estopped )
-                device0->mech[i].joint[j].current_cmd = 0;
+    	if ( soft_estopped )
+    		_joint->current_cmd = 0;
 
-        }
+    }
     return 0;
 }
 
@@ -85,18 +86,22 @@ short int tToDACVal(struct DOF *joint)
  */
 void clearDACs(struct device *device0)
 {
-    int i, j;
+	struct DOF *_joint = NULL;
+	struct mechanism* _mech = NULL;
+	int i=0, j=0;
 
     //Set all encoder values to no movement
-    for (i = 0; i < NUM_MECH; i++)
-        for (j = 0; j < MAX_DOF_PER_MECH; j++)
-            device0->mech[i].joint[j].current_cmd = 0;
+	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+		_joint->current_cmd = 0;
+	}
 }
 
 int TorqueToDACTest(struct device *device0)
 {
     static int count;
-    int i, j;
+    struct DOF *_joint = NULL;
+    struct mechanism* _mech = NULL;
+    int i=0, j=0;
     static unsigned int output=0x4000;
     if (output < 0x8000)
         output = 0xa000;
@@ -105,12 +110,8 @@ int TorqueToDACTest(struct device *device0)
     // for each arm
     count++;
 
-    for (i=0; i < NUM_MECH; i++)
-    {
-        for (j=0; j < MAX_DOF_PER_MECH ; j++)
-        {
-            device0->mech[i].joint[j].current_cmd = output;
-        }
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	_joint->current_cmd = output;
     }
 
     return 0;
