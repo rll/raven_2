@@ -279,6 +279,14 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     		cerr << lastJposD[joint->type][i] << " ";
     	}
     	cerr << endl;
+    	cerr << "tau " << tau_d << " = " << endl;
+    	cerr << "  p " << pTerm << endl;
+    	cerr << " +d " << vTerm << endl;
+    	cerr << " +i " << iTerm << endl;
+    	cerr << "err " << err << " errV " << errVel << " errInt " << errInt[joint->type] << endl;
+    	cerr << "mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;
+    	cerr << "jpos " << joint->jpos << " jpos_d " << joint->jpos_d << endl;
+    	cerr << "kp " << kp << " kd " << kd << " ki " << ki << endl;
     	cerr << "^^^^^^ DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ^^^^^^" << endl;
     }
 

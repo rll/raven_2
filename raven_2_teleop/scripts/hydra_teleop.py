@@ -90,7 +90,7 @@ class HydraTeleop:
             tool_cmd.absolute = False
             paddle = msg.paddles[i]
 
-            if paddle.trigger and not self.last_msg.paddles[i].trigger:
+            if paddle.buttons[CalibPaddle.JOYSTICK] and not self.last_msg.paddles[i].buttons[CalibPaddle.JOYSTICK]:
                 print "That's the %s controller!" % SIDE_NAMES[i]
 
             if SIDE_ACTIVE[i] and paddle.buttons[CalibPaddle.BUMPER] and not self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
@@ -164,7 +164,8 @@ class HydraTeleop:
                         #print "Rotation active"
                     #raven_command.joint_velocities[i].rotation = paddle.joy[0]
                 
-                if paddle.buttons[CalibPaddle.START] or paddle.joy[0] or paddle.joy[1]:
+                #if paddle.buttons[CalibPaddle.START] or paddle.joy[0] or paddle.joy[1]:
+                if paddle.trigger or paddle.joy[0] or paddle.joy[1]:
                     tool_cmd.tool_pose.position = Point(0,0,0)
 
             arm_cmd.active = active[i] and SIDE_ACTIVE[i]
