@@ -11,7 +11,9 @@ srv_gen
 _*.py
 build
 bin/*
+lib/*
 err_network.log
 .*project
 *.cmake
 .settings/
+raven_2_vision/data/old/

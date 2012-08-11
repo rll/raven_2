@@ -1,0 +1,21 @@
+<package>
+  <description brief="raven_2_vision">
+
+     raven_vision
+
+  </description>
+  <author>John Schulman</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_vision</url>
+  <depend package="cv_bridge"/>
+  <depend package="roscpp"/>
+  <depend package="rospy"/>
+  <depend package="bullet"/>
+  <depend package="geometry_msgs"/>
+  <depend package="sensor_msgs"/>
+  <depend package="tf"/>
+
+</package>
+
+

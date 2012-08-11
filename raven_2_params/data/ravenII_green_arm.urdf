@@ -1,0 +1,240 @@
+<?xml version="1.0"?>
+<!--RavenII Surgical Robot 2-Arm urdf File -->
+<!--Author: Sina Nia Kosari & Lee White-->
+<!--kosari@uw.edu & leewhite@uw.edu-->
+<!--Date: 01-Dec-2011 -->
+<!--Biorobotics Laboratory -->
+<!--University of Washington -->
+
+<robot name="raven_2">
+
+  <link name="world">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size=".001 .001 .001" />
+     </geometry>
+     <material name="Cyan">
+       <color rgba="0 255 255 1.0"/>
+     </material>
+   </visual>
+  </link>
+
+  <joint name="world_to_0_link" type="fixed">
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 1.5707963267948966" xyz=".211 -.25071 .235"/>
+    <parent link="world"/>
+    <child link="0_link"/>
+  </joint>
+
+  <link name="0_link">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size=".001 .001 .001" />
+     </geometry>
+     <material name="Cyan">
+       <color rgba="0 255 255 1.0"/>
+     </material>
+   </visual>
+  </link>
+
+ <!-- RIGHT ARM LINKS -->
+ <link name="base_link_R">
+    <!--visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/base_w_motors.dae"/>
+      </geometry>
+    <origin xyz="0 -1 0" rpy="0 0 -1.5708889782384681"/>
+    </visual-->
+  </link>
+
+  <link name="link1_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/link1_w_cover.dae"/>
+      </geometry>
+    <origin xyz="0 0 1" rpy="2.0343327502434696 -1.570692737892182 1.4746886982867402"/>
+    </visual>
+  </link>
+
+  <link name="link2_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/link2.dae"/>
+      </geometry>
+    <origin xyz="0 0.96590402193369951 0.2589004061671063" rpy="1.9382277866578941 -0.26188361992198378 1.5707860355398915"/>
+    </visual>
+  </link>
+
+  <link name="link3_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/link3.dae"/>
+      </geometry>
+    <origin xyz="0 0.79905387464137156 -0.60125943262605086" rpy="1.9382176424793203 0.64507633072364345 1.5707838866266983"/>
+    </visual>
+  </link>
+
+  <link name="instrument_shaft_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/instrument_shaft.dae"/>
+      </geometry>
+    <origin xyz="0 0.79905387464137156 -0.60125943262605086" rpy="1.9382176424793203 0.64507633072364345 1.5707838866266983"/>
+    </visual>
+  </link>
+
+  <link name="wrist_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/wrist.dae"/>
+      </geometry>
+    <origin xyz="-0.60125943262605086 -0.5650093843930829 0.56502344219151568" rpy="0.90877734233389373 -0.60046166550392155 -2.3872665559136799"/>
+    </visual>
+  </link>
+
+  <link name="grasper1_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/grasper_1.dae"/>
+      </geometry>
+    <!--origin rpy="0 0 0" xyz="1.00680 -0.00904 0.00452"/-->
+    <origin xyz="-0.6132594326260508  -9.940364600457567e-06  -0.7990538746413716" rpy="-1.2033543209266322  0.9257199959684191  -3.141576121018227"/>
+    </visual>
+  </link>
+
+  <link name="grasper2_R">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/right_arm/grasper_2.dae"/>
+      </geometry>
+    <origin xyz="-0.6132594326260508  9.940364600359764e-06  0.7990538746413716" rpy="1.938238332663161  -0.9257199959684191  3.1415761210182276"/>
+    </visual>
+  </link>
+
+  <link name="tool_base_R">
+  </link>
+
+  <link name="tool_R">
+  </link>
+
+  <link name="tool_tip_R">
+  </link>
+
+  <link name="grasper1_tip_R">
+  </link>
+
+  <link name="grasper2_tip_R">
+  </link>
+
+
+
+  <!-- RIGHT ARM JOINTS -->
+  <joint name="base_mount_R" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 1.5707963267948966" xyz="-.2 0 0"/> <!-- berkeley's ravens are mounted without the tilt -->
+    <!-- <origin rpy=" 1.57075 -2.0071286 1.57075" xyz="-.2 0.00 0"/> -->
+    <parent link="0_link"/>
+    <child link="base_link_R"/>
+  </joint>
+
+  <joint name="shoulder_R" type="revolute">
+    <axis xyz="0 0 -1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="1.5707963267948966 -1.2032285493235686 0" xyz="0 0.0 0"/> <!-- pitch is -pi/2 + 0.3676 [atan(0.3471/0.9014)] -->
+    <parent link="base_link_R"/>
+    <child link="link1_R"/>
+  </joint>
+
+  <joint name="elbow_R" type="revolute">
+    <axis xyz="0 0 -1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="1.3088095959974027 0 0" xyz="0.0 0.0 0"/>
+    <parent link="link1_R"/>
+    <child link="link2_R"/>
+  </joint>
+
+  <joint name="insertion_R" type="prismatic">
+    <axis xyz="0 0 -1"/>
+    <limit effort="1000.0" lower="-.17" upper=".1" velocity="0.5"/>
+    <origin rpy="0.90695995069604551 0 0" xyz="0 0 0"/>
+    <parent link="link2_R"/>
+    <child link="link3_R"/>
+  </joint>
+
+  <joint name="tool_roll_R" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 -0.37732519171346124" xyz="0 0 0"/>
+    <parent link="link3_R"/>
+    <child link="instrument_shaft_R"/>
+  </joint>
+
+  <joint name="wrist_joint_R" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity="0.5"/>
+    <!--origin rpy="2.3561944901923448 -1.5707963267948966 1.5707963267948966" xyz="0 0 0"/-->  <!-- roll is pi/2 offset by +pi/4 -->
+    <origin rpy="1.5707963267948966 -1.5707963267948966 1.5707963267948966" xyz="0 0 0"/>  <!-- roll is pi/2 -->
+    <parent link="instrument_shaft_R"/>
+    <child link="wrist_R"/>
+  </joint>
+
+  <joint name="grasper_joint_1_R" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
+    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0"/>
+    <parent link="wrist_R"/>
+    <child link="grasper1_R"/>
+  </joint>
+
+  <joint name="grasper_joint_2_R" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
+    <origin rpy="1.5707963267948966 0 0" xyz="0.012 0 0"/>
+    <parent link="wrist_R"/>
+    <child link="grasper2_R"/>
+  </joint>
+
+  <joint name="grasper_yaw_R" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
+    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0"/>
+    <parent link="wrist_R"/>
+    <child link="tool_base_R"/>
+  </joint>
+
+  <joint name="tool_base_to_main_R" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0.01 0 0"/>
+    <parent link="tool_base_R"/>
+    <child link="tool_R"/>
+  </joint>
+
+  <joint name="tool_base_to_tip_R" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0.02 0 0"/>
+    <parent link="tool_base_R"/>
+    <child link="tool_tip_R"/>
+  </joint>
+
+  <joint name="grasper1_tip_R" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0.02 0 0"/>
+    <parent link="grasper1_R"/>
+    <child link="grasper1_tip_R"/>
+  </joint>
+
+  <joint name="grasper2_tip_R" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 0" xyz="0.02 0 0"/>
+    <parent link="grasper2_R"/>
+    <child link="grasper2_tip_R"/>
+  </joint>
+
+</robot>

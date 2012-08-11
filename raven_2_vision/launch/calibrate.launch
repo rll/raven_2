@@ -1,0 +1,16 @@
+<launch>
+    <arg name="model" default="logitech"/>
+    <arg name="name"/>
+    <arg name="device" default="/dev/video0"/>
+    <arg name="size" default="8x6"/>
+    <arg name="square" default="0.0122"/>
+    <include file="$(find raven_2_vision)/launch/uvc.launch">
+        <arg name="model" value="$(arg model)"/>
+        <arg name="name" value="$(arg name)"/>
+        <arg name="device" value="$(arg device)"/>
+    </include>
+    <node name="cameracalibrator" pkg="camera_calibration" type="cameracalibrator.py" args="--size $(arg size) --square $(arg square)">
+        <remap from="image" to="$(arg model)_$(arg name)/image_raw"/>
+        <remap from="camera" to="$(arg model)_$(arg name)"/>
+    </node>
+</launch>

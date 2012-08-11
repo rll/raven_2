@@ -1,0 +1,13 @@
+<launch>
+    <arg name="model" default="logitech"/>
+    <arg name="name"/>
+    <arg name="device" default="/dev/video0"/>
+    <arg name="width" default="10"/>
+    <arg name="height" default="7"/>
+    <arg name="square" default="0.0122"/>
+    <group ns="$(arg model)_$(arg name)">
+        <node name="chessboard_tracker" pkg="raven_2_vision" type="chessboard_tracker_node"
+                args="--width $(arg width) --height $(arg height) --square $(arg square)"/>
+        <node name="chessboard_frame" pkg="raven_2_vision" type="chessboard_frame.py"/>
+    </group>
+</launch>
