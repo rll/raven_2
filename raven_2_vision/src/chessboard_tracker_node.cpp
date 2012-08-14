@@ -24,20 +24,23 @@ struct LocalConfig : Config {
 	static int height;
 	static float square;
 	static string topic;
-	//static string imageNS;
+	static float detection_interval;
+	static float print_interval;
 	LocalConfig() : Config() {
 		params.push_back(new Parameter<int>("width", &width, "chessboard width"));
 		params.push_back(new Parameter<int>("height", &height, "chessboard height"));
 		params.push_back(new Parameter<float>("square", &square, "chessboard sidelength"));
 		params.push_back(new Parameter<string>("topic", &topic, "pose topic"));
-		//params.push_back(new Parameter<string>("imageNS", &imageNS, "image namespace"));
+		params.push_back(new Parameter<float>("detection-interval", &detection_interval, "detection interval"));
+		params.push_back(new Parameter<float>("print-interval", &print_interval, "print interval"));
 	}
 };
 int LocalConfig::width = 6;
 int LocalConfig::height = 8;
 float LocalConfig::square = .01;
 string LocalConfig::topic = "chessboard_pose";
-//string LocalConfig::imageNS = "/usb_cam";
+float LocalConfig::detection_interval = 0.1;
+float LocalConfig::print_interval = 1;
 
 static sensor_msgs::ImageConstPtr last_msg;
 bool message_pending = false;
@@ -54,6 +57,7 @@ int main(int argc, char* argv[]) {
 	ros::init(argc, argv, "chessboard_tracker_node");
 	ros::NodeHandle nh;
 
+	ros::Rate rate(1/LocalConfig::detection_interval);
 
 	//ros::Subscriber image_sub = nh.subscribe(LocalConfig::imageNS + "/image_rect", 1, callback);
 	ros::Subscriber image_sub = nh.subscribe("image_rect", 1, callback);
@@ -70,6 +74,10 @@ int main(int argc, char* argv[]) {
 
 	const char* windowName = "Image View";
 	namedWindow(windowName, 1 );
+
+	ros::Time last_print = ros::Time::now();
+	int num_poses_since_print = 0;
+	int total_num_poses = 0;
 
 	geometry_msgs::PoseStamped ps;
 	while (ros::ok()) {
@@ -89,10 +97,23 @@ int main(int argc, char* argv[]) {
 
 		bool gotPose = getChessboardPose(image, Size(LocalConfig::width, LocalConfig::height), LocalConfig::square, cameraMatrix, distCoeffs, ps.pose, true);
 		if (gotPose) {
-			ROS_INFO("found chessboard");
+			num_poses_since_print++;
+			total_num_poses++;
+
 			ps.header.frame_id = last_msg->header.frame_id;
 			ps.header.stamp = ros::Time::now();
 			pose_pub.publish(ps);
+		}
+		if ((ros::Time::now() -last_print).toSec() > LocalConfig::print_interval) {
+			if (!total_num_poses) {
+				ROS_INFO("Chessboards:    NONE RECEIVED   %s",pose_pub.getTopic().c_str());
+			} else if (num_poses_since_print) {
+				ROS_INFO("Chessboards: %10d (%5d) %s",num_poses_since_print,total_num_poses,pose_pub.getTopic().c_str());
+			} else {
+				ROS_INFO("Chessboards: NO UPDATES (%5d) %s",total_num_poses,pose_pub.getTopic().c_str());
+			}
+			last_print = ros::Time::now();
+			num_poses_since_print = 0;
 		}
 
 
@@ -100,7 +121,7 @@ int main(int argc, char* argv[]) {
 		int key = waitKey(10);
 		if (key == 'q') break;
 
-
+		rate.sleep();
 	}
 
 

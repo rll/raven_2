@@ -18,7 +18,7 @@
         <arg name="topic"  default="$(arg common_cb_topic)"/>
     </include>
     <group ns="$(arg model)_$(arg name)">
-        <node name="$(anon common_cb_reg)" pkg="tfx" type="param_pub.py" output="screen">
+        <node name="$(anon common_cb_reg)" pkg="tfx" type="param_pub" output="screen">
             <param name="listen" value="$(arg common_cb_topic)"/>
             <param name="tf" value="$(arg common_cb_frame)"/>
             <param name="invert_tf" value="true"/>
