@@ -23,17 +23,20 @@ struct LocalConfig : Config {
 	static int width;
 	static int height;
 	static float square;
+	static string topic;
 	//static string imageNS;
 	LocalConfig() : Config() {
 		params.push_back(new Parameter<int>("width", &width, "chessboard width"));
 		params.push_back(new Parameter<int>("height", &height, "chessboard height"));
 		params.push_back(new Parameter<float>("square", &square, "chessboard sidelength"));
+		params.push_back(new Parameter<string>("topic", &topic, "pose topic"));
 		//params.push_back(new Parameter<string>("imageNS", &imageNS, "image namespace"));
 	}
 };
 int LocalConfig::width = 6;
 int LocalConfig::height = 8;
 float LocalConfig::square = .01;
+string LocalConfig::topic = "chessboard_pose";
 //string LocalConfig::imageNS = "/usb_cam";
 
 static sensor_msgs::ImageConstPtr last_msg;
@@ -55,7 +58,7 @@ int main(int argc, char* argv[]) {
 	//ros::Subscriber image_sub = nh.subscribe(LocalConfig::imageNS + "/image_rect", 1, callback);
 	ros::Subscriber image_sub = nh.subscribe("image_rect", 1, callback);
 	//ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("/chessboard",1);
-	ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("chessboard_pose",1);
+	ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>(LocalConfig::topic,1);
 
 	//sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(LocalConfig::imageNS + "/camera_info", nh, ros::Duration(1));
 	sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", nh, ros::Duration(1));

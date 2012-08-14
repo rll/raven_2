@@ -137,7 +137,7 @@ void teleopIntoDS1(struct u_struct *t)
     for (mechnum=0;mechnum<NUM_MECH;mechnum++)
     {
         armserial = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_SERIAL : GOLD_ARM_SERIAL;
-        teleopArmId    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GOLD_ARM_TELEOP_ID : GREEN_ARM_TELEOP_ID;
+        teleopArmId    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_TELEOP_ID : GOLD_ARM_TELEOP_ID;
         armidx    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_ID : GOLD_ARM_ID;
 
         if (PRINT && !disable_arm_id[armidx]) {

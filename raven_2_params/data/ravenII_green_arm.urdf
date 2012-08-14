@@ -8,6 +8,24 @@
 
 <robot name="raven_2">
 
+  <joint name="base_mount_L" type="fixed">
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.0 0.00 0"/> <!-- berkeley's ravens are mounted without the tilt -->
+    <!-- <origin rpy="-1.5707963267948966 -2.0071286 1.5707963267948966" xyz="0.0 0.00 0"/> -->
+    <parent link="0_link"/>
+    <child link="base_link_L"/>
+  </joint>
+
+
+ <link name="base_link_L">
+    <visual>
+      <geometry>
+        <mesh filename="package://raven_2_params/data/left_arm/base_w_motors.dae"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 1.57075"/>
+    </visual>
+  </link>
+
   <link name="world">
    <visual>
      <origin xyz="0 0 0" rpy="0 0 0" />

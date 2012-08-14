@@ -1,17 +1,20 @@
 <launch>
-
-    <node pkg="marker_detect" name="marker_detector_logitech" type="marker_detector_node" output="screen" args="output_x">
-    	<param name="num_markers" type="int" value="100" />
-    	<param name="camera_frame" type="string" value="logitech_red" />
-    	<param name="target_frame" type="string" value="logitech_red" />
-    	<param name="scale_factor" type="double" value="0.0105445269" />
-    	<param name="no_x_output" type="bool" value="false" />
-    	<param name="frame_rate" type="int" value="10" />
-        <!-- proportional to size of markers -->
-        <param name="block_size" type="int" value="31" />
-        <!-- increase if poor contrast -->
-        <param name="offset" type="double" value="15.0" />
-    	<remap from="image" to="/logitech_red/image_rect" />
-    </node>
+	<arg name="model" default="logitech"/>
+    <arg name="name"/>
+    <group ns="$(model)_$(name)">
+	    <node pkg="marker_detect" name="marker_detector" type="marker_detector_node" output="screen" args="output_x">
+	    	<param name="num_markers" type="int" value="100" />
+	    	<param name="camera_frame" type="string" value="$(model)_$(name)" />
+	    	<param name="target_frame" type="string" value="$(model)_$(name)" />
+	    	<param name="scale_factor" type="double" value="0.0105445269" />
+	    	<param name="no_x_output" type="bool" value="false" />
+	    	<param name="frame_rate" type="int" value="10" />
+	        <!-- proportional to size of markers -->
+	        <param name="block_size" type="int" value="31" />
+	        <!-- increase if poor contrast -->
+	        <param name="offset" type="double" value="15.0" />
+	    	<remap from="image" to="image_rect" />
+	    </node>
+    </group>
     
 </launch>

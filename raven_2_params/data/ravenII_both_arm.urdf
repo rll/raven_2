@@ -41,12 +41,12 @@
 
   <!-- LEFT ARM LINKS -->
   <link name="base_link_L">
-    <!--visual>
+    <visual>
       <geometry>
         <mesh filename="package://raven_2_params/data/left_arm/base_w_motors.dae"/>
       </geometry>
       <origin xyz="0 0 0" rpy="0 0 1.57075"/>
-    </visual-->
+    </visual>
   </link>
   <link name="link1_L">
     <visual>
@@ -111,9 +111,6 @@
       </geometry>
     <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0"/>
     </visual>
-  </link>
-
-  <link name="tool_L">
   </link>
 
   <link name="tool_L">

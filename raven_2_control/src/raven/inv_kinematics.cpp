@@ -42,7 +42,7 @@ int inv_kin_last_err = 0;
 int check_joint_limits1(struct mechanism*);
 int check_joint_limits2(struct mechanism*);
 bool check_joint_limits1_new(float d_act, float thp_act, float g1_act, float g2_act,int validity[4]);
-bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,int validity[3]);
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,float validity[3]);
 int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float g1_act, float g2_act);
 int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float thr_act);
 
@@ -153,7 +153,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				mech->joint[Z_INS].jpos,
 				mech->joint[WRIST].jpos RAD2DEG,
 				fix_angle(mech->joint[GRASP1].jpos - mech->joint[GRASP2].jpos) / 2 RAD2DEG,
-				mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos RAD2DEG,
+				(mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos) RAD2DEG,
 				mech->joint[GRASP1].jpos RAD2DEG,mech->joint[GRASP2].jpos RAD2DEG);
 		log_msg("v s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
 				mech->joint[SHOULDER].jvel RAD2DEG,
@@ -268,11 +268,11 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	bool valid1 = check_joint_limits1_new(d_act,thp_act,g1_act,g2_act,validity1);
 	if (!valid1) {
 		if (_curr_rl == 3 && !(DISABLE_ALL_PRINTING)) {
-			printf("ik %d invalid --1-- d %0.4f %d\tp %0.4f %d\ty %0.4f [%d %d]\n",
+			printf("ik %d invalid --1-- d [%d] % 2.4f \tp [%d] % 3.1f\ty [%d %d] % 3.1f\n",
 					armId,
-					d_act,validity1[0],
-					thp_act RAD2DEG,validity1[1],
-					thy_act RAD2DEG,validity1[2],validity1[3]);
+					validity1[0],              d_act,
+					validity1[1],              thp_act RAD2DEG,
+					validity1[2],validity1[3], thy_act RAD2DEG);
 		}
 		return 0;
 	}
@@ -310,7 +310,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	float thr_opt[2];
 
 	bool opts_valid[2];
-	int validity2[2][4];
+	float validity2[2][4];
 
 	float ths_act[2];
 	float the_act[2];
@@ -355,17 +355,17 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		thr_act[i] = THR_FROM_IK(armId,thr_opt[i]);
 
 		if (print) {
-			log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
+			log_msg("j s % 3.1f e % 3.1f r % 3.1f i % 1.3f p % 3.1f y % 3.1f g % 3.1f g1 % 3.1f g2 % 3.1f",
 						mech->joint[SHOULDER].jpos RAD2DEG,
 						mech->joint[ELBOW].jpos RAD2DEG,
 						mech->joint[TOOL_ROT].jpos RAD2DEG,
 						mech->joint[Z_INS].jpos,
 						mech->joint[WRIST].jpos RAD2DEG,
-						THY_MECH_FROM_FINGERS(armIdFromMechType(mech->type),mech->joint[GRASP2].jpos, mech->joint[GRASP1].jpos),//fix_angle(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos,0) / 2  RAD2DEG,
+						THY_MECH_FROM_FINGERS(armIdFromMechType(mech->type),mech->joint[GRASP1].jpos, mech->joint[GRASP2].jpos) RAD2DEG,//fix_angle(mech->joint[GRASP2].jpos - mech->joint[GRASP1].jpos,0) / 2  RAD2DEG,
 						mech->ori.grasp * 1000. RAD2DEG,
 						fix_angle(mech->joint[GRASP1].jpos + mech->joint[GRASP2].jpos,0) RAD2DEG,
 						mech->joint[GRASP1].jpos RAD2DEG, mech->joint[GRASP2].jpos RAD2DEG);
-			log_msg("%d s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",i,
+			log_msg("%d s % 3.1f e % 3.1f r % 3.1f i % 1.3f p % 3.1f y % 3.1f g % 3.1f g1 % 3.1f g2 % 3.1f",i,
 					ths_act[i] RAD2DEG,
 					the_act[i] RAD2DEG,
 					thr_act[i] RAD2DEG,
@@ -455,16 +455,40 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 		}
 		return 1;
 	} else {
+		const float maxValidDist = 3 DEG2RAD;
+		float valid_dist[2];
+		for (int i=0;i<2;i++) {
+			float sum = 0;
+			for (int j=0;j<3;j++) {
+				float v = fabs(validity2[i][j]);
+				sum += v*v;
+			}
+			valid_dist[i] = sqrt(sum);
+		}
+
+		bool use0 = valid_dist[0] < maxValidDist && valid_dist[0] < valid_dist[1];
+		bool use1 = valid_dist[1] < maxValidDist && valid_dist[0] > valid_dist[1];
+		printf("ik validity distances: (%s | %s) % 1.3f\t%f\n",use0?"Y":" ",use1?"Y":" ",valid_dist[0],valid_dist[1]);
+		if (valid_dist[0] < maxValidDist && valid_dist[0] < valid_dist[1]) {
+			printf("setting joints to ik soln 1\n");
+			set_joints_with_limits1(mech,d_act,thp_act,g1_act,g2_act);
+			set_joints_with_limits2(mech,ths_act[0],the_act[0],thr_act[0]);
+		} else if (valid_dist[1] < maxValidDist) {
+			printf("setting joints to ik soln 2\n");
+			set_joints_with_limits1(mech,d_act,thp_act,g1_act,g2_act);
+			set_joints_with_limits2(mech,ths_act[1],the_act[1],thr_act[1]);
+		}
+
 		if ((_curr_rl == 3 || print) && !(DISABLE_ALL_PRINTING)) {
-			printf("ik %d invalid **2** s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
+			printf("ik %d invalid **2** s %1.4f % 2.1f\te %1.4f % 2.1f\tr %1.4f % 2.1f\n",
 					armId,
-					ths_act[0] RAD2DEG,validity2[0][0],
-					the_act[0] RAD2DEG,validity2[0][1],
-					thr_act[0] RAD2DEG,validity2[0][2]);
-			printf("                   s %1.4f %d\te %1.4f %d\tr %1.4f %d\n",
-					ths_act[1] RAD2DEG,validity2[1][0],
-					the_act[1] RAD2DEG,validity2[1][1],
-					thr_act[1] RAD2DEG,validity2[1][2]);
+					ths_act[0] RAD2DEG,validity2[0][0] RAD2DEG,
+					the_act[0] RAD2DEG,validity2[0][1] RAD2DEG,
+					thr_act[0] RAD2DEG,validity2[0][2] RAD2DEG);
+			printf("                   s %1.4f % 2.1f\te %1.4f % 2.1f\tr %1.4f % 2.1f\n",
+					ths_act[1] RAD2DEG,validity2[1][0] RAD2DEG,
+					the_act[1] RAD2DEG,validity2[1][1] RAD2DEG,
+					thr_act[1] RAD2DEG,validity2[1][2] RAD2DEG);
 		}
 		return 0;
 	}
@@ -635,7 +659,7 @@ bool check_joint_limits1_new(float d_act, float thp_act, float g1_act, float g2_
 	return !bad;
 }
 
-bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,int validity[3]) {
+bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,float validity[3]) {
 	validity[0] = 0;
 	validity[1] = 0;
 	validity[2] = 0;
@@ -649,27 +673,27 @@ bool check_joint_limits2_new(float ths_act, float the_act, float thr_act,int val
 
 	bool bad = false;
 	if (ths_act < SHOULDER_MIN_LIMIT) {
-		validity[0] = -1;
+		validity[0] = ths_act - SHOULDER_MIN_LIMIT;
 		bad = true;
 	}
 	if (ths_act > SHOULDER_MAX_LIMIT) {
-		validity[0] = +1;
+		validity[0] = ths_act - SHOULDER_MAX_LIMIT;
 		bad = true;
 	}
 	if (the_act < ELBOW_MIN_LIMIT) {
-		validity[1] = -1;
+		validity[1] = the_act - ELBOW_MIN_LIMIT;
 		bad = true;
 	}
 	if (the_act > ELBOW_MAX_LIMIT) {
-		validity[1] = +1;
+		validity[1] = the_act - ELBOW_MAX_LIMIT;
 		bad = true;
 	}
 	if (thr_act < TOOL_ROLL_MIN_LIMIT) {
-		validity[2] = -1;
+		validity[2] = thr_act - TOOL_ROLL_MIN_LIMIT;
 		bad = true;
 	}
 	if (thr_act > TOOL_ROLL_MAX_LIMIT) {
-		validity[2] = +1;
+		validity[2] = thr_act - TOOL_ROLL_MAX_LIMIT;
 		bad = true;
 	}
 	return !bad;

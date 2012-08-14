@@ -40,38 +40,41 @@ extern int NUM_MECH;
  *
  */
 void setToHome(struct mechanism* mech);
-void fwdKin(struct device *device0, int runlevel)
-{
-    //Always run forward kinematics for each mech
-    for (int i = 0; i < NUM_MECH; i++) {
-    	if (true || device0->mech[i].type == GOLD_ARM) {
-    		fwdMechKinNew(&(device0->mech[i]));
-    	} else {
-    		fwdMechKin(&(device0->mech[i]));
-    	}
-    }
+void fwdKin(struct device *device0, int runlevel) {
+	//Always run forward kinematics for each mech
+	mechanism* _mech = NULL;
+	int mechnum = 0;
+	while (loop_over_mechs(device0,_mech,mechnum)) {
+		fwdMechKinNew(_mech);
+		//fwdMechKin(_mech);
+		/*if (true || device0->mech[i].type == GOLD_ARM) {
+			fwdMechKinNew(&(device0->mech[i]));
+		} else {
+			fwdMechKin(&(device0->mech[i]));
+		}*/
+	}
 
-    if ((runlevel != RL_PEDAL_DN) && (runlevel != RL_INIT)) {
-        // set cartesian pos_d = pos.
-        // That way, if anything wonky happens during state transitions
-        // there won't be any discontinuities.
-        // Note: in init, this is done in setStartXYZ
-        for (int m = 0; m < NUM_MECH; m++) {
-          device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
-          device0->mech[m].pos_d.y     = device0->mech[m].pos.y;
-          device0->mech[m].pos_d.z     = device0->mech[m].pos.z;
-          device0->mech[m].ori_d.yaw   = device0->mech[m].ori.yaw;
-          device0->mech[m].ori_d.pitch = device0->mech[m].ori.pitch;
-          device0->mech[m].ori_d.roll  = device0->mech[m].ori.roll;
-          device0->mech[m].ori_d.grasp = device0->mech[m].ori.grasp;
+	if ((runlevel != RL_PEDAL_DN) && (runlevel != RL_INIT)) {
+		// set cartesian pos_d = pos.
+		// That way, if anything wonky happens during state transitions
+		// there won't be any discontinuities.
+		// Note: in init, this is done in setStartXYZ
+		for (int m = 0; m < NUM_MECH; m++) {
+			device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
+			device0->mech[m].pos_d.y     = device0->mech[m].pos.y;
+			device0->mech[m].pos_d.z     = device0->mech[m].pos.z;
+			device0->mech[m].ori_d.yaw   = device0->mech[m].ori.yaw;
+			device0->mech[m].ori_d.pitch = device0->mech[m].ori.pitch;
+			device0->mech[m].ori_d.roll  = device0->mech[m].ori.roll;
+			device0->mech[m].ori_d.grasp = device0->mech[m].ori.grasp;
 
-          for (int k = 0; k < 3; k++)
-              for (int j = 0; j < 3; j++)
-                  device0->mech[m].ori_d.R[k][j] = device0->mech[m].ori.R[k][j];
+			for (int k = 0; k < 3; k++)
+				for (int j = 0; j < 3; j++)
+					device0->mech[m].ori_d.R[k][j] = device0->mech[m].ori.R[k][j];
 
-        }
-    updateMasterRelativeOrigin( device0 );   // Update the origin, to which master-side deltas are added.
-  }
+		}
+		updateMasterRelativeOrigin( device0 );   // Update the origin, to which master-side deltas are added.
+	}
 }
 
 void fwdMechKinNew(struct mechanism* mech) {
@@ -125,7 +128,7 @@ void fwdMechKinNew(struct mechanism* mech) {
 	mech->ori.grasp = MECH_GRASP_FROM_MECH_FINGERS(armId,mech->joint[GRASP1].jpos,mech->joint[GRASP2].jpos);
 
 	if (mech->type == GREEN_ARM && print) {
-		printf("ori: %d  d: %d\n",mech->ori.grasp,mech->ori_d.grasp);
+		//printf("ori: %d  d: %d\n",mech->ori.grasp,mech->ori_d.grasp);
 	}
 }
 

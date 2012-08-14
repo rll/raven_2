@@ -251,7 +251,7 @@ void* network_process(void* param1)
             {
                 gettimeofday(&tv,&tz);
                 sprintf(logbuffer, "%s Skipped (dropped?) packets %d - %d\n", ctime(&(tv.tv_sec)),seq+1, u.sequence-1 );
-                ROS_ERROR("%s Skipped (dropped?) packets %d - %d\n", ctime(&(tv.tv_sec)),seq+1, u.sequence-1 );
+                ROS_WARN("%s Skipped (dropped?) packets %d - %d\n", ctime(&(tv.tv_sec)),seq+1, u.sequence-1 );
                 retval = write(logFile,logbuffer, strlen(logbuffer));
                 seq = u.sequence;
 

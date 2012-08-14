@@ -70,7 +70,7 @@ inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId =
 inline float FINGER2_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ?  thy + grasp/2 : -(-thy + grasp/2)); }
 
 inline float THY_MECH_FROM_FINGERS(  int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 - g1) / 2 : -(g2 - g1) / 2); }
-inline float THY_TO_IK_FROM_FINGERS(  int armId,float g1, float g2) { return THY_MECH_FROM_FINGERS(armId,g1,g2); }
+inline float THY_TO_IK_FROM_FINGERS( int armId,float g1, float g2) { return -THY_MECH_FROM_FINGERS(armId,g1,g2); }
 inline float THY_FROM_IK(int armId, float thy, float grasp) { return thy; }
 
 #define Zy(thy) Z(thy,0)
