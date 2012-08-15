@@ -23,6 +23,8 @@
             <param name="tf" value="$(arg common_cb_frame)"/>
             <param name="invert_tf" value="true"/>
             <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>
+            <param name="save_tf_from" value="/base_link_L"/>
         </node>
     </group>
 </launch>

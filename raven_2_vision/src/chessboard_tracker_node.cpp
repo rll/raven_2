@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
 	cv::Mat_<double> distCoeffs(cv::Size(5,1), 0);
 
 
-	const char* windowName = "Image View";
+	const char* windowName = "Chessboard";
 	namedWindow(windowName, 1 );
 
 	ros::Time last_print = ros::Time::now();

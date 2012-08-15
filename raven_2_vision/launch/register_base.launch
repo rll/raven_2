@@ -40,11 +40,13 @@
             <param name="tf" value="base_link_L"/>
             <param name="invert_tf" value="True"/>
             <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>
         </node>
         <node name="$(anon common_cb_reg)" pkg="tfx" type="param_pub" output="screen">
             <param name="listen" value="$(arg common_cb_topic)"/>
             <param name="tf" value="$(arg common_cb_frame)"/>
             <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/>
         </node>
     </group>
 </launch>

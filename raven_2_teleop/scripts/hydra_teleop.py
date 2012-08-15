@@ -261,3 +261,5 @@ if __name__ == "__main__":
 
 	HT = HydraTeleop(listener,record=options.record)
 	rospy.spin()
+	
+	rospy.loginfo('shutting down')

@@ -1,11 +1,11 @@
 <launch>
 	<arg name="model" default="logitech"/>
     <arg name="name"/>
-    <group ns="$(model)_$(name)">
+    <group ns="$(arg model)_$(arg name)">
 	    <node pkg="marker_detect" name="marker_detector" type="marker_detector_node" output="screen" args="output_x">
 	    	<param name="num_markers" type="int" value="100" />
-	    	<param name="camera_frame" type="string" value="$(model)_$(name)" />
-	    	<param name="target_frame" type="string" value="$(model)_$(name)" />
+	    	<param name="camera_frame" type="string" value="$(arg model)_$(arg name)" />
+	    	<param name="target_frame" type="string" value="$(arg model)_$(arg name)" />
 	    	<param name="scale_factor" type="double" value="0.0105445269" />
 	    	<param name="no_x_output" type="bool" value="false" />
 	    	<param name="frame_rate" type="int" value="10" />
@@ -18,3 +18,5 @@
     </group>
     
 </launch>
+
+
