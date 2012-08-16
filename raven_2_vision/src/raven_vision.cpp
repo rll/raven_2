@@ -52,7 +52,7 @@ geometry_msgs::Pose rodToPose(const cv::Mat& rvec, const cv::Mat& tvec) {
 	return pose;
 }
 
-bool getChessboardPose(Mat& image, Size boardSize, float squareSize, const Mat& cameraMatrix, const Mat& distCoeffs, geometry_msgs::Pose& poseOut, bool drawCorners) {
+bool getChessboardPoseNoRect(Mat& image, Size boardSize, float squareSize, const Mat& cameraMatrix, const Mat& distCoeffs, geometry_msgs::Pose& poseOut, bool drawCorners,const char* windowName) {
 	vector<Point3f> cornersBoard = calcChessboardCorners(boardSize, squareSize);
 //	for (int i=0; i < cornersBoard.size(); i++) cout << i << " " << cornersBoard[i] << endl;
 	vector<Point2f> cornersImage;
@@ -68,7 +68,18 @@ bool getChessboardPose(Mat& image, Size boardSize, float squareSize, const Mat& 
 			drawChessboardCorners(image, boardSize, cornersImage, true);
 		}
 	}
+	if (windowName) {
+		imshow(windowName, image);
+	}
 
 	return boardFound;
+
+}
+
+bool getChessboardPoseRect(Mat& image, Size boardSize, float squareSize, const Mat& cameraMatrix, const Mat& distCoeffs, geometry_msgs::Pose& poseOut, bool drawCorners,const char* windowName) {
+	Mat image_rect;
+	undistort(image,image_rect,cameraMatrix,distCoeffs);
+	cv::Mat_<double> distCoeffs_rect(cv::Size(5,1), 0);
+	return getChessboardPoseNoRect(image_rect,boardSize,squareSize,cameraMatrix,distCoeffs_rect,poseOut,drawCorners,windowName);
 
 }

@@ -37,5 +37,5 @@ rosbuild_add_executable(extrinsic_calibration src/extrinsic_calibration.cpp)
 
 target_link_libraries(extrinsic_calibration ${PROJECT_NAME})
 
-rosbuild_add_executable(chessboard_tracker_node src/chessboard_tracker_node.cpp)
-target_link_libraries(chessboard_tracker_node ${PROJECT_NAME})
+rosbuild_add_executable(chessboard_tracker src/chessboard_tracker_node.cpp)
+target_link_libraries(chessboard_tracker ${PROJECT_NAME})

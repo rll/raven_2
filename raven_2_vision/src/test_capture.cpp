@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
 		imshow(windowName, image);
 		int key = waitKey(10);
 		geometry_msgs::PoseStamped ps;
-		bool gotPose = getChessboardPose(image, Size(6,8), .0157, cameraMatrix, distCoeffs, ps.pose);
+		bool gotPose = getChessboardPoseNoRect(image, Size(6,8), .0157, cameraMatrix, distCoeffs, ps.pose);
 		if (gotPose) {
 			ps.header.frame_id = "/logitech0";
 			ps.header.stamp = ros::Time::now();

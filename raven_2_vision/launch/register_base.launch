@@ -46,7 +46,7 @@
             <param name="listen" value="$(arg common_cb_topic)"/>
             <param name="tf" value="$(arg common_cb_frame)"/>
             <param name="tf_always_new" value="True"/>
-            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/>
+            <!--param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/-->
         </node>
     </group>
 </launch>

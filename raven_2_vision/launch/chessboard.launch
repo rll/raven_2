@@ -7,7 +7,7 @@
     <arg name="square" default="0.0122"/>
     <arg name="topic" default="chessboard_pose"/>
     <group ns="$(arg model)_$(arg name)">
-        <node name="$(anon chessboard_tracker)" pkg="raven_2_vision" type="chessboard_tracker_node"
+        <node name="$(anon chessboard_tracker)" pkg="raven_2_vision" type="chessboard_tracker"
                 args="--width $(arg width) --height $(arg height) --square $(arg square) --topic $(arg topic)"
                 output="screen"/>
         <!-- node name="chessboard_frame" pkg="raven_2_vision" type="chessboard_frame.py"/ -->

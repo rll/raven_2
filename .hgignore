@@ -17,3 +17,4 @@ err_network.log
 *.cmake
 .settings/
 raven_2_vision/data/old/
+raven_2_vision/data/*/*_pose*.yaml
