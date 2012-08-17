@@ -2,7 +2,7 @@
     <arg name="model" default="logitech"/>
     <arg name="name"/>
     <arg name="device" default="/dev/video0"/>
-    <arg name="size" default="8x6"/>
+    <arg name="size" default="10x7"/>
     <arg name="square" default="0.0122"/>
     <include file="$(find raven_2_vision)/launch/uvc.launch">
         <arg name="model" value="$(arg model)"/>
