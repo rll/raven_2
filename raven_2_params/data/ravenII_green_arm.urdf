@@ -59,12 +59,12 @@
 
  <!-- RIGHT ARM LINKS -->
  <link name="base_link_R">
-    <!--visual>
+    <visual>
       <geometry>
         <mesh filename="package://raven_2_params/data/right_arm/base_w_motors.dae"/>
       </geometry>
     <origin xyz="0 -1 0" rpy="0 0 -1.5708889782384681"/>
-    </visual-->
+    </visual>
   </link>
 
   <link name="link1_R">
@@ -152,7 +152,7 @@
   <joint name="base_mount_R" type="fixed">
     
     <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 1.5707963267948966" xyz="-.2 0 0"/> <!-- berkeley's ravens are mounted without the tilt -->
+    <origin rpy="0 0 1.5707963267948966" xyz="-0.14858 0.002 0"/> <!-- berkeley's ravens are mounted without the tilt -->
     <!-- <origin rpy=" 1.57075 -2.0071286 1.57075" xyz="-.2 0.00 0"/> -->
     <parent link="0_link"/>
     <child link="base_link_R"/>
@@ -255,4 +255,245 @@
     <child link="grasper2_tip_R"/>
   </joint>
 
+  <!-- SUPPORT FRAME -->
+  <material name="8020_frame">
+    <color rgba="127 127 127 0.5"/>
+  </material>
+  <link name="frame_bottom_F">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.7 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_bottom_F" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="-0.0125 -0.325 0.0125"/>
+    <parent link="world"/>
+    <child link="frame_bottom_F"/>
+  </joint>
+
+  <link name="frame_bottom_L">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_bottom_L" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 0.0125 0.0125"/>
+    <parent link="world"/>
+    <child link="frame_bottom_L"/>
+  </joint>
+
+  <link name="frame_bottom_R">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_bottom_R" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 -0.6625 0.0125"/>
+    <parent link="world"/>
+    <child link="frame_bottom_R"/>
+  </joint>
+
+  <link name="frame_bottom_B">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.70 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_bottom_B" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.4125 -0.325 0.0125"/>
+    <parent link="world"/>
+    <child link="frame_bottom_B"/>
+  </joint>
+
+  <link name="frame_vertical_LF">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_vertical_LF" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="-0.0125 0.0125 0.075"/>
+    <parent link="world"/>
+    <child link="frame_vertical_LF"/>
+  </joint>
+
+  <link name="frame_vertical_RF">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_vertical_RF" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="-0.0125 -0.6625 0.075"/>
+    <parent link="world"/>
+    <child link="frame_vertical_RF"/>
+  </joint>
+
+  <link name="frame_vertical_LB">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_vertical_LB" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.4125 0.0125 0.075"/>
+    <parent link="world"/>
+    <child link="frame_vertical_LB"/>
+  </joint>
+
+  <link name="frame_vertical_RB">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_vertical_RB" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.4125 -0.6625 0.075"/>
+    <parent link="world"/>
+    <child link="frame_vertical_RB"/>
+  </joint>
+
+  <link name="frame_top_F">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.7 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_top_F" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="-0.0125 -0.325 0.1375"/>
+    <parent link="world"/>
+    <child link="frame_top_F"/>
+  </joint>
+
+  <link name="frame_top_L">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_top_L" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 0.0125 0.1375"/>
+    <parent link="world"/>
+    <child link="frame_top_L"/>
+  </joint>
+
+  <link name="frame_top_R">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_top_R" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 -0.6625 0.1375"/>
+    <parent link="world"/>
+    <child link="frame_top_R"/>
+  </joint>
+
+  <link name="frame_top_B">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.70 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_top_B" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.4125 -0.325 0.1375"/>
+    <parent link="world"/>
+    <child link="frame_top_B"/>
+  </joint>
+
+  <link name="frame_base_support_L">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.4 0.05 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_base_support_L" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.1315 0.05 0.2"/>
+    <parent link="world"/>
+    <child link="frame_base_support_L"/>
+  </joint>
+
+  <link name="frame_base_support_R">
+   <visual>
+     <origin xyz="0 0 0" rpy="0 0 0" />
+     <geometry>
+       <box size="0.4 0.05 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5"/>
+     </material>
+   </visual>
+  </link>
+  <joint name="world_to_frame_base_support_R" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.1315 -0.7 0.2"/>
+    <parent link="world"/>
+    <child link="frame_base_support_R"/>
+  </joint>
 </robot>
