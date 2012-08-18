@@ -33,14 +33,12 @@ SCALE_UP_BUTTON = [3,4]
 SCALE_DOWN_BUTTON = [1,2]
 SCALE_RESET_BUTTON = CalibPaddle.JOYSTICK
 
-DEFAULT_SCALE = .0001 
+DEFAULT_SCALE = .1
+
 
 # left is paddle 0, right is paddle 1
 
 class HydraTeleop:
-	scale = DEFAULT_SCALE
-	scale_increment = 0.0001 / 20
-	scale_adjusting_mode = False
 	xoffset = 0
 	yoffset = 0
 	zoffset = 0
@@ -50,7 +48,12 @@ class HydraTeleop:
 	joystick_active = [True,True]
 	recorder = None
 
-	def __init__(self,listener,record=False):
+	def __init__(self,listener,record=False, scale=None):
+		self.scale = scale
+		self.scale_increment = scale / 20
+		self.scale_adjusting_mode = False
+	
+		
 		self.pub = rospy.Publisher('raven_command', RavenCommand)
 
 		# set up tf listener
@@ -86,6 +89,7 @@ class HydraTeleop:
 			self.last_msg = msg
 			return
 
+		#scale adjustment
 		if self.scale_adjusting_mode:
 			curr_scale = self.scale
 			for i in xrange(2):
@@ -103,11 +107,15 @@ class HydraTeleop:
 				elif paddle.buttons[SCALE_DOWN_BUTTON[i]] and not self.last_msg.paddles[i].buttons[SCALE_DOWN_BUTTON[i]]:
 					self.scale -= self.scale_increment
 				else:
-					self.scale += self.scale_increment * paddle.joy[1]
+					time_diff = (msg.header.stamp - self.last_msg.header.stamp).to_sec()
+					time_per_increment = 0.4
+					#print time_diff / time_per_increment, time_diff
+					increment = self.scale_increment * time_diff / time_per_increment
+					self.scale += increment * paddle.joy[1]
 			if self.scale < 0:
 				self.scale = 0;
 			if curr_scale != self.scale:
-				print "Scale is now %1.7f" % self.scale 
+				print "Scale is now %1.4f" % self.scale 
 			self.last_msg = msg
 			return
 
@@ -255,11 +263,13 @@ if __name__ == "__main__":
 	
 	parser.add_option('-r','--record',action='store_true',default=False)
 	
+	parser.add_option('-s','--scale',default=DEFAULT_SCALE)
+	
 	(options,args) = parser.parse_args()
 
 	listener = tf.TransformListener()
 
-	HT = HydraTeleop(listener,record=options.record)
+	HT = HydraTeleop(listener,record=options.record,scale=options.scale)
 	rospy.spin()
 	
 	rospy.loginfo('shutting down')
