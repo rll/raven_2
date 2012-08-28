@@ -1,3 +1,13 @@
+# add to .bashrc: source $(rosstack find raven_2)/utilities/setup.sh
+
+rosworkspace() {
+  if [ -n "$ROS_WORKSPACE" ]; then
+    echo $ROS_WORKSPACE
+  else
+    echo $HOME/ros_workspace
+  fi
+}
+
 rosversion() {
   if [ $# = 0 ]
   then
@@ -17,9 +27,9 @@ rosversion() {
   fi
   . /opt/ros/$ROS_VERSION/setup.bash
   
-  export ROS_PACKAGE_PATH=~/ros_workspace:$ROS_PACKAGE_PATH
+  export ROS_PACKAGE_PATH=$(rosworkspace):$ROS_PACKAGE_PATH
 
-  export PYTHONPATH=~/ros_workspace/python:$PYTHONPATH
+  export PYTHONPATH=$(rosworkspace)/python:$PYTHONPATH
 }
 
 rosversion -q fuerte
@@ -64,10 +74,16 @@ view_frames() {
   cd $CURR_WD
 }
 
+export ROSPUSH_DEFAULT_PATTERNS="--include=raven_2/ --include=raven_2/raven_2_control/*** --include=raven_2/raven_2_msgs/*** --include=raven_2/raven_2_params/***"
+
 rospush() {
   SSH_CMD=ssh
   PRE_CMDS=
-  if [ "$1" = "clean" ]; then
+  if [ "$1" = "test" ]; then
+    shift
+    rospush nobuild -n "$@"
+    return
+  elif [ "$1" = "clean" ]; then
     shift
     NOBUILD=
     if [ "$1" = "nobuild" ]; then
@@ -84,8 +100,19 @@ rospush() {
     SSH_CMD=true
     shift
   fi
-  rsync -avz --exclude-from=$HOME/ros_workspace/.rospushignore "$@" ~/ros_workspace/ biorobotics@raven.cs.berkeley.edu:/home/biorobotics/$USER/ && $SSH_CMD -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH rosmake raven_2_control" && echo rospush completed: $(date)
+  if [ -f $(rosworkspace)/.rospushignore ]; then
+    EXCLUDE_FILE_ARG="--exclude-from=$(rosworkspace)/.rospushignore"
+  fi
+  EXCLUDE_ARG=
+  rsync -avz $EXCLUDE_FILE_ARG $ROSPUSH_DEFAULT_PATTERNS --exclude=* "$@" $(rosworkspace)/ biorobotics@raven.cs.berkeley.edu:/home/biorobotics/$USER/ && $SSH_CMD -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH rosmake raven_2_control" && echo rospush completed: $(date)
 }
+
+
+#+ /raven_2/
+#+ /raven_2/raven_2_control/***
+#+ /raven_2/raven_2_msgs/***
+#+ /raven_2/raven_2_params/***
+#- /raven_2/*
 
 #export EDITOR=npp
 export EDITOR=gedit
