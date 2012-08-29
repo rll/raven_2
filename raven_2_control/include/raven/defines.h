@@ -31,6 +31,7 @@
 #define GREEN_ARM_ID 1
 
 #define GREEN_ARM_BASE_POSE btTransform(btQuaternion(0,0,M_PI_2),btVector3(-0.14858,0.002,0))
+//#define GREEN_ARM_BASE_POSE btTransform(btVector3(-0.14858,0.002,0))
 
 inline int armIdFromSerial(int arm_serial) {
 	if (arm_serial == GOLD_ARM_SERIAL) { return GOLD_ARM_ID; }

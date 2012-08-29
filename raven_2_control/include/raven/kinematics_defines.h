@@ -18,12 +18,12 @@ const double base_tilt = 0 DEG2RAD;
 const btTransform TOOL_POSE_AXES_TRANSFORM(btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1));
 
 #define SHOULDER_OFFSET_GOLD atan(0.3471/0.9014) //from original URDF
-#define TOOL_ROT_OFFSET_GOLD -M_PI_2 //M_PI_4
-#define WRIST_OFFSET_GOLD M_PI/6. //Fudge factor
+#define TOOL_ROT_OFFSET_GOLD -M_PI_2 //-M_PI_2 //M_PI_4
+#define WRIST_OFFSET_GOLD 0 //M_PI/6. //Fudge factor
 
 //TODO: these are probably incorrect
 #define SHOULDER_OFFSET_GREEN atan(0.3471/0.9014)//from original URDF
-#define TOOL_ROT_OFFSET_GREEN -M_PI_2
+#define TOOL_ROT_OFFSET_GREEN -M_PI
 #define WRIST_OFFSET_GREEN 0
 
 #define THETA_12 -A12
@@ -47,8 +47,8 @@ inline float THE_FROM_IK(int armId,float the) { return (armId == GOLD_ARM_ID ? t
 
 const btTransform Xf = X(THETA_23,0);
 
-inline float THR_TO_IK(  int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr + TOOL_ROT_OFFSET_GREEN - 0.37732519171346124)); }
-inline float THR_FROM_IK(int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr - TOOL_ROT_OFFSET_GREEN + 0.37732519171346124)); }
+inline float THR_TO_IK(  int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr + TOOL_ROT_OFFSET_GREEN /*- 0.37732519171346124*/)); }
+inline float THR_FROM_IK(int armId,float thr) { return (armId == GOLD_ARM_ID ? fix_angle(-thr + TOOL_ROT_OFFSET_GOLD) : fix_angle(thr - TOOL_ROT_OFFSET_GREEN /*+ 0.37732519171346124*/)); }
 #define Zr(thr) Z(thr,0)
 
 inline float D_TO_IK(  int armId,float d) { return -d; }
@@ -57,8 +57,8 @@ inline float D_FROM_IK(int armId,float d) { return -d; }
 
 const btTransform Xip(btMatrix3x3(0,-1,0, 0,0,-1, 1,0,0));
 
-inline float THP_TO_IK(  int armId,float thp) { return (armId == GOLD_ARM_ID ? fix_angle(thp + WRIST_OFFSET_GOLD) : thp); }
-inline float THP_FROM_IK(int armId,float thp) { return (armId == GOLD_ARM_ID ? fix_angle(thp - WRIST_OFFSET_GOLD) : thp); }
+inline float THP_TO_IK(  int armId,float thp) { return (armId == GOLD_ARM_ID ? fix_angle(-thp + WRIST_OFFSET_GOLD) : thp); }
+inline float THP_FROM_IK(int armId,float thp) { return (armId == GOLD_ARM_ID ? fix_angle(-thp - WRIST_OFFSET_GOLD) : thp); }
 #define Zp(thp) Z(thp,0)
 
 const btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(DW,0,0));
@@ -92,7 +92,9 @@ inline btTransform actual_world_to_ik_world(int armId) {
 		return btTransform(btMatrix3x3(0,1,0, -1,0,0, 0,0,1));
 	} else {
 		//printf("GREEN ARM KINEMATICS NOT IMPLEMENTED\n");
-		return btTransform(btMatrix3x3(0,-1,0,1,0,0, 0,0,1),btVector3(-.2, 0, 0));
+		//return btTransform(btMatrix3x3(0,-1,0,1,0,0, 0,0,1),btVector3(-.2, 0, 0));-0.14858,0.002,0
+		return btTransform(btMatrix3x3(0,-1,0,1,0,0, 0,0,1),btVector3(-0.14858,0.002,0));
+		//return btTransform(btMatrix3x3(0,1,0, -1,0,0, 0,0,1)) * GREEN_ARM_BASE_POSE;
 	}
 }
 
