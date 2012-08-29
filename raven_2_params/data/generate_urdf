@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import optparse
+import sys, os.path
+import xml.etree.ElementTree as ET
+
+DEFAULT_FILENAME = 'ravenII_source.urdf'
+
+if __name__ == '__main__':
+    parser = optparse.OptionParser()
+    parser.add_option('--both-bases',action='store_true',default=False,help='Put both bases in the single arm URDFs')
+    
+    (options,args) = parser.parse_args()
+
+    
+    if args:
+        filename = args[0]
+        mydir = os.path.dirname(filename) + '/'
+        print 'Generating URDF from %s' % args[0]
+    else:
+        mydir = os.path.dirname(sys.argv[0]) + '/'
+        filename = mydir + DEFAULT_FILENAME
+        print 'Generating URDF from %s' % DEFAULT_FILENAME
+
+
+    tree = ET.parse(filename)
+    root = tree.getroot()
+
+    treeL = ET.ElementTree(ET.Element(root.tag,root.attrib))
+    treeL.getroot().text = root.text
+
+    treeR = ET.ElementTree(ET.Element(root.tag,root.attrib))
+    treeR.getroot().text = root.text
+
+    for child in root:
+        name = child.attrib['name']
+        if name.startswith('frame_') or not name.endswith('_R') \
+                or (options.both_bases and name.startswith('base_')):
+            treeL.getroot().append(child)
+        if name.startswith('frame_') or not name.endswith('_L') \
+                or (options.both_bases and name.startswith('base_')):
+            treeR.getroot().append(child)
+
+    tree.write( mydir + 'ravenII_both_arm.urdf')
+    treeL.write(mydir + 'ravenII_gold_arm.urdf')
+    treeR.write(mydir + 'ravenII_green_arm.urdf')

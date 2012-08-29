@@ -104,6 +104,7 @@ rospush() {
     EXCLUDE_FILE_ARG="--exclude-from=$(rosworkspace)/.rospushignore"
   fi
   EXCLUDE_ARG=
+  $(rospack find raven_2_params)/data/generate_urdf &&
   rsync -avz $EXCLUDE_FILE_ARG $ROSPUSH_DEFAULT_PATTERNS --exclude=* "$@" $(rosworkspace)/ biorobotics@raven.cs.berkeley.edu:/home/biorobotics/$USER/ && $SSH_CMD -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH rosmake raven_2_control" && echo rospush completed: $(date)
 }
 
@@ -151,12 +152,12 @@ runraven() {
   else
     shift
   fi
-  ssh -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH sudo roslaunch raven_2_control raven_2.launch arm:=green $@"
+  ssh -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH sudo roslaunch raven_2_control raven_2.launch $@"
 }
 
 reloadmodel() {
   rospush nobuild && 
-  ssh -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH roslaunch raven_2_control raven_2.pub.launch arm:=green $@"
+  ssh -t biorobotics@raven.cs.berkeley.edu "ROS_PACKAGE_PATH=/home/biorobotics/$USER:\$ROS_PACKAGE_PATH roslaunch raven_2_control raven_2.pub.launch $@"
 }
 
 hydras() {
