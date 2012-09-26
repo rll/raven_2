@@ -26,33 +26,6 @@
 #define SHORT_OVERFLOW    1
 #define SHORT_UNDERFLOW  -1
 
-struct tb_angles {
-	float yaw;
-	float yaw_deg;
-	float pitch;
-	float pitch_deg;
-	float roll;
-	float roll_deg;
-};
-
-btMatrix3x3 tb_to_mat(float yaw, float pitch, float roll);
-inline btQuaternion tb_to_quat(float yaw, float pitch, float roll) { btQuaternion q; tb_to_mat(yaw,pitch,roll).getRotation(q); return q; }
-
-tb_angles get_tb_angles(btMatrix3x3 R);
-
-inline tb_angles get_tb_angles(float rot[3][3]) {
-	btMatrix3x3 R;
-	for (int i=0;i<3;i++) {
-		for (int j=0;j<3;j++) {
-			R[i][j] = rot[i][j];
-		}
-	}
-	return get_tb_angles(R);
-}
-
-inline tb_angles get_tb_angles(btTransform T) { return get_tb_angles(T.getBasis()); }
-inline tb_angles get_tb_angles(btQuaternion q) { return get_tb_angles(btMatrix3x3(q)); }
-
 inline btMatrix3x3 toBt(float R[3][3]) {
 	btMatrix3x3 btR;
 	for (int i = 0; i < 3; i++) {
@@ -64,7 +37,7 @@ inline btMatrix3x3 toBt(float R[3][3]) {
 }
 
 template<typename OtherType>
-btMatrix3x3 toBt_new(OtherType R) {
+btMatrix3x3 toBt_from(OtherType R) {
 	btMatrix3x3 btR;
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 3; j++) {
@@ -124,7 +97,7 @@ void set_posd_to_pos(struct robot_device* device0);
 #define TB_ANGLES_CLOSE_ENOUGH 0.0001
 #endif
 
-class tb_angles2 {
+class tb_angles {
 public:
 	float yaw;
 	float yaw_deg;
@@ -133,7 +106,7 @@ public:
 	float roll;
 	float roll_deg;
 
-	tb_angles2(float yaw, float pitch, float roll,bool deg=true) {
+	tb_angles(float yaw, float pitch, float roll,bool deg=true) {
 		if (deg) {
 			this->yaw = yaw * M_PI / 180.;
 			this->yaw_deg = yaw;
@@ -150,18 +123,19 @@ public:
 			this->roll_deg = roll * 180. / M_PI;
 		}
 	}
-	tb_angles2(const btQuaternion& q) { init(btMatrix3x3(q)); }
-	tb_angles2(const btTransform& T) { init(T.getBasis()); }
-	tb_angles2(const btMatrix3x3& R) { init(R); }
+	tb_angles(const btQuaternion& q) { init(btMatrix3x3(q)); }
+	tb_angles(const btTransform& T) { init(T.getBasis()); }
+	tb_angles(const btMatrix3x3& R) { init(R); }
 
-	tb_angles2(float rot[3][3]) {
-		btMatrix3x3 R;
-		for (int i=0;i<3;i++) {
-			for (int j=0;j<3;j++) {
-				R[i][j] = rot[i][j];
+	template<typename OtherType>
+	tb_angles(OtherType R) {
+		btMatrix3x3 btR;
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				btR[i][j] = R[i][j];
 			}
 		}
-		init(R);
+		init(btR);
 	}
 
 	btQuaternion toQuaternion() const { btQuaternion q; toMatrix().getRotation(q); return q; }
@@ -237,5 +211,18 @@ private:
 		roll_deg = roll * 180. / M_PI;
 	}
 };
+
+/*
+template<typename OtherType>
+tb_angles2 tb_angles_from(OtherType R) {
+	btMatrix3x3 btR;
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			btR[i][j] = R[i][j];
+		}
+	}
+	return tb_angles(btR);
+}
+*/
 
 #endif

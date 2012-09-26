@@ -151,8 +151,8 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 
 	btTransform actualPose_fk = actualPose;// = fwdKin(mech);
 
-	tb_angles2 currentPoseAngles = tb_angles2(mech->ori.R);
-	tb_angles2 actualPoseAngles = tb_angles2(ori_d->R);
+	tb_angles currentPoseAngles = tb_angles(mech->ori.R);
+	tb_angles actualPoseAngles = tb_angles(ori_d->R);
 
 	float grasp = GRASP_TO_IK(armId,mech->ori_d.grasp);
 
@@ -190,7 +190,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				grasp);
 
 		btVector3 point = actualPose_fk.getOrigin();
-		tb_angles2 angles = tb_angles2(actualPose_fk.getBasis());
+		tb_angles angles = tb_angles(actualPose_fk.getBasis());
 		log_msg("fp (% 1.3f,% 1.3f,% 1.3f)\typr (% 2.1f,% 2.1f,% 2.1f)\tg % 1.3f",
 				point.x(),point.y(),point.z(),
 				angles.yaw_deg,angles.pitch_deg,angles.roll_deg,
@@ -212,7 +212,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 	btMatrix3x3 ik_orientation = ik_pose.getBasis();
 	btVector3 ik_point = ik_pose.getOrigin();
 
-	tb_angles2 ikPoseAngles = tb_angles2(ik_pose);
+	tb_angles ikPoseAngles = tb_angles(ik_pose);
 	if (print) {
 		log_msg("ik (%0.4f,%0.4f,%0.4f)\typr (%0.4f,%0.4f,%0.4f)",
 				ik_point.x(),ik_point.y(),ik_point.z(),

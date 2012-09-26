@@ -161,8 +161,8 @@ void teleopIntoDS1(struct u_struct *t)
 
         //print teleop pose
         if (PRINT && !disable_arm_id[armidx]) {
-        	tb_angles2 angles = tb_angles2(rot_raw);
-        	tb_angles2 angles1 = tb_angles2(master_raw_orientation[armidx]);
+        	tb_angles angles = tb_angles(rot_raw);
+        	tb_angles angles1 = tb_angles(master_raw_orientation[armidx]);
         	printf("teleop %d raw (% 1.3f,% 1.3f,% 1.3f)  ypr (% 3.1f,% 3.1f,% 3.1f) (% 3.1f,% 3.1f,% 3.1f)\n",armidx,
         			master_raw_position[armidx].x(),master_raw_position[armidx].y(),master_raw_position[armidx].z(),
         			angles.yaw_deg,angles.pitch_deg,angles.roll_deg,
@@ -187,7 +187,7 @@ void teleopIntoDS1(struct u_struct *t)
         master_position[armidx] += p / MICRON_PER_M;
 
         if (PRINT && !disable_arm_id[armidx]) {
-        	tb_angles2 angles = tb_angles2(master_orientation[armidx]);
+        	tb_angles angles = tb_angles(master_orientation[armidx]);
         	printf("teleop %d     (% 1.3f,% 1.3f,% 1.3f)  ypr (% 3.1f,% 3.1f,% 3.1f)\n",armidx,
         	        			master_position[armidx].x(),master_position[armidx].y(),master_position[armidx].z(),
         	        			angles.yaw_deg,angles.pitch_deg,angles.roll_deg);
