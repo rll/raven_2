@@ -24,7 +24,7 @@
   <link name="base_link_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/base_w_motors.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/base_w_motors.dae"/>
       </geometry>
     <origin xyz="0 0 0" rpy="-1.57075 1.57075 -1.57075"/>
     </visual>
@@ -33,7 +33,7 @@
   <link name="link1_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/link1_w_cover.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link1_w_cover.dae"/>
       </geometry>
     </visual>
   </link>
@@ -41,7 +41,7 @@
   <link name="link2_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/link2.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link2.dae"/>
       </geometry>
     </visual>
   </link>
@@ -49,7 +49,7 @@
   <link name="link3_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/link3.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link3.dae"/>
       </geometry>
     </visual>
   </link>
@@ -57,7 +57,7 @@
   <link name="instrument_shaft_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/instrument_shaft.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/instrument_shaft.dae"/>
       </geometry>
     </visual>
   </link>
@@ -65,7 +65,7 @@
   <link name="wrist_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/wrist.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/wrist.dae"/>
       </geometry>
     </visual>
   </link>
@@ -73,7 +73,7 @@
   <link name="grasper1_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/grasper_1.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/grasper_1.dae"/>
       </geometry>
     <origin rpy="0 0 0" xyz="-0.00680 -0.00904 0.00452"/>
     </visual>
@@ -82,7 +82,7 @@
   <link name="grasper2_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/left_arm/grasper_2.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/grasper_2.dae"/>
       </geometry>
     <origin rpy="0 0 0" xyz="-0.00680 -0.00904 0.00452"/>
     </visual>
@@ -93,7 +93,7 @@
  <link name="base_link_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/base_w_motors.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/base_w_motors.dae"/>
       </geometry>
     <!--origin xyz="0 0 -1" rpy="0 1.57075 0"/-->
     <origin xyz="0 0 1" rpy="3.1415 -1.57075 0"/>
@@ -103,7 +103,7 @@
   <link name="link1_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/link1_w_cover.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/link1_w_cover.dae"/>
       </geometry>
     <origin xyz="1 0 0" rpy="0 0 0"/>
     </visual>
@@ -112,7 +112,7 @@
   <link name="link2_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/link2.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/link2.dae"/>
       </geometry>
     <origin xyz="1 0 0" rpy="0 0 0"/>
     </visual>
@@ -121,7 +121,7 @@
   <link name="link3_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/link3.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/link3.dae"/>
       </geometry>
     <origin xyz="1 0 0" rpy="0 0 0"/>
     </visual>
@@ -130,7 +130,7 @@
   <link name="instrument_shaft_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/instrument_shaft.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/instrument_shaft.dae"/>
       </geometry>
     <origin xyz="1 0 0" rpy="0 0 0"/>
     </visual>
@@ -139,7 +139,7 @@
   <link name="wrist_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/wrist.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/wrist.dae"/>
       </geometry>
     <origin xyz="1 0 0" rpy="0 0 0"/>
     </visual>
@@ -148,7 +148,7 @@
   <link name="grasper1_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/grasper_1.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/grasper_1.dae"/>
       </geometry>
     <origin rpy="0 0 0" xyz="1.00680 -0.00904 0.00452"/>
     </visual>
@@ -157,7 +157,7 @@
   <link name="grasper2_R">
     <visual>
       <geometry>
-        <mesh filename="package://raven_visualization/Raven_files/right_arm/grasper_2.dae"/>
+        <mesh filename="package://raven_2_params/data/right_arm/grasper_2.dae"/>
       </geometry>
     <origin rpy="0 0 0" xyz="1.00680 -0.00904 0.00452"/>
     </visual>

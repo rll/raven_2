@@ -100,4 +100,4 @@ src/raven/saveload.cpp
 rosbuild_link_boost(r2_control filesystem system)
 
 #target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
-target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )
+#target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )

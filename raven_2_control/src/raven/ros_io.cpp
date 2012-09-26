@@ -202,6 +202,11 @@ void ravenCmdCallback(const raven_2_msgs::RavenCommand& cmd) {
 				}
 			}
 
+			if (!cmd.arms[arm_id].joint_types.empty()) {
+				//ROS_ERROR("JOINT COMMANDS NOT IMPLEMENTED");
+				//continue;
+			}
+
 			tf::Transform tool_pose_raw;
 			tf::poseMsgToTF(cmd.arms[arm_id].tool_command.tool_pose,tool_pose_raw);
 
@@ -347,7 +352,9 @@ void publish_ros(struct robot_device *device0,u_08 runlevel,u_08 sublevel) {
 	if (hasHomed) {
 		publish_joints(device0);
 		//publish_marker(device0);
-		publish_command_pose(device0);
+		if (runlevel != RL_E_STOP) {
+			publish_command_pose(device0);
+		}
 		publish_tool_pose(device0);
 	}
 
@@ -473,17 +480,16 @@ void publish_command_pose(struct robot_device* device0) {
 	int mechnum = 0;
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		int armId = armIdFromMechType(_mech->type);
-		command_pose.pose.position.x = ((float)_mech->pos_d.x) / MICRON_PER_M;
-		command_pose.pose.position.y = ((float)_mech->pos_d.y) / MICRON_PER_M;
-		command_pose.pose.position.z = ((float)_mech->pos_d.z) / MICRON_PER_M;
+		btTransform pose;
 
+		btVector3 pos = btVector3((float)_mech->pos_d.x,(float)_mech->pos_d.y,(float)_mech->pos_d.z)/MICRON_PER_M;
 		btQuaternion rot;
 		(toBt(_mech->ori_d.R) * TOOL_POSE_AXES_TRANSFORM.getBasis()).getRotation(rot);
+		pose = btTransform(rot,pos);
 
-		command_pose.pose.orientation.x = rot.x();
-		command_pose.pose.orientation.y = rot.y();
-		command_pose.pose.orientation.z = rot.z();
-		command_pose.pose.orientation.w = rot.w();
+		//pose = ik_world_to_actual_world(armId) * pose * Tg.inverse();
+
+		tf::poseTFToMsg(pose,command_pose.pose);
 
 		pub_command_pose[armId].publish(command_pose);
 	}
@@ -503,11 +509,31 @@ void publish_tool_pose(struct robot_device* device0) {
 	int mechnum = 0;
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		int armId = armIdFromMechType(_mech->type);
+		btTransform pose;
 
 		btVector3 pos = btVector3((float)_mech->pos.x,(float)_mech->pos.y,(float)_mech->pos.z)/MICRON_PER_M;
 		btQuaternion rot;
 		toBt(_mech->ori.R).getRotation(rot);
-		btTransform pose = btTransform(rot,pos) * TOOL_POSE_AXES_TRANSFORM;
+		pose = btTransform(rot,pos) * TOOL_POSE_AXES_TRANSFORM;
+
+		//pose = ik_world_to_actual_world(armId) * pose * Tg.inverse();
+
+		//Use this to check intermediary poses
+		/*pose = actual_world_to_ik_world(armId)
+				* Tw2b
+				* Zs(THS_TO_IK(armId,_mech->joint[SHOULDER].jpos))
+				* Xu
+				* Ze(THE_TO_IK(armId,_mech->joint[ELBOW].jpos))
+				* Xf
+				* Zr(THR_TO_IK(armId,_mech->joint[TOOL_ROT].jpos))
+				* Zi(D_TO_IK(armId,_mech->joint[Z_INS].jpos))
+				* Xip
+				* Zp(THP_TO_IK(armId,_mech->joint[WRIST].jpos))
+				* Xpy
+				* Zy(THY_TO_IK_FROM_FINGERS(armId,_mech->joint[GRASP1].jpos,_mech->joint[GRASP2].jpos))
+				* Tg
+				* TOOL_POSE_AXES_TRANSFORM;
+		*/
 
 		tf::poseTFToMsg(pose,tool_pose.pose);
 

@@ -23,7 +23,7 @@ extern unsigned long int gTime;
  * input - device0 - pointer to device to check
  *
  */
-int overdriveDetect(struct device *device0)
+int overdriveDetect(struct device *device0,u_08 runlevel)
 {
     int i, j;
     struct DOF* _joint;
@@ -37,7 +37,7 @@ int overdriveDetect(struct device *device0)
             int _dac_max = DOF_types[_joint->type].DAC_max;
 
             // Kill current if greater than MAX_INST_DAC.  Probably indicates a problem.
-            if (abs(_joint->current_cmd) > MAX_INST_DAC)
+            if (runlevel != RL_INIT && abs(_joint->current_cmd) > MAX_INST_DAC)
             {
                 log_msg("Joint %s instant current command too high. DAC:%d \t tau:%0.3f \t jpos:%0.3f jpos_d:%0.3f\n", jointIndexAndArmName(_joint->type).c_str(), _joint->current_cmd, _joint->tau_d,_joint->jpos,_joint->jpos_d);
                 _joint->current_cmd = 0;
@@ -47,7 +47,7 @@ int overdriveDetect(struct device *device0)
             else if ( _joint->current_cmd > _dac_max )
             {
                 //Clip current to max_torque
-                if (gTime %100 == 0)
+                if (gTime %100 == 0 || abs(_joint->current_cmd) > MAX_INST_DAC)
                     err_msg("Joint %s is current clipped high (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max, _joint->current_cmd);
                 _joint->current_cmd = _dac_max;
             }
@@ -55,7 +55,7 @@ int overdriveDetect(struct device *device0)
             else if ( _joint->current_cmd < _dac_max*-1 )
             {
                 //Clip current to -1*max_torque
-                if (gTime %100 == 0)
+                if (gTime %100 == 0 || abs(_joint->current_cmd) > MAX_INST_DAC)
                     err_msg("Joint %s is current clipped low (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max*-1,  _joint->current_cmd);
                 _joint->current_cmd = _dac_max*-1;
             }

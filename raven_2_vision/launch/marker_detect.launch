@@ -1,12 +1,20 @@
 <launch>
 	<arg name="model" default="logitech"/>
     <arg name="name"/>
+    <arg name="device" default="/dev/video0"/>
+    <arg name="individual" default="true"/>
+    <include file="$(find raven_2_vision)/launch/uvc_registered.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="$(arg name)"/>
+        <arg name="device" default="$(arg device)"/>
+    </include>
     <group ns="$(arg model)_$(arg name)">
-	    <node pkg="marker_detect" name="marker_detector" type="marker_detector_node" output="screen" args="output_x">
+	    <node name="marker_detector" pkg="marker_detect" type="marker_detector_node" output="screen" args="output_x">
 	    	<param name="num_markers" type="int" value="100" />
 	    	<param name="camera_frame" type="string" value="$(arg model)_$(arg name)" />
 	    	<param name="target_frame" type="string" value="$(arg model)_$(arg name)" />
-	    	<param name="scale_factor" type="double" value="0.0105445269" />
+	    	<!-- change from zoe: old value: 0.0105445269.  smaller value <=> less distance to marker -->
+	    	<param name="scale_factor" type="double" value="0.0030445269" />
 	    	<param name="no_x_output" type="bool" value="false" />
 	    	<param name="frame_rate" type="int" value="10" />
 	        <!-- proportional to size of markers -->
@@ -15,6 +23,15 @@
 	        <param name="offset" type="double" value="15.0" />
 	    	<remap from="image" to="image_rect" />
 	    </node>
+        <node name="marker_repub" pkg="marker_detect" type="marker_republish_posearray">
+            <param name="individual" type="bool" value="$(arg individual)"/>
+            <param name="topic" value="marker_detector"/>
+        </node>
+        <node name="object_estimation" pkg="tfx" type="object_marker_estimation" output="screen">
+            <param name="individual" type="bool" value="$(arg individual)"/>
+            <param name="file" value="$(find raven_2_vision)/data/markers/objects.yaml"/>
+            <param name="topic" value="marker_detector/poses"/>
+        </node>
     </group>
     
 </launch>

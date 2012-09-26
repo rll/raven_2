@@ -63,6 +63,17 @@ inline btMatrix3x3 toBt(float R[3][3]) {
 	return btR;
 }
 
+template<typename OtherType>
+btMatrix3x3 toBt_new(OtherType R) {
+	btMatrix3x3 btR;
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			btR[i][j] = R[i][j];
+		}
+	}
+	return btR;
+}
+
 //btTransform Z(float theta,float d);
 //btTransform X(float alpha,float a);
 
@@ -108,5 +119,123 @@ struct  timespec  tsSubtract ( struct  timespec  time1,
                                            struct  timespec  time2);
 // Reset posd so that it is coincident with pos.
 void set_posd_to_pos(struct robot_device* device0);
+
+#ifndef TB_ANGLES_CLOSE_ENOUGH
+#define TB_ANGLES_CLOSE_ENOUGH 0.0001
+#endif
+
+class tb_angles2 {
+public:
+	float yaw;
+	float yaw_deg;
+	float pitch;
+	float pitch_deg;
+	float roll;
+	float roll_deg;
+
+	tb_angles2(float yaw, float pitch, float roll,bool deg=true) {
+		if (deg) {
+			this->yaw = yaw * M_PI / 180.;
+			this->yaw_deg = yaw;
+			this->pitch = pitch * M_PI / 180.;
+			this->pitch_deg = pitch;
+			this->roll = roll * M_PI / 180.;
+			this->roll_deg = roll;
+		} else {
+			this->yaw = yaw;
+			this->yaw_deg = yaw * 180. / M_PI;
+			this->pitch = pitch;
+			this->pitch_deg = pitch * 180. / M_PI;
+			this->roll = roll;
+			this->roll_deg = roll * 180. / M_PI;
+		}
+	}
+	tb_angles2(const btQuaternion& q) { init(btMatrix3x3(q)); }
+	tb_angles2(const btTransform& T) { init(T.getBasis()); }
+	tb_angles2(const btMatrix3x3& R) { init(R); }
+
+	tb_angles2(float rot[3][3]) {
+		btMatrix3x3 R;
+		for (int i=0;i<3;i++) {
+			for (int j=0;j<3;j++) {
+				R[i][j] = rot[i][j];
+			}
+		}
+		init(R);
+	}
+
+	btQuaternion toQuaternion() const { btQuaternion q; toMatrix().getRotation(q); return q; }
+	btTransform toTransform() const { btTransform T; T.setBasis(toMatrix()); return T; }
+	btMatrix3x3 toMatrix() const {
+		btMatrix3x3 Ryaw(
+				cos(yaw), -sin(yaw), 0,
+				sin(yaw),  cos(yaw), 0,
+				0,         0,        1);
+		btMatrix3x3 Rpitch(
+				 cos(pitch), 0, sin(pitch),
+				 0,          1, 0,
+				-sin(pitch), 0, cos(pitch));
+		btMatrix3x3 Rroll(
+				1,  0,          0,
+				0,  cos(roll), -sin(roll),
+				0,  sin(roll),  cos(roll));
+		return Ryaw * Rpitch * Rroll;
+	}
+
+private:
+	void init(const btMatrix3x3& R) {
+		yaw = 0;
+		pitch = 0;
+		roll = 0;
+
+		bool skip = false;
+		if (fabs(R[0][1]-R[1][0]) < TB_ANGLES_CLOSE_ENOUGH && fabs(R[0][2]-R[2][0]) < TB_ANGLES_CLOSE_ENOUGH && fabs(R[1][2]-R[2][1]) < TB_ANGLES_CLOSE_ENOUGH) {
+			//matrix is symmetric
+			if (fabs(R[0][1]+R[1][0]) < TB_ANGLES_CLOSE_ENOUGH && fabs(R[0][2]+R[2][0]) < TB_ANGLES_CLOSE_ENOUGH && fabs(R[1][2]+R[2][1]) < TB_ANGLES_CLOSE_ENOUGH) {
+				//diagonal
+				if (R[0][0] > 0) {
+					if (R[1][1] > 0) {
+						skip = true;
+					} else {
+						roll = M_PI;
+					}
+				} else if (R[1][1] > 0) {
+					yaw = M_PI;
+					pitch = M_PI;
+				} else {
+					yaw = M_PI;
+				}
+				skip = true;
+			}
+		}
+
+		if (!skip) {
+			btVector3 vx = R * btVector3(1,0,0);
+			btVector3 vy = R * btVector3(0,1,0);
+
+			yaw = atan2(vx.y(),vx.x());
+			pitch = atan2(-vx.z(), sqrt(vx.x()*vx.x() + vx.y()*vx.y()));
+
+			btMatrix3x3 Ryaw(
+						 cos(yaw), -sin(yaw), 0,
+						 sin(yaw),  cos(yaw), 0,
+						 0,         0,        1);
+			btMatrix3x3 Rpitch(
+					 cos(pitch), 0, sin(pitch),
+					 0,          1, 0,
+					-sin(pitch), 0, cos(pitch));
+			btVector3 vyp = Ryaw * Rpitch * btVector3(0,1,0);
+			btVector3 vzp = Ryaw * Rpitch * btVector3(0,0,1);
+
+			float coeff = vzp.dot(vy) >= 0 ? 1 : -1;
+
+			roll = coeff * acos(vyp.dot(vy));
+		}
+
+		yaw_deg = yaw * 180. / M_PI;
+		pitch_deg = pitch * 180. / M_PI;
+		roll_deg = roll * 180. / M_PI;
+	}
+};
 
 #endif

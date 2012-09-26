@@ -66,12 +66,12 @@ const btTransform Xpy(btMatrix3x3(1,0,0, 0,0,-1, 0,1,0),btVector3(DW,0,0));
 inline int MECH_GRASP_FROM_MECH_FINGERS(int armId,float g1, float g2) { return 1000.*(armId == GOLD_ARM_ID ? (g2 + g1) : (g2 + g1)); }
 inline float GRASP_TO_IK(int armId,int grasp) { return (armId == GOLD_ARM_ID ? grasp : -grasp) / 1000.; }
 
-inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ? -thy + grasp/2 : -( thy + grasp/2)); }
-inline float FINGER2_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ?  thy + grasp/2 : -(-thy + grasp/2)); }
+inline float FINGER1_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ?  thy + grasp/2 : -( thy + grasp/2)); }
+inline float FINGER2_FROM_IK(int armId,float thy, float grasp) { return (armId == GOLD_ARM_ID ? -thy + grasp/2 : -(-thy + grasp/2)); }
 
 inline float THY_MECH_FROM_FINGERS(  int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? (g2 - g1) / 2 : -(g2 - g1) / 2); }
-inline float THY_TO_IK_FROM_FINGERS( int armId,float g1, float g2) { return -THY_MECH_FROM_FINGERS(armId,g1,g2); }
-inline float THY_FROM_IK(int armId, float thy, float grasp) { return thy; }
+inline float THY_TO_IK_FROM_FINGERS( int armId,float g1, float g2) { return (armId == GOLD_ARM_ID ? -1 : -1) * THY_MECH_FROM_FINGERS(armId,g1,g2); }
+inline float THY_FROM_IK(int armId, float thy, float grasp) { return (armId == GOLD_ARM_ID ? 1 : 1) * thy; }
 
 #define Zy(thy) Z(thy,0)
 

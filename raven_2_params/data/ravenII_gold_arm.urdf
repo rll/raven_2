@@ -1,243 +1,472 @@
-<?xml version="1.0"?>
-<!--RavenII Surgical Robot 2-Arm urdf File -->
-<!--Author: Sina Nia Kosari & Lee White-->
-<!--kosari@uw.edu & leewhite@uw.edu-->
-<!--Date: 01-Dec-2011 -->
-<!--Biorobotics Laboratory -->
-<!--University of Washington -->
-
 <robot name="raven_2">
 
   <link name="world">
    <visual>
-     <origin xyz="0 0 0" rpy="0 0 0" />
+     <origin rpy="0 0 0" xyz="0 0 0" />
      <geometry>
        <box size=".001 .001 .001" />
      </geometry>
      <material name="Cyan">
-       <color rgba="0 255 255 1.0"/>
+       <color rgba="0 255 255 1.0" />
      </material>
    </visual>
   </link>
 
   <joint name="world_to_0_link" type="fixed">
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 1.5707963267948966" xyz=".211 -.25071 .235"/>
-    <parent link="world"/>
-    <child link="0_link"/>
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 1.5707963267948966" xyz=".211 -.25071 .235" />
+    <parent link="world" />
+    <child link="0_link" />
   </joint>
 
   <link name="0_link">
    <visual>
-     <origin xyz="0 0 0" rpy="0 0 0" />
+     <origin rpy="0 0 0" xyz="0 0 0" />
      <geometry>
        <box size=".001 .001 .001" />
      </geometry>
      <material name="Cyan">
-       <color rgba="0 255 255 1.0"/>
+       <color rgba="0 255 255 1.0" />
      </material>
    </visual>
   </link>
 
-  <!-- LEFT ARM LINKS -->
-  <link name="base_link_L">
-    <!--visual>
+
+  <joint name="base_mount_L" type="fixed">
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.0 0.00 0" /> 
+    
+    <parent link="0_link" />
+    <child link="base_link_L" />
+  </joint>
+
+ <link name="base_link_L">
+    <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/base_w_motors.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/base_w_motors.dae" />
       </geometry>
-      <origin xyz="0 0 0" rpy="0 0 1.57075"/>
-    </visual-->
+      <origin rpy="0 0 1.57075" xyz="0 0 0" />
+    </visual>
   </link>
+
+ <joint name="shoulder_L" type="revolute">
+    <axis xyz="0 0 1" />
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5" />
+    <origin rpy="1.5707963267948966 -1.9383641042662245 0" xyz="0.0 0.0 0" /> 
+    <parent link="base_link_L" />
+    <child link="link1_L" />
+  </joint>
+
   <link name="link1_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/link1_w_cover.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link1_w_cover.dae" />
       </geometry>
-      <!--<origin xyz="0 0 0" rpy="-1.2032 1.57075 -1.57075"/>--> <!-- roll is -pi/2 + 0.3676 [atan(0.3471/0.9014)] -->
-      <origin xyz="0 0 0" rpy="0 1.5705 -0.36751734624250643"/> <!-- yaw is -atan(0.3471/0.9014) -->
+       
+      <origin rpy="0 1.5705 -0.36751734624250643" xyz="0 0 0" />
     </visual>
   </link>
+
+  <joint name="elbow_L" type="revolute">
+    <axis xyz="0 0 1" />
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5" />
+    <origin rpy="-1.3088095959974027 0 0" xyz="0.0 0.0 0" />
+    <parent link="link1_L" />
+    <child link="link2_L" />
+  </joint>
 
   <link name="link2_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/link2.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link2.dae" />
       </geometry>
-      <origin xyz="0 0 0" rpy="1.9382395030381792 0.26209318989244951 1.5705100123309776"/>
-      <!--origin xyz="0 0 0" rpy="1.93836 0.26180 1.57075"/--> <!-- <origin xyz="0 0 0" rpy="1.30800 0 0"/> -->
+      <origin rpy="1.9382395030381792 0.26209318989244951 1.5705100123309776" xyz="0 0 0" />
+       
     </visual>
   </link>
+
+  <joint name="insertion_L" type="prismatic">
+    <axis xyz="0 0 -1" />
+    <limit effort="1000.0" lower="-.17" upper=".1" velocity="0.5" />
+    <origin rpy="-0.90695995069604551 0 0" xyz="0 0 0" />
+    <parent link="link2_L" />
+    <child link="link3_L" />
+  </joint>
 
   <link name="link3_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/link3.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/link3.dae" />
       </geometry>
-      <origin rpy="1.9385216811679049 -0.64486672178728399 1.5704503011280697" xyz="0 0 0"/>
+      <origin rpy="1.9385216811679049 -0.64486672178728399 1.5704503011280697" xyz="0 0 0" />
     </visual>
   </link>
+
+  <joint name="tool_roll_L" type="revolute">
+    <axis xyz="0 0 -1" />
+    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 -3.141592653589793" xyz="0 0 0" />
+    <parent link="link3_L" />
+    <child link="instrument_shaft_L" />
+  </joint>
 
   <link name="instrument_shaft_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/instrument_shaft.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/instrument_shaft.dae" />
       </geometry>
-      <origin rpy="1.9385216811679049 -0.64486672178728399 1.5704503011280697" xyz="0 0 0"/>
+      <origin rpy="1.93852578511 -0.644866720652 -0.7857441885125518" xyz="0.0 0.0 0.0" />
     </visual>
   </link>
+
+  <joint name="wrist_joint_L" type="revolute">
+    <axis xyz="0 0 -1" />
+    <limit effort="1000.0" lower="-2" upper="2" velocity="0.5" />
+    <origin rpy="1.5707963267948966 -1.5707963267948966 1.5707963267948966" xyz="0 0 0" />
+    <parent link="instrument_shaft_L" />
+    <child link="wrist_L" />
+  </joint>
 
   <link name="wrist_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/wrist.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/wrist.dae" />
       </geometry>
-      <origin xyz="0 0 0" rpy="0.90864182988948561 0.60032410882593512 -0.75472267005191318"/> <!-- <origin xyz="0 0 0" rpy="1.93833 0.90753 0"/> -->
+      <origin rpy="0.90864182988948561 0.60032410882593512 -0.75472267005191318" xyz="0 0 0" /> 
     </visual>
   </link>
+
+  <joint name="grasper_joint_1_L" type="revolute">
+    <axis xyz="0 0 -1" />
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5" />
+    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0" />
+    <parent link="wrist_L" />
+    <child link="grasper1_L" />
+  </joint>
 
   <link name="grasper1_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/grasper_1.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/grasper_1.dae" />
       </geometry>
-    <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0"/>
+      <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0" />
     </visual>
   </link>
+
+  <joint name="grasper_joint_2_L" type="revolute">
+    <axis xyz="0 0 1" />
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5" />
+    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0" />
+    <parent link="wrist_L" />
+    <child link="grasper2_L" />
+  </joint>
 
   <link name="grasper2_L">
     <visual>
       <geometry>
-        <mesh filename="package://raven_2_params/data/left_arm/grasper_2.dae"/>
+        <mesh filename="package://raven_2_params/data/left_arm/grasper_2.dae" />
       </geometry>
-    <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0"/>
+      <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0" />
     </visual>
   </link>
 
-  <link name="tool_L">
-  </link>
+  <joint name="grasper_yaw_L" type="revolute">
+    <axis xyz="0 0 1" />
+    <limit effort="1000.0" lower="-2" upper="2" velocity=".5" />
+    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0" />
+    <parent link="wrist_L" />
+    <child link="tool_base_L" />
+  </joint>
 
   <link name="tool_base_L">
   </link>
 
+  <joint name="tool_base_to_tool_L" type="fixed">
+    
+  <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 0" xyz="0.01 0 0" />
+    <parent link="tool_base_L" />
+    <child link="tool_L" />
+  </joint>
+
   <link name="tool_L">
   </link>
+
+  <joint name="tool_base_to_tool_tip_L" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 0" xyz="0.02 0 0" />
+    <parent link="tool_base_L" />
+    <child link="tool_tip_L" />
+  </joint>
 
   <link name="tool_tip_L">
   </link>
 
+  <joint name="grasper1_tip_L" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 0" xyz="0.02 0 0" />
+    <parent link="grasper1_L" />
+    <child link="grasper1_tip_L" />
+  </joint>
+
   <link name="grasper1_tip_L">
   </link>
+
+  <joint name="grasper2_tip_L" type="fixed">
+    
+    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5" />
+    <origin rpy="0 0 0" xyz="0.02 0 0" />
+    <parent link="grasper2_L" />
+    <child link="grasper2_tip_L" />
+  </joint>
 
   <link name="grasper2_tip_L">
   </link>
 
 
-  <!-- LEFT ARM JOINTS -->
 
-  <joint name="base_mount_L" type="fixed">
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 -1.5707963267948966" xyz="0.0 0.00 0"/> <!-- berkeley's ravens are mounted without the tilt -->
-    <!-- <origin rpy="-1.5707963267948966 -2.0071286 1.5707963267948966" xyz="0.0 0.00 0"/> -->
-    <parent link="0_link"/>
-    <child link="base_link_L"/>
+  <material name="8020_frame">
+    <color rgba="127 127 127 0.5" />
+  </material>
+
+  <link name="frame_bottom_F">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.7 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_bottom_F" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="-0.0125 -0.325 0.0125" />
+    <parent link="world" />
+    <child link="frame_bottom_F" />
   </joint>
 
-  <joint name="shoulder_L" type="revolute">
-    <axis xyz="0 0 1" />
-    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
-    <origin rpy="1.5707963267948966 -1.9383641042662245 0" xyz="0.0 0.0 0"/> <!-- pitch is -pi/2 - 0.3676 [atan(0.3471/0.9014)] -->
-    <parent link="base_link_L"/>
-    <child link="link1_L"/>
+  <link name="frame_bottom_L">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_bottom_L" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 0.0125 0.0125" />
+    <parent link="world" />
+    <child link="frame_bottom_L" />
   </joint>
 
-  <joint name="elbow_L" type="revolute">
-    <axis xyz="0 0 1"/>
-    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
-    <origin rpy="-1.3088095959974027 0 0" xyz="0.0 0.0 0" />
-    <parent link="link1_L"/>
-    <child link="link2_L"/>
+  <link name="frame_bottom_R">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_bottom_R" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 -0.6625 0.0125" />
+    <parent link="world" />
+    <child link="frame_bottom_R" />
   </joint>
 
-  <joint name="insertion_L" type="prismatic">
-    <axis xyz="0 0 -1"/>
-    <limit effort="1000.0" lower="-.17" upper=".1" velocity="0.5"/>
-    <origin rpy="-0.90695995069604551 0 0" xyz="0 0 0"/>
-    <parent link="link2_L"/>
-    <child link="link3_L"/>
+  <link name="frame_bottom_B">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.70 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_bottom_B" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.4125 -0.325 0.0125" />
+    <parent link="world" />
+    <child link="frame_bottom_B" />
   </joint>
 
-  <joint name="tool_roll_L" type="revolute">
-    <axis xyz="0 0 -1"/>
-    <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="link3_L"/>
-    <child link="instrument_shaft_L"/>
+  <link name="frame_vertical_LF">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_vertical_LF" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="-0.0125 0.0125 0.075" />
+    <parent link="world" />
+    <child link="frame_vertical_LF" />
   </joint>
 
-  <joint name="wrist_joint_L" type="revolute">
-    <axis xyz="0 0 1"/>
-    <limit effort="1000.0" lower="-2" upper="2" velocity="0.5"/>
-    <!-- origin rpy="0.78539816339744828 -1.5707963267948966 1.5707963267948966" xyz="0 0 0"/ --> <!-- roll is pi/2 offset by -pi/4 -->
-    <origin rpy="-1.5707963267948966 -1.0471975511965979 1.5707963267948966" xyz="0 0 0"/> <!-- roll is -pi/2, pitch accounts for wrist angle at home position (approx +pi/6 at 0 joint angle) -->
-    <parent link="instrument_shaft_L"/>
-    <child link="wrist_L"/>
+  <link name="frame_vertical_RF">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_vertical_RF" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="-0.0125 -0.6625 0.075" />
+    <parent link="world" />
+    <child link="frame_vertical_RF" />
   </joint>
 
-  <joint name="grasper_joint_1_L" type="revolute">
-    <axis xyz="0 0 -1"/>
-    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
-    <origin rpy="1.5707963267948966 0 0" xyz="0.012 0 0"/>
-    <parent link="wrist_L"/>
-    <child link="grasper1_L"/>
+  <link name="frame_vertical_LB">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_vertical_LB" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.4125 0.0125 0.075" />
+    <parent link="world" />
+    <child link="frame_vertical_LB" />
   </joint>
 
-
-  <joint name="grasper_joint_2_L" type="revolute">
-    <axis xyz="0 0 1"/>
-    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
-    <origin rpy="1.5707963267948966 0 0" xyz="0.012 0 0"/>
-    <parent link="wrist_L"/>
-    <child link="grasper2_L"/>
+  <link name="frame_vertical_RB">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.10 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_vertical_RB" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.4125 -0.6625 0.075" />
+    <parent link="world" />
+    <child link="frame_vertical_RB" />
   </joint>
 
-  <joint name="grasper_yaw_L" type="revolute">
-    <axis xyz="0 0 1"/>
-    <limit effort="1000.0" lower="-2" upper="2" velocity=".5"/>
-    <origin rpy="-1.5707963267948966 0 0" xyz="0.012 0 0"/>
-    <parent link="wrist_L"/>
-    <child link="tool_base_L"/>
+  <link name="frame_top_F">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.7 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_top_F" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="-0.0125 -0.325 0.1375" />
+    <parent link="world" />
+    <child link="frame_top_F" />
   </joint>
 
-  <joint name="tool_base_to_main_L" type="fixed">
-    
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 0" xyz="0.01 0 0"/>
-    <parent link="tool_base_L"/>
-    <child link="tool_L"/>
+  <link name="frame_top_L">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_top_L" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 0.0125 0.1375" />
+    <parent link="world" />
+    <child link="frame_top_L" />
   </joint>
 
-  <joint name="tool_base_to_tip_L" type="fixed">
-    
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 0" xyz="0.02 0 0"/>
-    <parent link="tool_base_L"/>
-    <child link="tool_tip_L"/>
+  <link name="frame_top_R">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.40 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_top_R" type="fixed">
+    <origin rpy="0 0 0" xyz="0.20 -0.6625 0.1375" />
+    <parent link="world" />
+    <child link="frame_top_R" />
   </joint>
 
-  <joint name="grasper1_tip_L" type="fixed">
-    
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 0" xyz="0.02 0 0"/>
-    <parent link="grasper1_L"/>
-    <child link="grasper1_tip_L"/>
+  <link name="frame_top_B">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.70 0.025 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_top_B" type="fixed">
+    <origin rpy="0 0 -1.5707963267948966" xyz="0.4125 -0.325 0.1375" />
+    <parent link="world" />
+    <child link="frame_top_B" />
   </joint>
 
-  <joint name="grasper2_tip_L" type="fixed">
-    
-    <limit effort="1000.0" lower="0.0" upper="3.1415" velocity="0.5"/>
-    <origin rpy="0 0 0" xyz="0.02 0 0"/>
-    <parent link="grasper2_L"/>
-    <child link="grasper2_tip_L"/>
+  <link name="frame_base_support_L">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.4 0.05 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_base_support_L" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.1315 0.05 0.2" />
+    <parent link="world" />
+    <child link="frame_base_support_L" />
   </joint>
 
-</robot>
+  <link name="frame_base_support_R">
+   <visual>
+     <origin rpy="0 0 0" xyz="0 0 0" />
+     <geometry>
+       <box size="0.4 0.05 0.025" />
+     </geometry>
+     <material name="8020_frame">
+       <color rgba="127 127 127 0.5" />
+     </material>
+   </visual>
+  </link>
+  <joint name="frame_pose_base_support_R" type="fixed">
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.1315 -0.7 0.2" />
+    <parent link="world" />
+    <child link="frame_base_support_R" />
+  </joint>
+
+  </robot>

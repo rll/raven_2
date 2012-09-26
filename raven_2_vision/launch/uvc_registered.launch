@@ -2,11 +2,11 @@
     <arg name="model" default="logitech"/>
     <arg name="name"/>
     <arg name="device" default="/dev/video0"/>
-    <!--include file="$(find raven_2_vision/launch/uvc.launch">
+    <include file="$(find raven_2_vision)/launch/uvc.launch">
         <arg name="model" value="$(arg model)"/>
         <arg name="name" value="$(arg name)"/>
         <arg name="device" value="$(arg device)"/>
-    </include-->
+    </include>
     <group ns="$(arg model)_$(arg name)">
         <node name="pose_pub" pkg="tfx" type="publisher" args="--use-params" output="screen">
             <param name="load" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>

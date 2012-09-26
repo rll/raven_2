@@ -11,7 +11,7 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from raven_2_trajectory.srv import RecordTrajectory, RecordTrajectoryResponse
 from optparse import OptionParser
 
-SIDE_ACTIVE = [False,True]
+SIDE_ACTIVE = [True,True]
 SIDE_NAMES = ['left','right']
 
 BASE_FRAME = '/0_link'

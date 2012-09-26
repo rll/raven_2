@@ -188,7 +188,7 @@ static void *rt_process(void* )
         //////////////// END SURGICAL ROBOT CODE ///////////////////////////
 
         // Check for overcurrent and impose safe torque limits
-        if (overdriveDetect(&device0)) {
+        if (overdriveDetect(&device0,currParams.runlevel)) {
             log_msg("Setting soft e stop");
         	soft_estopped = TRUE;
         }
