@@ -73,6 +73,7 @@ src/raven/inv_kinematics.cpp
 src/raven/local_io.cpp
 src/raven/log.cpp
 src/raven/mapping.cpp
+src/raven/shared_modes.cpp
 src/raven/motor.cpp
 src/raven/network_layer.cpp
 src/raven/overdrive_detect.cpp

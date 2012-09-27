@@ -5,6 +5,7 @@
 
 #include "update_device_state.h"
 #include "log.h"
+#include "shared_modes.h"
 
 extern struct DOF_type DOF_types[];
 extern struct traj trajectory[];
@@ -84,6 +85,8 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     } else if ( (currParams->runlevel == RL_E_STOP)   &&
          (currParams->robotControlMode != (int)newRobotControlMode) ) {
         currParams->robotControlMode = (int)newRobotControlMode;
+        resetControlMode();
+        checkControlMode(newRobotControlMode);
         log_msg("Control mode updated");
     }
 

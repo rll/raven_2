@@ -16,7 +16,7 @@
 #include "local_io.h"
 
 void init_ros_topics(ros::NodeHandle &n,struct robot_device* device0);
-void publish_ros(struct robot_device* dev,u_08 runlevel,u_08 sublevel);
+void publish_ros(struct robot_device* dev,param_pass currParams);
 
 
 #endif /* ROS_IO_H_ */

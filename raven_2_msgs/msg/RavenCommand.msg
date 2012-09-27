@@ -1,8 +1,5 @@
 Header header
 bool pedal_down
+uint8 controller #see Constants.msg for values
+
 ArmCommand[2] arms
-
-#RavenToolCommand[2] tool_command
-#string[] joint_names
-#JointCommand[] joint_commands
-

@@ -138,7 +138,7 @@ static void *rt_process(void* )
     currParams.runlevel = STOP;
     currParams.sublevel = 0;
 
-    log_msg("Starting RT Process..");
+    log_msg("Starting RT Process...");
 
     // Initializations (run here and again in init.cpp)
     initDOFs(&device0);
@@ -200,7 +200,7 @@ static void *rt_process(void* )
         putUSBPackets(&device0); //disable usb for par port test
 
         //Publish current raven state
-        publish_ros(&device0,currParams.runlevel,currParams.sublevel);   // from local_io
+        publish_ros(&device0,currParams);   // from local_io
 
         ros::spinOnce();
 

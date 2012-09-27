@@ -19,11 +19,14 @@
 #include "mapping.h"
 #include "kinematics_defines.h"
 #include "itp_teleoperation.h"
+#include "shared_modes.h"
 
 #include <tf/transform_datatypes.h>
 #include <raven_2_control/raven_state.h>
 #include <raven_2_control/torque_command.h>
 #include <raven_2_control/joint_command.h>
+
+#include <trajectory_msgs/JointTrajectory.h>
 
 #include <raven_2_msgs/Constants.h>
 #include <raven_2_msgs/RavenCommand.h>
@@ -72,7 +75,7 @@ ros::Subscriber joint_sub;
 
 tf::TransformListener* tf_listener;
 
-void ravenCmdCallback(const raven_2_msgs::RavenCommand& cmd);
+//void ravenCmdCallback(const raven_2_msgs::RavenCommand& cmd,bool check);
 void torqueCallback1(const torque_command::ConstPtr& torque_cmd);
 void jointCallback(const joint_command::ConstPtr& joint_cmd);
 
@@ -152,7 +155,16 @@ std::string rosArmName(int armId) {
 	}
 }
 
+void processRavenCmd(const raven_2_msgs::RavenCommand& cmd);
+
+void raven_cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
+	if (!checkMasterMode(MasterMode::ROS_RAVEN_CMD)) { return; }
+	processRavenCmd(cmd);
+}
+
 void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId) {
+	if (!checkMasterMode(MasterMode::ROS_POSE)) { return; }
+
 	raven_2_msgs::RavenCommand cmd;
 	cmd.header = pose->header;
 	cmd.pedal_down = true;
@@ -161,11 +173,16 @@ void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId)
 	arm_cmd.tool_command.absolute = true;
 	arm_cmd.tool_command.tool_pose = pose->pose;
 	cmd.arms[armId] = arm_cmd;
-	//ravenCmdCallback(cmd);
+	processRavenCmd(cmd);
 }
 
-void ravenCmdCallback(const raven_2_msgs::RavenCommand& cmd) {
+void processRavenCmd(const raven_2_msgs::RavenCommand& cmd) {
     static ros::Time last_call(-1);
+
+    if (cmd.controller != raven_2_msgs::Constants::CONTROLLER_NONE
+    		&& !checkControlMode((t_controlmode)cmd.controller)) {
+    	return;
+    }
 
     ros::Time now = ros::Time::now();
     if (last_call.toSec() < 0) { last_call = now; return; }
@@ -330,9 +347,44 @@ void ravenCmdCallback(const raven_2_msgs::RavenCommand& cmd) {
 	writeUpdate(&data1);
 }
 
+void cmd_joint_position_callback(const joint_command::ConstPtr& joint_cmd) {
+	printf("joint pos callback!\n");
+	if (!checkMasterMode(MasterMode::ROS_JOINT_POSITION)) { return; }
+	for (int i=0; i < 8; i++) {
+		device0ptr->mech[1].joint[i].jpos_d = joint_cmd->angles[i];
+		device0ptr->mech[0].joint[i].jpos_d = joint_cmd->angles[i+8];
+	}
+}
+
+void cmd_joint_velocity_callback(const joint_command::ConstPtr& joint_cmd) {
+	printf("joint velocity callback!\n");
+	if (!checkMasterMode(MasterMode::ROS_JOINT_VELOCITY)) { return; }
+	for (int i=0; i < 8; i++) {
+		device0ptr->mech[1].joint[i].jvel_d = joint_cmd->angles[i];
+		device0ptr->mech[0].joint[i].jvel_d = joint_cmd->angles[i+8];
+	}
+}
+
+void cmd_torque_callback(const torque_command::ConstPtr& torque_cmd) {
+	printf("torque callback!\n");
+	if (!checkMasterMode(MasterMode::ROS_JOINT_TORQUE)) { return; }
+	for (int i=0; i < 8; i++) {
+		device0ptr->mech[1].joint[i].tau_d = torque_cmd->torque[i];
+		device0ptr->mech[0].joint[i].tau_d = torque_cmd->torque[i+8];
+	}
+}
+
+void cmd_joint_trajectory_callback(const trajectory_msgs::JointTrajectory& trajectory) {
+	printf("joint trajectory callback!\n");
+	if (!checkMasterMode(MasterMode::ROS_JOINT_TRAJECTORY)) { return; }
+	//TODO: fill in
+}
+
 void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 sublevel,ros::Duration since_last_pub);
 
-void publish_ros(struct robot_device *device0,u_08 runlevel,u_08 sublevel) {
+void publish_ros(struct robot_device *device0,param_pass currParams) {
+	u_08 runlevel = currParams.runlevel;
+	u_08 sublevel = currParams.sublevel;
 	static bool hasHomed = false;
 	static raven_2_msgs::RavenState raven_state;
 	raven_state.arms.clear();
@@ -367,6 +419,10 @@ void publish_ros(struct robot_device *device0,u_08 runlevel,u_08 sublevel) {
 	raven_state.runlevel = runlevel;
 	raven_state.sublevel = sublevel;
 	raven_state.surgeon_mode = device0->surgeon_mode;
+
+	t_controlmode controlMode = (t_controlmode)currParams.robotControlMode;
+	raven_state.controller = (uint8_t) controlMode;
+
 	for (int m = 0; m < NUM_MECH; m++) {
 		raven_2_msgs::ArmState arm_state;
 		uint8_t arm_type;
@@ -758,7 +814,7 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 
 void init_subs(ros::NodeHandle &n,struct robot_device *device0) {
 	std::cout << "Initializing ros subscribers" << std::endl;
-	cmd_sub = n.subscribe(RAVEN_COMMAND_TOPIC, 1, ravenCmdCallback);
+	cmd_sub = n.subscribe(RAVEN_COMMAND_TOPIC, 1, raven_cmd_callback);
 	mechanism* _mech = NULL;
 	int mechnum = 0;
 	while (loop_over_mechs(device0,_mech,mechnum)) {

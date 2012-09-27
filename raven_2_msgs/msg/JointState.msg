@@ -1,4 +1,4 @@
-uint16 type
+uint16 type #see Constants.msg for values
 
 int16 state # is this DoF enabled?
 int16 STATE_NOT_READY   = 0

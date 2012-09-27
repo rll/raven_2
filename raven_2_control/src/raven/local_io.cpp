@@ -31,6 +31,7 @@ active use.
 #include "mapping.h"
 #include "itp_teleoperation.h"
 #include "kinematics_defines.h"
+#include "shared_modes.h"
 
 extern bool disable_arm_id[2];
 extern int NUM_MECH;
@@ -101,8 +102,10 @@ int recieveUserspace(void *u,int size)
 {
     if (size==sizeof(struct u_struct))
     {
-        isUpdated = TRUE;
-        teleopIntoDS1((struct u_struct*)u);
+    	if (checkMasterMode(MasterMode::NETWORK)) {
+    		isUpdated = TRUE;
+    		teleopIntoDS1((struct u_struct*)u);
+    	}
     }
     return 0;
 }

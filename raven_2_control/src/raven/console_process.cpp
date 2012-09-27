@@ -7,9 +7,11 @@
 #include <stdio.h>
 #include <iomanip>
 #include <termios.h>   // needed for terminal settings in getkey()
+#include <sstream>
 
 #include "rt_process_preempt.h"
 #include "rt_raven.h"
+#include "shared_modes.h"
 
 using namespace std;
 
@@ -44,14 +46,60 @@ void *console_process(void *)
 
     int output_robot=false;
     int theKey,print_msg=1;
+    bool masterModeWasNone = true;
+    bool controlModeWasNone = true;
     char inputbuffer[100];
     sleep(1);
     // Run shell interaction
     while (ros::ok())
     {
+    	MasterMode::Enum masterMode;
+    	std::set<MasterMode::Enum> masterModeConflicts;
+    	getMasterModeConflicts(masterMode,masterModeConflicts);
+    	if (!masterModeConflicts.empty() || (masterModeWasNone && masterMode != MasterMode::NONE)) {
+    		print_msg = 1;
+    	}
+    	masterModeWasNone = (masterMode == MasterMode::NONE);
+
+    	t_controlmode controlMode;
+		std::set<t_controlmode> controlModeConflicts;
+		getControlModeConflicts(controlMode,controlModeConflicts);
+		if (!controlModeConflicts.empty() || (controlModeWasNone && controlMode != no_control)) {
+			print_msg = 1;
+		}
+		controlModeWasNone = (controlMode == no_control);
+
         // Output UI hints
         if ( print_msg ){
+
+        	if (!masterModeConflicts.empty()) {
+        		std::stringstream ss;
+				ss << "In master masterMode " << masterModeToString(masterMode) << " conflicts from";
+				for (std::set<MasterMode::Enum>::iterator itr=masterModeConflicts.begin();itr!=masterModeConflicts.end();itr++) {
+					ss << " " << masterModeToString(*itr);
+				}
+				log_warn(ss.str().c_str());
+        	} else if (masterMode != MasterMode::NONE) {
+        		log_msg("In master mode %s",masterModeToString(masterMode).c_str());
+        	}
+
+        	if (!controlModeConflicts.empty()) {
+				std::stringstream ss;
+				ss << "In control controlMode " << controlModeToString(controlMode) << " conflicts from";
+				for (std::set<t_controlmode>::iterator itr=controlModeConflicts.begin();itr!=controlModeConflicts.end();itr++) {
+					ss << " " << controlModeToString(*itr);
+				}
+				log_warn(ss.str().c_str());
+			} else if (controlMode != no_control) {
+				log_msg("In control mode %s",controlModeToString(controlMode).c_str());
+			}
+
             log_msg("[[\t'C'  : toggle console messages ]]");
+
+            if (masterMode != MasterMode::NONE || !masterModeConflicts.empty()) {
+			log_msg("[[\t'U'  : unlock master mode      ]]");
+            }
+
             log_msg("[[\t'T'  : specify joint torque    ]]");
             log_msg("[[\t'M'  : set control mode        ]]");
             log_msg("[[\t'^C' : Quit                    ]]");
@@ -127,10 +175,21 @@ void *console_process(void *)
                 printf("\n\nEnter new control mode: 0=NULL, 1=NULL, 2=joint_velocity, 3=apply_torque, 4=homing, 5=motor_pd, 6=cartesian_space_motion, 7=multi_dof_sinusoid 8=joint_position \t");
                 cin.getline (inputbuffer,100);
                 t_controlmode _cmode = (t_controlmode)(atoi(inputbuffer));
-                log_msg("recieved control mode:%d\n\n",_cmode);
+                log_msg("recieved control masterMode:%d\n\n",_cmode);
                 setRobotControlMode(_cmode);
                 print_msg=1;
                 break;
+            }
+            case 'u':
+            case 'U':
+            {
+            	print_msg=1;
+            	log_msg("Unlocking master masterMode");
+            	bool resetResult = resetMasterMode();
+            	if (!resetResult) {
+            		log_err("Could not unlock master masterMode!");
+            	}
+            	break;
             }
         }
 

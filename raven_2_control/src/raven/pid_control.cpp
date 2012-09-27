@@ -115,89 +115,20 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
 
     /***** update history ********/
 
-    //DAC history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastDACs[joint->type][i] = lastDACs[joint->type][i-1];
-    }
-    lastDACs[joint->type][0] = DACVal;
-
-    //Tau history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastTau[joint->type][i] = lastTau[joint->type][i-1];
-    }
-    lastTau[joint->type][0] = tau_d;
-
-    //err history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastErr[joint->type][i] = lastErr[joint->type][i-1];
-    }
-    lastErr[joint->type][0] = err;
-
-    //pTerm history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastP[joint->type][i] = lastP[joint->type][i-1];
-    }
-    lastP[joint->type][0] = pTerm;
-
-    //errVel history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastErrVel[joint->type][i] = lastErrVel[joint->type][i-1];
-    }
-    lastErrVel[joint->type][0] = errVel;
-
-    //pTerm history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastD[joint->type][i] = lastD[joint->type][i-1];
-    }
-    lastD[joint->type][0] = vTerm;
-
-    //errInt history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastErrInt[joint->type][i] = lastErrInt[joint->type][i-1];
-    }
-    lastErrInt[joint->type][0] = errInt[joint->type];
-
-    //pTerm history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastI[joint->type][i] = lastI[joint->type][i-1];
-    }
-    lastI[joint->type][0] = iTerm;
-
-    //mpos_d history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastDes[joint->type][i] = lastDes[joint->type][i-1];
-    }
-    lastDes[joint->type][0] = joint->mpos_d;
-
-    //mpos history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastAct[joint->type][i] = lastAct[joint->type][i-1];
-    }
-    lastAct[joint->type][0] = joint->mpos;
-
-    //mvel_d history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastDesVel[joint->type][i] = lastDesVel[joint->type][i-1];
-    }
-    lastDesVel[joint->type][0] = joint->mvel_d;
-
-    //mvel history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastActVel[joint->type][i] = lastActVel[joint->type][i-1];
-    }
-    lastActVel[joint->type][0] = joint->mvel;
-
-    //jpos_d history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastJposD[joint->type][i] = lastJposD[joint->type][i-1];
-    }
-    lastJposD[joint->type][0] = joint->jpos_d;
-
-    //jpos history
-    for (int i=HIST_SIZE-1;i>0;i--) {
-    	lastJpos[joint->type][i] = lastJpos[joint->type][i-1];
-    }
-    lastJpos[joint->type][0] = joint->jpos;
+    /*DAC    history */ for (int i=HIST_SIZE-1;i>0;i--) { lastDACs[joint->type][i]   = lastDACs[joint->type][i-1]; }   lastDACs[joint->type][0] = DACVal;
+    /*Tau    history */ for (int i=HIST_SIZE-1;i>0;i--) { lastTau[joint->type][i]    = lastTau[joint->type][i-1]; }    lastTau[joint->type][0] = tau_d;
+    /*err    history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErr[joint->type][i]    = lastErr[joint->type][i-1]; }    lastErr[joint->type][0] = err;
+    /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastP[joint->type][i]      = lastP[joint->type][i-1]; }      lastP[joint->type][0] = pTerm;
+    /*errVel history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErrVel[joint->type][i] = lastErrVel[joint->type][i-1]; } lastErrVel[joint->type][0] = errVel;
+    /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastD[joint->type][i]      = lastD[joint->type][i-1]; }      lastD[joint->type][0] = vTerm;
+    /*errInt history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErrInt[joint->type][i] = lastErrInt[joint->type][i-1]; } lastErrInt[joint->type][0] = errInt[joint->type];
+    /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastI[joint->type][i]      = lastI[joint->type][i-1]; }      lastI[joint->type][0] = iTerm;
+    /*mpos_d history */ for (int i=HIST_SIZE-1;i>0;i--) { lastDes[joint->type][i]    = lastDes[joint->type][i-1]; }    lastDes[joint->type][0] = joint->mpos_d;
+    /*mpos   history */ for (int i=HIST_SIZE-1;i>0;i--) { lastAct[joint->type][i]    = lastAct[joint->type][i-1]; }    lastAct[joint->type][0] = joint->mpos;
+    /*mvel_d history */ for (int i=HIST_SIZE-1;i>0;i--) { lastDesVel[joint->type][i] = lastDesVel[joint->type][i-1]; } lastDesVel[joint->type][0] = joint->mvel_d;
+    /*mvel   history */ for (int i=HIST_SIZE-1;i>0;i--) { lastActVel[joint->type][i] = lastActVel[joint->type][i-1]; } lastActVel[joint->type][0] = joint->mvel;
+    /*jpos_d history */ for (int i=HIST_SIZE-1;i>0;i--) { lastJposD[joint->type][i]  = lastJposD[joint->type][i-1]; }  lastJposD[joint->type][0] = joint->jpos_d;
+    /*jpos   history */ for (int i=HIST_SIZE-1;i>0;i--) { lastJpos[joint->type][i]   = lastJpos[joint->type][i-1]; }   lastJpos[joint->type][0] = joint->jpos;
 
     if (abs(DACVal) > MAX_INST_DAC) {
     	cerr << "****** DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ******" << endl;

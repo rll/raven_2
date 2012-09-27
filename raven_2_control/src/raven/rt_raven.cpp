@@ -27,6 +27,8 @@
 #include "update_device_state.h"
 #include <cmath>
 
+#include "shared_modes.h"
+
 using namespace std;
 
 
@@ -97,6 +99,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
         case no_control:
             break;
 
+        case end_effector_control:
         case cartesian_space_control:
             //initialized = false;
         	ret = raven_cartesian_space_command(device0,currParams);
@@ -123,6 +126,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
                 log_msg("Homing finished, switching to cartesian space control");
                 currParams->robotControlMode = cartesian_space_control;
                 newRobotControlMode = cartesian_space_control;
+                resetControlMode();
             }
             break;
 

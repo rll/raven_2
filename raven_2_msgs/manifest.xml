@@ -11,6 +11,7 @@
 
   <depend package="std_msgs"/>
   <depend package="geometry_msgs"/>
+  <depend package="trajectory_msgs"/>
   <depend package="rospy"/>
   <depend package="roscpp"/>
 </package>
