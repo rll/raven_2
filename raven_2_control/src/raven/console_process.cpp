@@ -12,6 +12,7 @@
 #include "rt_process_preempt.h"
 #include "rt_raven.h"
 #include "shared_modes.h"
+#include "timing.h"
 
 using namespace std;
 
@@ -23,6 +24,7 @@ extern int soft_estopped;
 extern struct DOF_type DOF_types[];
 
 void outputRobotState();
+void outputTiming();
 int getkey();
 
 /**
@@ -45,6 +47,7 @@ void *console_process(void *)
     }
 
     int output_robot=false;
+    bool output_timing=false;
     int theKey,print_msg=1;
     bool masterModeWasNone = true;
     bool controlModeWasNone = true;
@@ -138,8 +141,8 @@ void *console_process(void *)
             case 'c':
             case 'C':
             {
-                log_msg("Console output on:%d", output_robot);
-                output_robot = !output_robot;
+            	output_robot = !output_robot;
+            	log_msg("Console output: %s", output_robot?"on":"off");
                 print_msg=1;
                 break;
             }
@@ -191,13 +194,25 @@ void *console_process(void *)
             	}
             	break;
             }
+            case 'v':
+            case 'V':
+            {
+            	output_timing = !output_timing;
+            	log_msg("Console timing output: %s", output_timing? "on" : "off");
+            	print_msg=1;
+            	break;
+            }
         }
 
         // Output the robot state once/sec
-        if ( output_robot        &&
-             (t1.now()-t1).toSec() > 1 )
-        {
-            outputRobotState();
+        if ( (output_robot || output_timing)
+        		&& (t1.now()-t1).toSec() > 1 ) {
+        	if (output_robot) {
+        		outputRobotState();
+        	}
+            if (output_timing) {
+            	outputTiming();
+            }
             t1=t1.now();
         }
 
@@ -377,5 +392,20 @@ void outputRobotState(){
 
         cout << endl;
     }
+}
+
+void outputTiming() {
+	cout << TimingInfo::usb_read_stats() << endl;
+	cout << TimingInfo::state_machine_stats() << endl;
+	cout << TimingInfo::update_state_stats() << endl;
+	cout << TimingInfo::control_stats() << endl;
+	cout << TimingInfo::usb_write_stats() << endl;
+	cout << TimingInfo::ros_stats() << endl;
+
+	cout << TimingInfo::overall_stats() << endl;
+
+	cout << endl;
+
+	TimingInfo::RESET = true;
 }
 

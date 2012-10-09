@@ -96,6 +96,7 @@ src/raven/USB_init.cpp
 src/raven/utils.cpp
 #src/raven/velocity.cpp
 src/raven/saveload.cpp
+src/raven/timing.cpp
 )
 
 rosbuild_link_boost(r2_control filesystem system)

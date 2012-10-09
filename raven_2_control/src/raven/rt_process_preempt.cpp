@@ -35,6 +35,8 @@
 #include "network_layer.h"
 #include "saveload.h"
 
+#include "timing.h"
+
 using namespace std;
 
 // Defines
@@ -161,12 +163,20 @@ static void *rt_process(void* )
         clock_nanosleep(0, TIMER_ABSTIME, &t, NULL);
         gTime++;
 
+        TimingInfo t_info;
+        t_info.mark_overall_start();
+
+        t_info.mark_usb_read_start();
         //Get and Process USB Packets
         getUSBPackets(&device0); //disable usb for parport test
+        t_info.mark_usb_read_end();
 
+        t_info.mark_state_machine_start();
         //Run Safety State Machine
         stateMachine(&device0, &currParams, &rcvdParams);
+        t_info.mark_state_machine_end();
 
+        t_info.mark_update_state_start();
         //Update Atmel Input Pins
         updateAtmelInputs(device0, currParams.runlevel);
 
@@ -175,10 +185,12 @@ static void *rt_process(void* )
             updateDeviceState(&currParams, getRcvdParams(&rcvdParams), &device0);
         else
             rcvdParams.runlevel = currParams.runlevel;
+        t_info.mark_update_state_end();
 
         //Clear DAC Values (set current_cmd to zero on all joints)
         clearDACs(&device0);
 
+        t_info.mark_control_start();
         //////////////// SURGICAL ROBOT CODE //////////////////////////
         if (deviceType == SURGICAL_ROBOT)
         {
@@ -193,19 +205,29 @@ static void *rt_process(void* )
         	soft_estopped = TRUE;
         }
 
+        t_info.mark_control_end();
+
+        t_info.mark_usb_write_start();
         //Update Atmel Output Pins
         updateAtmelOutputs(&device0, currParams.runlevel);
 
         //Fill USB Packet and send it out
         putUSBPackets(&device0); //disable usb for par port test
+        t_info.mark_usb_write_end();
 
+        t_info.mark_ros_start();
         //Publish current raven state
         publish_ros(&device0,currParams);   // from local_io
 
         ros::spinOnce();
+        t_info.mark_ros_end();
 
         t.tv_nsec+=interval; //Update timer count for next clock interrupt
         tsnorm(&t);
+
+        t_info.mark_overall_end();
+
+        TimingInfo::mark_loop_end(&t_info);
 
         //Done for this cycle
     }
