@@ -10,6 +10,8 @@
 #include "state_machine.h"
 #include "log.h"
 
+#include <raven/state/device.h>
+
 extern int initialized;
 extern int NUM_MECH;
 extern int soft_estopped;
@@ -61,7 +63,9 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
     rlDelayCounter = 0;
     *rl = rlDesired;            // Update Run Level
     device0->runlevel = *rl;    // Log runlevels in DS0.
+    Device::setRunlevel(RunLevel::fromNumber(*rl));
     log_msg("Entered runlevel %d", *rl);
+    //log_msg("Entered runlevel %s", Device::runlevel().str().c_str());
 
 
     if (*rl == RL_E_STOP)

@@ -1,4 +1,4 @@
 <launch>
-	<node name="hydra_driver" pkg="sixense" type="driver" output="log"/>
-        <node name="hydra_teleop" pkg="raven_2_teleop" type="hydra_teleop.py" output="screen"/>
+  <node name="hydra_driver" pkg="sixense" type="driver" output="log"/>
+  <node name="hydra_teleop" pkg="raven_2_teleop" type="hydra_teleop.py" output="screen"/>
 </launch>

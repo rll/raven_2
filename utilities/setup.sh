@@ -144,7 +144,7 @@ raven() {
 runraven() {
   if [ "$1" != "-f" ]
   then
-    rospush
+    ( roscd raven_2_control && make -j ) && rospush
     if [ $? -ne 0 ]; then
       echo Push or build failed!
       return

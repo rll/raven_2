@@ -30,8 +30,9 @@ active use.
 #include "utils.h"
 #include "mapping.h"
 #include "itp_teleoperation.h"
-#include "kinematics_defines.h"
+#include <raven/kinematics/kinematics_defines.h>
 #include "shared_modes.h"
+#include "trajectory.h"
 
 extern bool disable_arm_id[2];
 extern int NUM_MECH;
@@ -246,7 +247,7 @@ int checkLocalUpdates()
     {
         lastUpdated = gTime;
     }
-    else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && ( data1.surgeon_mode ))
+    else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
     {
         // if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
         log_msg("Master connection timeout.  surgeon_mode -> up.\n");

@@ -2,13 +2,19 @@
 #include <exception>
 #include <iostream>
 #include <cstdio>
+#include <iostream>
 #include <fstream>
+#include <vector>
 
 #include "saveload.h"
 #include "DOF_type.h"
 
+#include <raven/state/device.h>
+
 namespace fs = boost::filesystem;
 using namespace std;
+
+static std::vector<int> origOffsets;
 
 fs::path getRosDir() {
   char const* home = getenv("HOME");  
@@ -28,6 +34,18 @@ bool loadOffsets(robot_device& dev) {
       float x;
       infile >> x;
       dev.mech[iMech].joint[iJoint].enc_offset = x;
+      origOffsets.push_back(x);
+#ifdef USE_NEW_DEVICE
+      int joint_ind = iJoint;
+	  if (joint_ind != 3) {
+		if (joint_ind > 3) joint_ind--;
+		Device::beginCurrentUpdate(ros::Time(0));
+		ArmPtr arm = Device::currentNoClone()->getArmById(dev.mech[iMech].type);
+		MotorPtr motor = arm->motor(joint_ind);
+		motor->setEncoderOffset(x);
+		Device::finishCurrentUpdate();
+	  }
+#endif
     }
   }
   assert(!infile.fail());  
@@ -47,11 +65,15 @@ bool saveOffsets(robot_device& dev) {
   ofstream outfile(offsetPath.string().c_str());
   if (outfile.fail()) return false;
   
+  int ind=0;
+  //std::cout << "Offset diffs:";
   for (int iMech = 0; iMech < 2; iMech++) {
     for (int iJoint = 0; iJoint < 8; iJoint++) {
       outfile << dev.mech[iMech].joint[iJoint].enc_offset<< " ";
+      //std::cout << " " << origOffsets[ind] - dev.mech[iMech].joint[iJoint].enc_offset;
     }
   }
+  //std::cout << std::endl;
   return true;
   
 }

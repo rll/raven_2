@@ -14,6 +14,8 @@
 #include "defines.h"
 #include "log.h"
 
+#include <raven/control/control_input.h>
+
 extern int NUM_MECH;
 extern bool disable_arm_id[2];
 
@@ -376,7 +378,13 @@ void getQuaternion(float* Q, float mat[3][3])
 void set_posd_to_pos(struct robot_device* device0)
 {
     for (int m = 0; m < NUM_MECH; m++) {
-        device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
+#ifdef USE_NEW_DEVICE
+    	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[m].type);
+    	btTransform tf = toBt(device0->mech[m].pos,device0->mech[m].ori);
+    	ControlInput::getOldControlInput()->armById(device0->mech[m].type).pose() = tf;
+    	ControlInput::getOldControlInput()->armById(device0->mech[m].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+#endif
+    	device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
         device0->mech[m].pos_d.y     = device0->mech[m].pos.y;
         device0->mech[m].pos_d.z     = device0->mech[m].pos.z;
         device0->mech[m].ori_d.yaw   = device0->mech[m].ori.yaw;
@@ -384,10 +392,10 @@ void set_posd_to_pos(struct robot_device* device0)
         device0->mech[m].ori_d.roll  = device0->mech[m].ori.roll;
         device0->mech[m].ori_d.grasp = device0->mech[m].ori.grasp;
 
-        for (int k = 0; k < 3; k++)
-          for (int j = 0; j < 3; j++)
+        for (int k = 0; k < 3; k++) {
+          for (int j = 0; j < 3; j++) {
               device0->mech[m].ori_d.R[k][j] = device0->mech[m].ori.R[k][j];
-
-
+          }
+        }
     }
 }

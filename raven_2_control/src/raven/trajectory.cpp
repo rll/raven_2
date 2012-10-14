@@ -12,6 +12,9 @@
 #include "defines.h"
 #include <ros/ros.h>
 
+#include <memory>
+#include <boost/thread/mutex.hpp>
+
 extern unsigned long int gTime;
 
 // Store trajectory parameters
@@ -208,4 +211,73 @@ int update_position_trajectory(struct DOF* _joint)
     return 0;
 }
 
+boost::mutex trajMutex;
 
+std::auto_ptr<param_pass_trajectory> traj;
+
+bool setTrajectory(const param_pass_trajectory& new_traj) {
+	trajMutex.lock();
+	if (!traj.get()) {
+		traj.reset(new param_pass_trajectory(new_traj));
+	} else {
+		*traj = new_traj;
+	}
+	//printf("set traj with %u steps, %f %f %f\n",traj->pts.size(),traj->begin_time,traj->total_duration,traj->begin_time + traj->total_duration);
+	trajMutex.unlock();
+	return true;
+}
+bool clearTrajectory() {
+	trajMutex.lock();
+	traj.reset();
+	trajMutex.unlock();
+	return true;
+}
+bool hasTrajectory() {
+	bool hasTraj;
+	trajMutex.lock();
+	hasTraj = traj.get() != 0;
+	trajMutex.unlock();
+	return hasTraj;
+}
+bool getTrajectory(param_pass_trajectory& traj_out) {
+	bool gotTraj = false;
+	trajMutex.lock();
+	if (traj.get()) {
+		traj_out = *traj;
+		gotTraj = true;
+	}
+	trajMutex.unlock();
+	return gotTraj;
+}
+TrajectoryStatus getCurrentTrajectoryParams(t_controlmode& controller,param_pass& param) {
+	TrajectoryStatus ret = TrajectoryStatus::NO_TRAJECTORY;
+	ros::Time now = ros::Time::now();
+	trajMutex.lock();
+	if (traj.get()) {
+		if (traj->total_duration != 0 && now.toSec() > traj->begin_time + traj->total_duration) {
+			//printf("Clearing traj %f %f %f %f\n",traj->begin_time,traj->total_duration,traj->begin_time + traj->total_duration,now.toSec());
+			traj.reset();
+			ret = TrajectoryStatus::ENDED;
+		} else {
+			controller = traj->control_mode;
+			int ind_to_use = -1;
+			for (int i=0;i<(int)traj->pts.size();i++) {
+				if (traj->begin_time + traj->pts[i].time_from_start < now.toSec()) {
+					ind_to_use = i;
+				} else {
+					break;
+				}
+			}
+			if (ind_to_use != -1) {
+				//log_msg_throttle(0.25,"Time left: %f",traj->begin_time + traj->pts.back().time_from_start - now.toSec());
+				param = traj->pts[ind_to_use].param;
+				ret = TrajectoryStatus::OK;
+			} else {
+				//log_msg_throttle(0.25,"before start, first: %f %f %f %f",traj->begin_time, traj->pts[0].time_from_start,traj->begin_time + traj->pts[0].time_from_start,now.toSec());
+				ret = TrajectoryStatus::BEFORE_START;
+			}
+		}
+	}
+	trajMutex.unlock();
+	return ret;
+}

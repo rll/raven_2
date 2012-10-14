@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <ros/console.h>
 
+#include <raven/state/initializer.h>
+
 //Four device files for connection to four boards
 #define BRL_USB_DEV_DIR     "/dev/"
 #define BOARD_FILE_STR      "brl_usb"   /// Device file. xx is the place holder of the serial number. restricted to 2 digits for now
@@ -146,12 +148,14 @@ int USBInit(struct device *device0)
             okboards++;
             log_msg("  Green Arm on board #%d.",boardid);
             device0->mech[i].type = GREEN_ARM;
+            DeviceInitializer::addArm(boardid,Arm::Type::GREEN,Arm::ToolType::GRASPER_10MM);
         }
         else if (boardid == GOLD_ARM_SERIAL)
         {
             okboards++;
             log_msg("  Gold Arm on board #%d.",boardid);
             device0->mech[i].type = GOLD_ARM;
+            DeviceInitializer::addArm(boardid,Arm::Type::GOLD,Arm::ToolType::GRASPER_10MM);
         }
         else
         {

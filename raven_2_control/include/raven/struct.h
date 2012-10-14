@@ -18,6 +18,7 @@
 
 //Error codes
 #include <errno.h>
+#include <vector>
 
 #ifndef FALSE
 #define FALSE 0
@@ -42,8 +43,21 @@ enum t_controlmode{
     cartesian_space_control =6,
     multi_dof_sinusoid     = 7,
     joint_torque_control = 8,
+    trajectory_control = 9,
     LAST_TYPE
     } ;
 
+
+struct param_pass_trajectory_pt {
+	param_pass param;
+	double time_from_start;
+};
+
+struct param_pass_trajectory {
+	double begin_time;
+	double total_duration;
+	t_controlmode control_mode;
+	std::vector<param_pass_trajectory_pt> pts;
+};
 
 #endif // STRUCT_H

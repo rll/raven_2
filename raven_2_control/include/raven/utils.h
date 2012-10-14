@@ -13,6 +13,8 @@
 #include <time.h>
 #include <tf/transform_datatypes.h>
 
+#include "DS0.h"
+
 
 #ifndef NULL
 #define NULL 0
@@ -45,6 +47,18 @@ btMatrix3x3 toBt_from(OtherType R) {
 		}
 	}
 	return btR;
+}
+
+inline btMatrix3x3 toBt(orientation o) {
+	return toBt(o.R);
+}
+
+inline btVector3 toBt(position p) {
+	return btVector3(p.x,p.y,p.z);
+}
+
+inline btTransform toBt(position p,orientation o) {
+	return btTransform(toBt(o),toBt(p));
 }
 
 //btTransform Z(float theta,float d);

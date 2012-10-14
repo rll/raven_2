@@ -28,6 +28,9 @@
 #include <cmath>
 
 #include "shared_modes.h"
+#include "saveload.h"
+
+#include <raven/state/device.h>
 
 using namespace std;
 
@@ -41,13 +44,15 @@ extern unsigned long int gTime;
 extern struct DOF_type DOF_types[];
 extern t_controlmode newRobotControlMode;
 
-int raven_cartesian_space_command(struct device *device0, struct param_pass *currParams);
-int raven_joint_velocity_control(struct device *device0, struct param_pass *currParams);
-int raven_motor_position_control(struct device *device0, struct param_pass *currParams);
-int raven_homing(struct device *device0, struct param_pass *currParams, int begin_homing=0);
-int applyTorque(struct device *device0, struct param_pass *currParams);
-int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *currParams);
-int raven_joint_torque_command(struct device *device0, struct param_pass *currParams);
+typedef int(*controller)(struct device*,struct param_pass*);
+
+int raven_cartesian_space_command (struct device *device0, struct param_pass *currParams);
+int raven_joint_velocity_control  (struct device *device0, struct param_pass *currParams);
+int raven_motor_position_control  (struct device *device0, struct param_pass *currParams);
+int raven_homing                  (struct device *device0, struct param_pass *currParams, int begin_homing=0);
+int applyTorque                   (struct device *device0, struct param_pass *currParams);
+int raven_sinusoidal_joint_motion (struct device *device0, struct param_pass *currParams);
+int raven_joint_torque_command    (struct device *device0, struct param_pass *currParams);
 //NEWMAT::Matrix calculateJacobian(float theta_s, float theta_e, float d);
 
 extern int initialized;
@@ -66,6 +71,34 @@ void turnOffSpeedyJoints(device& dev) {
 	}
 }
 
+controller getController(t_controlmode mode) {
+	switch (mode) {
+	case no_control:
+		return 0;
+	case end_effector_control:
+	case cartesian_space_control:
+		return &raven_cartesian_space_command;
+	case motor_pd_control:
+		initialized = false;
+		return &raven_motor_position_control;
+	case joint_velocity_control:
+		initialized = false;
+		return &raven_joint_velocity_control;
+	case apply_arbitrary_torque:
+		initialized = false;
+		return &applyTorque;
+	case multi_dof_sinusoid:
+		initialized = false;
+		return &raven_sinusoidal_joint_motion;
+	case joint_torque_control:
+		return &raven_joint_torque_command;
+	default:
+		printf("got control mode %i\n", (int)mode);
+		ROS_ERROR("Error: unknown control mode %i in controlRaven (rt_raven.cpp)",(int)mode);
+		return 0;
+	}
+}
+
 /**
 * controlRaven()
 *   Implements control for one loop cycle.
@@ -76,8 +109,9 @@ void turnOffSpeedyJoints(device& dev) {
 *
 */
 int controlRaven(struct device *device0, struct param_pass *currParams){
-	int ret = 0;
-    t_controlmode controlmode = (t_controlmode)currParams->robotControlMode;
+	int ret = -1;
+    //t_controlmode controlmode = (t_controlmode)currParams->robotControlMode;
+	t_controlmode controlmode = getControlMode();
 
     //Initi zalization code
     initRobotData(device0, currParams->runlevel, currParams);
@@ -94,9 +128,97 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     //log_msg("0 (%d,%d,%d)",device0->mech[0].pos.x,device0->mech[0].pos.y,device0->mech[0].pos.z);
     //log_msg("1 (%d,%d,%d)",device0->mech[1].pos.x,device0->mech[1].pos.y,device0->mech[1].pos.z);
 
+    if (controlmode == homing_mode) {
+    	initialized = false;
+		//initialized = robot_ready(device0) ? true:false;
+		ret = raven_homing(device0, currParams);
+		set_posd_to_pos(device0);
+		updateMasterRelativeOrigin(device0);
+		if (robot_ready(device0))
+		{
+			log_msg("Homing finished, switching to cartesian space control");
+			saveOffsets(*device0);
+			//currParams->robotControlMode = cartesian_space_control;
+			setRobotControlMode(cartesian_space_control);
+		}
+    } else {
+    	bool skip = false;
+    	bool traj_ctrl = false;
+    	TrajectoryStatus param_status;
+    	if (controlmode == trajectory_control) {
+    		traj_ctrl = true;
+
+    		param_pass traj_params;
+    		param_status = getCurrentTrajectoryParams(controlmode,traj_params);
+    		//printf("Got traj with status %i\n",param_status.value());
+
+    		switch (param_status.value()) {
+    		case TrajectoryStatus::OK:
+    			traj_params.runlevel = currParams->runlevel;
+    			traj_params.sublevel = currParams->sublevel;
+    			*currParams = traj_params;
+    			break;
+    		case TrajectoryStatus::BEFORE_START:
+    			set_posd_to_pos(device0);
+    			skip = true;
+    			break;
+    		case TrajectoryStatus::NO_TRAJECTORY:
+    		default:
+    			log_msg_throttle(0.25,"Trajectory control has no trajectory!");
+    			/* no break */
+    		case TrajectoryStatus::ENDED:
+    			//printf("Trajectory ended\n");
+    			set_posd_to_pos(device0);
+    			printf("Setting control mode to cartestian space\n");
+    			device0->surgeon_mode = false;
+    			currParams->runlevel = RL_PEDAL_UP;
+    			setRobotControlMode(cartesian_space_control);
+    			skip = true;
+    			break;
+    		}
+    	}/* else {
+    		clearTrajectory();
+    	}*/
+
+    	if (!skip) {
+			controller ctlr = getController(controlmode);
+
+			if (ctlr) {
+				if (traj_ctrl) {
+					//log_msg_throttle(0.25,"Traj ctrl with controller %i %i RL(%i,%i)\n",(int) controlmode,(int)currParams->surgeon_mode,currParams->runlevel,currParams->sublevel);
+					log_msg_throttle(0.25,"control pt: (%i,%i,%i)",currParams->xd[0].x,currParams->xd[0].y,currParams->xd[0].z);
+				}
+				ret = (*ctlr)(device0,currParams);
+			} else {
+				if (traj_ctrl) {
+					log_msg_throttle(0.25,"Traj ctrl didn't find controller %i %i RL(%i,%i)\n",(int) controlmode,(int)currParams->surgeon_mode,currParams->runlevel,currParams->sublevel);
+				}
+				set_posd_to_pos(device0);
+			}
+    	} else if (traj_ctrl) {
+    		log_msg_throttle(0.25,"Traj ctrl with status %i\n",param_status.value());
+    	}
+    }
+
+    /*
     //log_msg("control mode %d",(int)controlmode);
     switch (controlmode){
         case no_control:
+            break;
+
+        case homing_mode:
+            initialized = false;
+            //initialized = robot_ready(device0) ? true:false;
+            ret = raven_homing(device0, currParams);
+            set_posd_to_pos(device0);
+            updateMasterRelativeOrigin(device0);
+            if (robot_ready(device0))
+            {
+                log_msg("Homing finished, switching to cartesian space control");
+                currParams->robotControlMode = cartesian_space_control;
+                newRobotControlMode = cartesian_space_control;
+                resetControlMode();
+            }
             break;
 
         case end_effector_control:
@@ -113,21 +235,6 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
         case joint_velocity_control:
             initialized = false;
             ret = raven_joint_velocity_control(device0, currParams);
-            break;
-
-        case homing_mode:
-            initialized = false;
-            //initialized = robot_ready(device0) ? true:false;
-            ret = raven_homing(device0, currParams);
-            set_posd_to_pos(device0);
-            updateMasterRelativeOrigin(device0);
-            if (robot_ready(device0))
-            {
-                log_msg("Homing finished, switching to cartesian space control");
-                currParams->robotControlMode = cartesian_space_control;
-                newRobotControlMode = cartesian_space_control;
-                resetControlMode();
-            }
             break;
 
         case apply_arbitrary_torque:
@@ -149,6 +256,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
             ret = -1;
             break;
     }
+    */
 
     if (controlmode != homing_mode) {
     	turnOffSpeedyJoints(*device0);

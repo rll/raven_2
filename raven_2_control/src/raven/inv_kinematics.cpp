@@ -25,7 +25,7 @@
 #define EPS2 0.00001
 #define EPS 0.01
 
-#define DISABLE_ALL_PRINTING false
+#define DISABLE_ALL_PRINTING true
 
 static const int PRINT_EVERY_PEDAL_UP   = 1000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
@@ -506,7 +506,7 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 }
 
 int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float g1_act, float g2_act) {
-	if (_ik_counter % PRINT_EVERY == 0) {
+	if (_ik_counter % PRINT_EVERY == 0 && !(DISABLE_ALL_PRINTING)) {
 		log_msg("setting joints 1");
 	}
 	mech->joint[Z_INS].jpos_d    = d_act;
@@ -568,7 +568,7 @@ int set_joints_with_limits1(mechanism* mech, float d_act, float thp_act, float g
 }
 
 int set_joints_with_limits2(mechanism* mech, float ths_act, float the_act, float thr_act) {
-	if (_ik_counter % PRINT_EVERY == 0) {
+	if (_ik_counter % PRINT_EVERY == 0 && !(DISABLE_ALL_PRINTING)) {
 		log_msg("setting joints 2");
 	}
 	mech->joint[SHOULDER].jpos_d = ths_act;

@@ -17,6 +17,9 @@
 #include "local_io.h"
 #include "saveload.h"
 
+#include <raven/state/device.h>
+#include <raven/control/control_input.h>
+
 extern int initialized;
 
 extern struct traj trajectory[];
@@ -56,6 +59,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     case 0:
         {
             currParams->sublevel = 1;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
+            Device::setSublevel(1);
         }
     case 1:     // Initialization off all joint variables
         if (initialized)     //If already initialized do nothing
@@ -67,6 +71,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
         setStartXYZ(device0);      // Set pos_d = current position
 
         currParams->sublevel = 2;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
+        Device::setSublevel(2);
         log_msg("    -> sublevel %d", currParams->sublevel);
         break;
 
@@ -79,6 +84,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
         {
             // Go to auto init sublevel
             currParams->sublevel = SL_AUTO_INIT;
+            Device::setSublevel(SL_AUTO_INIT);
             init_wait_loop=0;
         }
         break;
@@ -285,6 +291,23 @@ void initDOFs(struct device *device0)
             //Set encoder offset
             _joint->enc_offset = _joint->enc_val;
 
+#ifdef USE_NEW_DEVICE
+            int joint_ind = jointTypeFromCombinedType(_joint->type);
+            if (joint_ind != 3) {
+            	if (joint_ind > 3) joint_ind--;
+            	//printf("Beginning update j %i init.cpp\n",joint_ind);
+            	//Device::beginUpdate(Device::currentNoClone()->timestamp());
+            	Device::beginCurrentUpdate(ros::Time(0));
+            	//printf("Update begun     j %i init.cpp\n",joint_ind);
+            	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[i].type);
+            	MotorPtr motor = arm->motor(joint_ind);
+            	motor->setEncoderOffset(_joint->enc_val);
+            	//printf("Finishing update j %i init.cpp\n",joint_ind);
+            	Device::finishCurrentUpdate();
+            	//printf("Update finished  j %i init.cpp\n",joint_ind);
+            }
+#endif
+
             // Set DOF state ready to go.
             _joint->state = jstate_not_ready;
         }
@@ -450,6 +473,13 @@ void setStartXYZ(struct device *device0)
     //Set XYZ offsets
     for (i = 0; i < NUM_MECH; i++)
     {
+#ifdef USE_NEW_DEVICE
+    	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[i].type);
+    	btTransform tf = toBt(device0->mech[i].pos,device0->mech[i].ori);
+    	ControlInput::getOldControlInput()->armById(device0->mech[i].type).pose() = tf;
+    	ControlInput::getOldControlInput()->armById(device0->mech[i].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+#endif
+
         device0->mech[i].pos_d.x = device0->mech[i].pos.x;
         device0->mech[i].pos_d.y = device0->mech[i].pos.y;
         device0->mech[i].pos_d.z = device0->mech[i].pos.z;

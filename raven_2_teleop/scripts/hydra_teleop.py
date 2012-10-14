@@ -124,6 +124,8 @@ class HydraTeleop:
 		raven_command = RavenCommand()
 		raven_command.header.stamp = rospy.Time.now()
 		raven_command.header.frame_id = BASE_FRAME
+		
+		raven_command.controller = Constants.CONTROLLER_CARTESIAN_SPACE
 
 		active = [False,False]
 		newly_active = [False,False]
@@ -137,7 +139,7 @@ class HydraTeleop:
 				
 			arm_cmd = ArmCommand()
 			tool_cmd = ToolCommand()
-			tool_cmd.absolute = False
+			tool_cmd.relative = True
 			paddle = msg.paddles[i]
 			
 			if (not active[i]) and paddle.buttons[SCALE_ADJUST_BUTTON] and not self.last_msg.paddles[i].buttons[SCALE_ADJUST_BUTTON]:
@@ -223,6 +225,7 @@ class HydraTeleop:
 					tool_cmd.tool_pose.position = Point(0,0,0)
 
 			arm_cmd.active = active[i] and SIDE_ACTIVE[i]
+			tool_cmd.set_grasp = True
 			tool_cmd.grasp = grip[i]
 			arm_cmd.tool_command = tool_cmd
 			raven_command.arms[i] = arm_cmd

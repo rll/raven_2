@@ -33,9 +33,12 @@
 #include "console_process.h"
 #include "rt_raven.h"
 #include "network_layer.h"
+#include "control_process.h"
 #include "saveload.h"
 
-#include "timing.h"
+#include <raven/util/timing.h>
+
+#include <raven/state/initializer.h>
 
 using namespace std;
 
@@ -62,6 +65,7 @@ int NUM_MECH=0;   // Define NUM_MECH as a C variable, not a c++ variable
 bool disable_arm_id[2] = {false,false};
 
 pthread_t rt_thread;
+pthread_t control_thread;
 pthread_t net_thread;
 pthread_t fiforcv_thread;
 pthread_t fifosend_thread;
@@ -143,7 +147,38 @@ static void *rt_process(void* )
     log_msg("Starting RT Process...");
 
     // Initializations (run here and again in init.cpp)
+#ifdef USE_NEW_DEVICE
+    DeviceInitializer initr;
+    initr.initializeDeviceInstance();
+#endif
     initDOFs(&device0);
+
+    /*{
+    	int numIter=50000;
+    	{
+    		std::cout << "beginning test 1" << std::endl;
+    		ros::Time start = ros::Time::now();
+    		for (int i=0;i<numIter;i++) {
+    			Device::currentNoClone()->arms()[0]->clone();
+    		}
+    		ros::Time finish = ros::Time::now();
+    		ros::Duration span = finish-start;
+    		std::cout << numIter << " iterations of clone took     " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
+    		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
+    	}
+    	{
+    		std::cout << "beginning test 2" << std::endl;
+    		ros::Time start = ros::Time::now();
+    		ArmPtr arm;
+    		for (int i=0;i<numIter;i++) {
+    			Device::currentNoClone()->arms()[0]->cloneInto(arm);
+    		}
+    		ros::Time finish = ros::Time::now();
+    		ros::Duration span = finish-start;
+    		std::cout << numIter << " iterations of cloneInto took " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
+    		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
+    	}
+    }*/
 
     // initialize global loop count
     gTime=0;
@@ -178,8 +213,8 @@ static void *rt_process(void* )
 
         t_info.mark_update_state_start();
         //Update Atmel Input Pins
-        updateAtmelInputs(device0, currParams.runlevel);
 
+        updateAtmelInputs(device0, currParams.runlevel);
         //Get state updates from master
         if ( checkLocalUpdates() == TRUE)
             updateDeviceState(&currParams, getRcvdParams(&rcvdParams), &device0);
@@ -227,7 +262,7 @@ static void *rt_process(void* )
 
         t_info.mark_overall_end();
 
-        TimingInfo::mark_loop_end(&t_info);
+        TimingInfo::mark_loop_end();
 
         //Done for this cycle
     }
@@ -312,6 +347,7 @@ int main(int argc, char **argv)
 //    pthread_create(&fiforcv_thread, NULL, data_fifo_rcv_process, NULL); //Start the    thread
 //    pthread_create(&fifosend_thread, NULL, data_fifo_send_process, NULL); //Start the   thread
     pthread_create(&console_thread, NULL, console_process, NULL); //Start the     thread
+    //pthread_create(&control_thread, NULL, control_process, NULL);
     pthread_create(&rt_thread, NULL, rt_process, NULL); //Start the   thread
     pthread_join(rt_thread,NULL); //Suspend main until rt thread terminates
 

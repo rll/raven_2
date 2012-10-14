@@ -9,9 +9,17 @@
 
 #include "get_USB_packet.h"
 
+#include <ros/ros.h>
+
+#include <raven/state/device.h>
+#include <sstream>
+#include <raven/util/timing.h>
+
 extern unsigned long int gTime;
 
 extern USBStruct USBBoards;
+
+static USBTimingInfo timing;
 
 /**
  * getUSBPackets() - Takes data from USB packet(s) and uses it to fill the
@@ -22,8 +30,15 @@ extern USBStruct USBBoards;
  */
 void getUSBPackets(struct device *device0)
 {
-    int i;
+	int i;
     int err=0;
+
+    USBTimingInfo::clear(timing);
+
+#ifdef USE_NEW_DEVICE
+    Device::beginCurrentUpdate(ros::Time::now());
+#endif
+
 
     //Loop through all USB Boards
     for (i = 0; i < USBBoards.activeAtStart; i++)
@@ -34,6 +49,15 @@ void getUSBPackets(struct device *device0)
             log_msg("Error (%d) reading from USB Board %d (%s) on loop %d!\n", err, USBBoards.boards[i], armNameFromSerial(USBBoards.boards[i]).c_str(), gTime);
         }
     }
+
+#ifdef USE_NEW_DEVICE
+    Device::finishCurrentUpdate();
+#endif
+
+    timing.mark_get_packet_intermediate_final();
+    timing.mark_process_packet_intermediate_final();
+
+    USBTimingInfo::mark_loop_end();
 }
 
 /**
@@ -51,8 +75,10 @@ int getUSBPacket(int id, struct mechanism *mech)
     int result, type;
     unsigned char buffer[MAX_IN_LENGTH];
 
+    timing.mark_get_packet_start();
     //Read USB Packet
     result = usb_read(id,buffer,IN_LENGTH);
+    timing.mark_get_packet_intermediate();
 
     // -- Check for read errors --
     ///TODO: Fix error codes and error handling
@@ -76,6 +102,7 @@ int getUSBPacket(int id, struct mechanism *mech)
 
     type = buffer[0];
 
+    timing.mark_process_packet_start();
     //Load in the data from the USB packet
     switch (type)
     {
@@ -84,12 +111,16 @@ int getUSBPacket(int id, struct mechanism *mech)
         processEncoderPacket(mech, buffer);
         break;
     }
+    timing.mark_process_packet_intermediate();
 
     return 0;
 }
 
 void processEncoderPacket(struct mechanism* mech, unsigned char buffer[])
 {
+#ifdef USE_NEW_DEVICE
+	static MotorList motorsForUpdating;
+#endif
     int i, numChannels;
     int encVal;
 
@@ -103,11 +134,26 @@ void processEncoderPacket(struct mechanism* mech, unsigned char buffer[])
     mech->inputs = buffer[2];
 #endif
 
+#ifdef USE_NEW_DEVICE
+    ArmPtr arm = Device::currentNoClone()->getArmById(mech->type);
+    arm->motorFilter()->getMotorsForUpdate(motorsForUpdating);
+#endif
+
     //Loop through and read data for each channel
-    for (i = 0; i < numChannels; i++)
-    {
+    for (i = 0; i < numChannels; i++) {
         //Load encoder values
         encVal = processEncVal(buffer, i);
         mech->joint[i].enc_val = encVal;
+
+#ifdef USE_NEW_DEVICE
+        if (i == 3) {
+        	continue;
+        }
+        int motor_ind = i<=2 ? i : i-1;
+
+        //arm->motor(motor_ind)->setEncoderValue(encVal);
+        motorsForUpdating[motor_ind]->setEncoderValue((arm->isGold()?-1:1)*encVal,true);
+#endif
     }
+
 }

@@ -80,15 +80,16 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
 
     // Switch control modes only in pedal up or init.
     if (99 == (int)newRobotControlMode) {
-        log_msg("Current control mode: %d",currParams->robotControlMode);
-        newRobotControlMode = (t_controlmode)currParams->robotControlMode;
-    } else if ( (currParams->runlevel == RL_E_STOP)   &&
-         (currParams->robotControlMode != (int)newRobotControlMode) ) {
-        currParams->robotControlMode = (int)newRobotControlMode;
-        resetControlMode();
-        checkControlMode(newRobotControlMode);
-        log_msg("Control mode updated");
+    	t_controlmode currRobotControlMode = getControlMode();
+        //log_msg("Current control mode: %d",(int)currRobotControlMode);
+        newRobotControlMode = currRobotControlMode;
+    } else if ( currParams->runlevel != RL_PEDAL_DN) {
+        bool changed = setControlMode(newRobotControlMode);
+        if (changed) {
+        	log_msg("Control mode updated: %s",controlModeToString(newRobotControlMode).c_str());
+        }
     }
+    newRobotControlMode = (t_controlmode) 99;
 
     // Set new torque command from console user input
     if ( newDofTorqueSetting )
@@ -120,7 +121,7 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
 */
 void setRobotControlMode(t_controlmode in_controlMode){
     if (99 != in_controlMode) {
-        log_msg("Robot control mode: %d",in_controlMode);
+        //log_msg("Robot control mode: %d",in_controlMode);
     }
     newRobotControlMode = in_controlMode;
     isUpdated = TRUE;

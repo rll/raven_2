@@ -12,8 +12,11 @@
 #include "rt_process_preempt.h"
 #include "rt_raven.h"
 #include "shared_modes.h"
-#include "timing.h"
 
+#include <raven/util/timing.h>
+
+#include <raven/state/device.h>
+#include <raven/control/control_input.h>
 using namespace std;
 
 // from rt_process.cpp
@@ -50,14 +53,13 @@ void *console_process(void *)
     bool output_timing=false;
     int theKey,print_msg=1;
     bool masterModeWasNone = true;
-    bool controlModeWasNone = true;
     char inputbuffer[100];
     sleep(1);
     // Run shell interaction
     while (ros::ok())
     {
-    	MasterMode::Enum masterMode;
-    	std::set<MasterMode::Enum> masterModeConflicts;
+    	MasterMode masterMode;
+    	std::set<MasterMode> masterModeConflicts;
     	getMasterModeConflicts(masterMode,masterModeConflicts);
     	if (!masterModeConflicts.empty() || (masterModeWasNone && masterMode != MasterMode::NONE)) {
     		print_msg = 1;
@@ -67,34 +69,33 @@ void *console_process(void *)
     	t_controlmode controlMode;
 		std::set<t_controlmode> controlModeConflicts;
 		getControlModeConflicts(controlMode,controlModeConflicts);
-		if (!controlModeConflicts.empty() || (controlModeWasNone && controlMode != no_control)) {
+		if (!controlModeConflicts.empty()) {
 			print_msg = 1;
 		}
-		controlModeWasNone = (controlMode == no_control);
 
         // Output UI hints
         if ( print_msg ){
 
         	if (!masterModeConflicts.empty()) {
         		std::stringstream ss;
-				ss << "In master masterMode " << masterModeToString(masterMode) << " conflicts from";
-				for (std::set<MasterMode::Enum>::iterator itr=masterModeConflicts.begin();itr!=masterModeConflicts.end();itr++) {
-					ss << " " << masterModeToString(*itr);
+				ss << "Master mode conflicts from";
+				for (std::set<MasterMode>::iterator itr=masterModeConflicts.begin();itr!=masterModeConflicts.end();itr++) {
+					ss << " " << itr->str();
 				}
+				ss << ", current mode is " << masterMode.str();
 				log_warn(ss.str().c_str());
         	} else if (masterMode != MasterMode::NONE) {
-        		log_msg("In master mode %s",masterModeToString(masterMode).c_str());
+        		log_msg("In master mode %s",masterMode.str());
         	}
 
         	if (!controlModeConflicts.empty()) {
 				std::stringstream ss;
-				ss << "In control controlMode " << controlModeToString(controlMode) << " conflicts from";
+				ss << "Control mode conflicts from ";
 				for (std::set<t_controlmode>::iterator itr=controlModeConflicts.begin();itr!=controlModeConflicts.end();itr++) {
 					ss << " " << controlModeToString(*itr);
 				}
+				ss << ", current mode is " << controlModeToString(controlMode);
 				log_warn(ss.str().c_str());
-			} else if (controlMode != no_control) {
-				log_msg("In control mode %s",controlModeToString(controlMode).c_str());
 			}
 
             log_msg("[[\t'C'  : toggle console messages ]]");
@@ -178,7 +179,7 @@ void *console_process(void *)
                 printf("\n\nEnter new control mode: 0=NULL, 1=NULL, 2=joint_velocity, 3=apply_torque, 4=homing, 5=motor_pd, 6=cartesian_space_motion, 7=multi_dof_sinusoid 8=joint_position \t");
                 cin.getline (inputbuffer,100);
                 t_controlmode _cmode = (t_controlmode)(atoi(inputbuffer));
-                log_msg("recieved control masterMode:%d\n\n",_cmode);
+                log_msg("received control mode:%d\n\n",_cmode);
                 setRobotControlMode(_cmode);
                 print_msg=1;
                 break;
@@ -250,9 +251,18 @@ int getkey() {
 
 void outputRobotState(){
     cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
+    cout << "Master mode: " << getMasterMode().str() << endl;
+    cout << "Controller: " << controlModeToString(getControlMode()) << endl;
     mechanism* _mech = NULL;
     int mechnum=0;
+#ifdef USE_NEW_DEVICE
+    DevicePtr dev = Device::current();
+    OldControlInputPtr input = ControlInput::getOldControlInput();
+#endif
     while (loop_over_mechs(&device0,_mech,mechnum)) {
+#ifdef USE_NEW_DEVICE
+    	ArmPtr arm = dev->getArmById(_mech->type);
+#endif
         if (_mech->type == GOLD_ARM)
             cout << "Gold arm:\t";
         else if (_mech->type == GREEN_ARM)
@@ -281,11 +291,27 @@ void outputRobotState(){
         	cout << _joint->type<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"     \t\t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << std::string(arm->getJointByOldType(_joint->type)->type().str()).substr(0,6) <<"\t";
+        cout << endl;
+#endif
+
         cout<<"enc_val:\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout << _joint->enc_val<<"\t";
         cout << endl;
+
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getMotorByOldType(_joint->type)->encoderValue()<<"\t";
+        cout << endl;
+#endif
 
         cout<<"enc_off:\t";
         _joint = NULL; jnum=0;
@@ -293,11 +319,27 @@ void outputRobotState(){
         	cout << _joint->enc_offset<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getMotorByOldType(_joint->type)->encoderOffset()<<"\t";
+        cout << endl;
+#endif
+
         cout<<"mpos:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout<<fixed<<setprecision(2)<<_joint->mpos <<"\t";
         cout << endl;
+
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getMotorByOldType(_joint->type)->position()<<"\t";
+        cout << endl;
+#endif
 
         cout<<"mpos_d:\t\t";
         _joint = NULL; jnum=0;
@@ -305,17 +347,41 @@ void outputRobotState(){
         	cout<<fixed<<setprecision(2)<<_joint->mpos_d <<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << input->motorPositionByOldType(_joint->type) <<"\t";
+        cout << endl;
+#endif
+
         cout<<"mvel:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout<<fixed<<setprecision(0)<<_joint->mvel <<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getMotorByOldType(_joint->type)->velocity()<<"\t";
+        cout << endl;
+#endif
+
         cout<<"mvel_d:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout<<fixed<<setprecision(0)<<_joint->mvel_d <<"\t";
         cout << endl;
+
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << input->motorVelocityByOldType(_joint->type) <<"\t";
+        cout << endl;
+#endif
 
         cout<<"jpos:\t\t";
         _joint = NULL; jnum=0;
@@ -326,6 +392,14 @@ void outputRobotState(){
         		cout<<fixed<<setprecision(2)<<_joint->jpos<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getJointByOldType(_joint->type)->position()<<"\t";
+        cout << endl;
+#endif
+
         cout<<"jpos_d:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
@@ -334,6 +408,14 @@ void outputRobotState(){
         	else
         		cout<<fixed<<setprecision(2)<<_joint->jpos_d<<"\t";
         cout << endl;
+
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << input->jointPositionByOldType(_joint->type) <<"\t";
+        cout << endl;
+#endif
 
         cout<<"jvel:\t\t";
         _joint = NULL; jnum=0;
@@ -344,6 +426,14 @@ void outputRobotState(){
         		cout<<fixed<<setprecision(2)<<_joint->jvel<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getJointByOldType(_joint->type)->velocity()<<"\t";
+        cout << endl;
+#endif
+
         cout<<"jvel_d:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
@@ -353,17 +443,41 @@ void outputRobotState(){
         		cout<<fixed<<setprecision(2)<<_joint->jvel_d<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << input->jointVelocityByOldType(_joint->type) <<"\t";
+        cout << endl;
+#endif
+
         cout<<"tau_d:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout<<fixed<<setprecision(3)<<_joint->tau_d<<"\t";
         cout << endl;
 
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << input->motorTorqueByOldType(_joint->type) <<"\t";
+        cout << endl;
+#endif
+
         cout<<"DAC:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	cout<<fixed<<setprecision(3)<<_joint->current_cmd<<"\t";
         cout << endl;
+
+#ifdef USE_NEW_DEVICE
+        cout<<"        \t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << arm->getMotorByOldType(_joint->type)->dacCommand()<<"\t";
+        cout << endl;
+#endif
 
         cout<<"KP gains:\t";
         _joint = NULL; jnum=0;
@@ -392,6 +506,193 @@ void outputRobotState(){
 
         cout << endl;
     }
+
+    /*
+    std::stringstream ss;
+    ss << std::endl;
+	FOREACH_ARM_IN_DEVICE(arm1,Device::current()) {
+		ss << " arm " << arm1->name() << std::endl;
+		FOREACH_MOTOR_IN_ARM(motor,arm1) {
+			//ss << " " << motor->encoderValue();
+			ss << motor->str() << std::endl;
+		}
+		FOREACH_JOINT_IN_ARM(joint,arm1) {
+			//ss << " " << motor->encoderValue();
+			ss << joint->str() << std::endl;
+		}
+		//ss << " " << std::endl;
+	}
+	std::cout << ss.str();
+
+
+	std::cout << "grasp " << Controller::getControlInput<OldControlInput>(std::string("old"))->arm(0).grasp() << std::endl;
+*/
+
+    /*
+    cout << "******************DIFFS**********************" << endl;
+
+    _mech = NULL;
+    while (loop_over_mechs(&device0,_mech,mechnum)) {
+    	ArmPtr arm = dev->getArmById(_mech->type);
+
+    	if (_mech->type == GOLD_ARM)
+    		cout << "Gold arm:\t";
+    	else if (_mech->type == GREEN_ARM)
+    		cout << "Green arm:\t";
+    	else
+    		cout << "Unknown arm:\t";
+
+    	cout << "Board " << mechnum << ", type " << _mech->type << ":" << endl;
+//
+//        cout<<"pos:\t";
+//        cout<<_mech->pos.x<<"\t";
+//        cout<<_mech->pos.y<<"\t";
+//        cout<<_mech->pos.z<<"\n";
+//
+//        cout<<"pos_d:\t";
+//        cout<<_mech->pos_d.x<<"\t";
+//        cout<<_mech->pos_d.y<<"\t";
+//        cout<<_mech->pos_d.z<<"\n";
+
+    	DOF* _joint = NULL;
+    	int jnum=0;
+
+    	cout<<"type:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout << _joint->type<<"\t";
+    	}
+    	cout << endl;
+
+        cout<<"    :\t\t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout << std::string(arm->getJointByOldType(_joint->type)->type().str()).substr(0,6) <<"\t";
+        cout << endl;
+
+    	cout<<"enc_val:\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		if (arm->isGreen()) {
+    			cout << arm->getMotorByOldType(_joint->type)->encoderValue() - _joint->enc_val<<"\t";
+    		} else {
+    			cout << arm->getMotorByOldType(_joint->type)->encoderValue() + _joint->enc_val<<"\t";
+    		}
+    	}
+    	cout << endl;
+
+    	cout<<"enc_off:\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout << arm->getMotorByOldType(_joint->type)->encoderOffset() - _joint->enc_offset<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"mpos:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(2)<<arm->getMotorByOldType(_joint->type)->position() - _joint->mpos <<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"mpos_d:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(2)<< input->motorPositionByOldType(_joint->type) - _joint->mpos_d <<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"mvel:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(0)<<arm->getMotorByOldType(_joint->type)->velocity() - _joint->mvel <<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"mvel_d:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(0)<<input->motorVelocityByOldType(_joint->type) - _joint->mvel_d <<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"jpos:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		if (jnum != Z_INS)
+    			cout<<fixed<<setprecision(2)<<arm->getJointByOldType(_joint->type)->position() - _joint->jpos <<"\t";
+    		else
+    			cout<<fixed<<setprecision(2)<<arm->getJointByOldType(_joint->type)->position() - _joint->jpos<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"jpos_d:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		if (jnum != Z_INS)
+    			cout<<fixed<<setprecision(2)<<input->jointPositionByOldType(_joint->type) - _joint->jpos_d <<"\t";
+    		else
+    			cout<<fixed<<setprecision(2)<<input->jointPositionByOldType(_joint->type) - _joint->jpos_d<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"jvel:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		if (jnum != Z_INS)
+    			cout<<fixed<<setprecision(2)<<arm->getJointByOldType(_joint->type)->velocity() - _joint->jvel <<"\t";
+    		else
+    			cout<<fixed<<setprecision(2)<<arm->getJointByOldType(_joint->type)->velocity() - _joint->jvel<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"jvel_d:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		if (jnum != Z_INS)
+    			cout<<fixed<<setprecision(2)<<input->jointVelocityByOldType(_joint->type) - _joint->jvel_d <<"\t";
+    		else
+    			cout<<fixed<<setprecision(2)<<input->jointVelocityByOldType(_joint->type) - _joint->jvel_d<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"tau_d:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(3)<<input->motorTorqueByOldType(_joint->type) - _joint->tau_d<<"\t";
+    	}
+    	cout << endl;
+
+    	cout<<"DAC:\t\t";
+    	_joint = NULL; jnum=0;
+    	while (loop_over_joints(_mech,_joint,jnum)) {
+    		if (jnum == 3) continue;
+    		cout<<fixed<<setprecision(3)<<arm->getMotorByOldType(_joint->type)->dacCommand() - _joint->current_cmd<<"\t";
+    	}
+    	cout << endl;
+
+//        cout<<"enc_offset:\t";
+//        _joint = NULL; jnum=0;
+//        while (loop_over_joints(_mech,_joint,jnum))
+//            cout<<_joint->enc_offset<<"\t";
+//        cout << endl;
+
+
+    	cout << endl;
+    }
+    */
 }
 
 void outputTiming() {
@@ -404,8 +705,14 @@ void outputTiming() {
 
 	cout << TimingInfo::overall_stats() << endl;
 
+	cout << USBTimingInfo::get_packet_stats() << endl;
+	cout << USBTimingInfo::process_packet_stats() << endl;
+
+	cout << ControlTiming::overall_stats() << endl;
+
 	cout << endl;
 
-	TimingInfo::RESET = true;
+	TimingInfo::reset();
+	USBTimingInfo::reset();
 }
 

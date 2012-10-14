@@ -1,0 +1,43 @@
+Header header
+uint8 runlevel
+uint8 sublevel
+uint8 surgeon_mode
+
+uint8 controller #see Constants.msg for values
+
+uint8[] arm_types
+
+geometry_msgs/Pose[] base_poses
+
+uint8[] tool_types #see Constants.msg for values
+
+geometry_msgs/Pose[] tool_poses
+geometry_msgs/Pose[] tool_poses_desired
+
+float32[] grasps
+float32[] grasps_desired
+
+uint16[] joint_types #see Constants.msg for values
+
+int16[] joint_states # from JointState.msg
+
+int32[] joint_encoder_values	  # encoder value
+int32[] joint_encoder_offsets  # Encoder offset to "zero"
+int16[] joint_dac_commands	  # DAC command to achieve tau at actuator
+
+float32[] joint_positions		   # actual DOF coordinate (rad)
+float32[] joint_velocities 		# actual DOF velocity(q-dot)
+
+float32[] motor_positions
+float32[] motor_velocities
+
+float32[] torques          # actual DOF force/torque
+float32[] gravitation_torque_estimates	# Estimated gravity force/torque on joint.
+
+uint8[] joint_command_types # see JointCommands.msg for values
+float32[] joint_commands
+
+float32[] integrated_position_errors     # integrated position error for joint space position control
+
+uint8[] input_pins
+uint8[] output_pins

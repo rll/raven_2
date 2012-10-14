@@ -7,8 +7,11 @@
 
 #include "shared_modes.h"
 #include "DS0.h"
+#include "log.h"
 
 #include <iostream>
+
+#include <raven/state/device.h>
 
 extern struct robot_device device0;
 
@@ -17,37 +20,16 @@ extern struct robot_device device0;
 
 /*********************** MASTER MODE *********************************/
 
-MasterMode::Enum masterMode = MasterMode::NONE;
-std::set<MasterMode::Enum> masterModeConflictSet;
+MasterMode masterMode = MasterMode::NONE;
+std::set<MasterMode> masterModeConflictSet;
 pthread_mutexattr_t masterModeMutexAttr;
 pthread_mutex_t masterModeMutex;
 
-MasterMode::Enum getMasterMode() {
+MasterMode getMasterMode() {
 	return masterMode;
 }
 
-#define CASE_MASTER_MODE(m) case m: return std::string(STRINGIFY(m)).substr(12)
-std::string masterModeToString(MasterMode::Enum mode) {
-	switch (mode) {
-	CASE_MASTER_MODE(MasterMode::NONE);
-	CASE_MASTER_MODE(MasterMode::NETWORK);
-	CASE_MASTER_MODE(MasterMode::ROS_RAVEN_CMD);
-	CASE_MASTER_MODE(MasterMode::ROS_POSE);
-	CASE_MASTER_MODE(MasterMode::ROS_JOINT_POSITION);
-	CASE_MASTER_MODE(MasterMode::ROS_JOINT_VELOCITY);
-	CASE_MASTER_MODE(MasterMode::ROS_JOINT_TORQUE);
-	CASE_MASTER_MODE(MasterMode::ROS_JOINT_TRAJECTORY);
-	}
-	std::cerr << "Unknown master mode " << mode << std::endl;
-	return "MasterMode::NONE";
-}
-
-std::string getMasterModeString() {
-	MasterMode::Enum mode = getMasterMode();
-	return masterModeToString(mode);
-}
-
-bool checkMasterMode(MasterMode::Enum mode) {
+bool checkMasterMode(MasterMode mode) {
 	if (mode == MasterMode::NONE) {
 		return false;
 	} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
@@ -65,7 +47,7 @@ bool checkMasterMode(MasterMode::Enum mode) {
 	return succeeded;
 }
 
-bool getMasterModeConflicts(MasterMode::Enum& mode, std::set<MasterMode::Enum>& conflicts) {
+bool getMasterModeConflicts(MasterMode& mode, std::set<MasterMode>& conflicts) {
 	bool conflicted;
 	pthread_mutex_lock(&masterModeMutex);
 	mode = masterMode;
@@ -109,9 +91,11 @@ std::string controlModeToString(t_controlmode mode) {
 	CASE_CONTROL_MODE(cartesian_space_control);
 	CASE_CONTROL_MODE(multi_dof_sinusoid);
 	CASE_CONTROL_MODE(joint_torque_control);
+	CASE_CONTROL_MODE(trajectory_control);
+	default:
+		std::cerr << "Unknown control mode " << mode << std::endl;
+		return "no_control";
 	}
-	std::cerr << "Unknown control mode " << mode << std::endl;
-	return "no_control";
 }
 
 std::string getControlModeString() {
@@ -125,7 +109,9 @@ bool checkControlMode(t_controlmode mode) {
 	}
 	bool succeeded = false;
 	pthread_mutex_lock(&controlModeMutex);
-	if (controlMode == mode || controlMode == no_control) {
+	//change controllers ok if runlevel is pedal up
+	if (controlMode == mode || controlMode == no_control
+			|| (!Device::runlevel().isPedalDown() && !Device::runlevel().isInit())) {
 		controlMode = mode;
 		succeeded = true;
 	} else {
@@ -146,12 +132,14 @@ bool getControlModeConflicts(t_controlmode& mode, std::set<t_controlmode>& confl
 	return conflicted;
 }
 
-bool resetControlMode() {
-	bool succeeded = false;
+bool setControlMode(t_controlmode new_mode) {
+	t_controlmode old_mode;
 	pthread_mutex_lock(&controlModeMutex);
-	controlMode = no_control;
-	controlModeConflictSet.clear();
-	succeeded = true;
+	old_mode = controlMode;
+	controlMode = new_mode;
+	if (old_mode != new_mode) {
+		controlModeConflictSet.clear();
+	}
 	pthread_mutex_unlock(&controlModeMutex);
-	return succeeded;
+	return new_mode != old_mode;
 }

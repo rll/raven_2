@@ -20,6 +20,9 @@
 #include "log.h"
 #include "saveload.h"
 
+#include <raven/state/device.h>
+#include <raven/control/control_input.h>
+
 
 int homing_condition_met(struct DOF *_joint);
 int set_joints_known_pos(struct mechanism* _mech, int tool_only);
@@ -59,11 +62,24 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     // Initialize the homing sequence.
     if (begin_homing || !homing_inited)
     {
+#ifdef USE_NEW_DEVICE
+    	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
+    		OldArmInputData& armData = ControlInput::getOldControlInput()->armById(arm->id());
+    		for (size_t i=0;i<arm->motors().size();i++) {
+    			armData.motorTorque(i) = 0;
+    			armData.motorPosition(i) = arm->motor(i)->position();
+    		}
+    		for (size_t i=0;i<arm->joints().size();i++) {
+    			armData.jointPosition(i) = arm->joint(i)->position();
+    			armData.jointVelocity(i) = 0;
+    		}
+    	}
+#endif
     	// Zero out joint torques, and control inputs. Set joint.state=not_ready.
         _mech = NULL;  _joint = NULL;
         while (loop_over_joints(device0, _mech, _joint, i,j) )
         {
-            _joint->tau_d  = 0;
+        	_joint->tau_d  = 0;
             _joint->mpos_d = _joint->mpos;
             _joint->jpos_d = _joint->jpos;
             _joint->jvel_d = 0;
@@ -141,7 +157,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
 
     }
     
-    saveOffsets(*device0);
+    //saveOffsets(*device0);
 
     return 0;
 }
@@ -154,8 +170,14 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
 */
 int set_joints_known_pos(struct mechanism* _mech, int tool_only)
 {
+	static MotorList motors;
     struct DOF* _joint=NULL;
     int j=0;
+#ifdef USE_NEW_DEVICE
+    Device::beginCurrentUpdate(ros::Time(0));
+
+    ArmPtr arm = Device::currentNoClone()->getArmById(_mech->type);
+#endif
 
     /// Set joint position reference for just tools, or all DOFS
     _joint = NULL;
@@ -178,12 +200,34 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
     /// Inverse cable coupling: jpos_d  ---> mpos_d
     invMechCableCoupling(_mech, 1);
 
-    _joint = NULL;
+#ifdef USE_NEW_DEVICE
+	arm->motorFilter()->reset();
+
+	arm->motorFilter()->getMotorsForUpdate(motors);
+#endif
+
+	_joint = NULL;
     while ( loop_over_joints(_mech, _joint ,j) )
     {
-        // Reset the state-estimate filter
+#ifdef USE_NEW_DEVICE
+    	MotorPtr motor;// = arm->motorByOldType(_joint->type)
+    	int joint_id = jointTypeFromCombinedType(_joint->type);
+    	if (joint_id != 3) {
+    		if (joint_id > 3) {
+    			joint_id -= 1;
+    		}
+    		//motor = arm->motor(joint_id);
+    		motor = motors[joint_id];
+    	}
+#endif
+
+    	// Reset the state-estimate filter
         _joint->mpos = _joint->mpos_d;
         resetFilter( _joint );
+
+#ifdef USE_NEW_DEVICE
+        if (motor) { motor->setPosition(_joint->mpos_d); }
+#endif
 
         // Convert the motor position to an encoder offset.
         // mpos = k * (enc_val - enc_offset)  --->  enc_offset = enc_val - mpos/k
@@ -196,10 +240,20 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
         /// Set the joint offset in encoder space.
         float cc = ENC_CNTS_PER_REV / (2*M_PI);
         _joint->enc_offset = f_enc_val - (_joint->mpos_d * cc);
+
+#ifdef USE_NEW_DEVICE
+        if (motor) { motor->setEncoderOffset(_joint->enc_offset); }
+#endif
+
         getStateLPF(_joint);
     }
 
-    fwdMechCableCoupling(_mech);
+#ifdef USE_NEW_DEVICE
+	Device::finishCurrentUpdate();
+#endif
+
+	fwdMechCableCoupling(_mech);
+
     return 0;
 }
 

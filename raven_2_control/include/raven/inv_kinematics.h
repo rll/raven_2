@@ -10,7 +10,7 @@
 #define _INV_KIN_H
 
 #include "struct.h"
-#include "kinematics_defines.h"
+#include <raven/kinematics/kinematics_defines.h>
 #include "log.h"
 
 // Constant DH parameters

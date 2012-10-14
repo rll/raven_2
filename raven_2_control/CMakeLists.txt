@@ -8,6 +8,7 @@ include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 #  RelWithDebInfo : w/ debug symbols, w/ optimization
 #  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
 set(ROS_BUILD_TYPE RelWithDebInfo)
+#set(ROS_BUILD_TYPE Release)
 
 rosbuild_init()
 
@@ -20,6 +21,9 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 #uncomment if you have defined services
 #rosbuild_gensrv()
+
+find_package(Eigen REQUIRED)
+include_directories(${Eigen_INCLUDE_DIRS})
 
 add_definitions("-DRAVEN_DATA_DIR=${CMAKE_SOURCE_DIR}/data")
 
@@ -39,6 +43,7 @@ endif()
 include_directories(src/raven)
 include_directories(include)
 include_directories(include/raven)
+#include_directories(include/raven/state)
 #include_directories(include/ik)
 
 
@@ -54,9 +59,32 @@ link_directories(${OpenRAVE_LIBRARY_DIRS})
 #rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
 #target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
+rosbuild_add_library(r2_state 
+src/raven/state/dof.cpp
+src/raven/state/arm.cpp
+src/raven/kinematics/kinematics.cpp
+src/raven/state/device.cpp
+)
+
+
+rosbuild_add_library(r2_controllers 
+src/raven/control/controller.cpp
+src/raven/control/control_input.cpp
+src/raven/control/input/motor_input.cpp
+src/raven/control/input/joint_input.cpp
+src/raven/control/input/end_effector_grasp_input.cpp
+src/raven/control/input/end_effector_pose_input.cpp
+src/raven/control/controllers/motor_position_pid.cpp
+src/raven/control/controllers/joint_velocity_pi.cpp
+)
+target_link_libraries(r2_controllers r2_state) 
+
 rosbuild_add_boost_directories()
 
 rosbuild_add_executable(r2_control
+src/raven/state/initializer.cpp
+src/raven/state/motor_filters/lpf.cpp
+
 #src/raven/asinw.cpp
 src/raven/dof.cpp
 src/raven/fwd_cable_coupling.cpp
@@ -88,6 +116,7 @@ src/raven/state_machine.cpp
 src/raven/homing.cpp
 src/raven/trajectory.cpp
 src/raven/console_process.cpp
+src/raven/control_process.cpp
 #src/raven/trajectory_gen_ee449.cpp
 src/raven/t_to_DAC_val.cpp
 src/raven/update_atmel_io.cpp
@@ -96,10 +125,12 @@ src/raven/USB_init.cpp
 src/raven/utils.cpp
 #src/raven/velocity.cpp
 src/raven/saveload.cpp
-src/raven/timing.cpp
+src/raven/util/timing.cpp
 )
 
 rosbuild_link_boost(r2_control filesystem system)
+
+target_link_libraries(r2_control r2_state r2_controllers)
 
 #target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
 #target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )
