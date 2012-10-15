@@ -24,40 +24,6 @@
 
 #define USE_NEW_DEVICE
 
-typedef unsigned char runlevel_t;
-
-class RunLevel {
-	friend class Device;
-private:
-	runlevel_t value_;
-	runlevel_t sublevel_;
-
-public:
-
-	bool isEstop() const;
-	bool isHardwareEstop() const;
-	bool isSoftwareEstop() const;
-	bool isInit(runlevel_t sublevel = -1) const;
-	bool isPedalUp() const;
-	bool isPedalDown() const;
-	bool isPedalUpOrDown() const { return isPedalDown() || isPedalUp(); }
-
-	bool isActive() const;
-
-	std::string str() const;
-
-	static RunLevel _E_STOP_();
-	static RunLevel _INIT_(runlevel_t sublevel = 0);
-	static RunLevel _PEDAL_UP_();
-	static RunLevel _PEDAL_DOWN_();
-
-	static RunLevel fromNumber(runlevel_t level);
-private:
-	RunLevel(runlevel_t level, runlevel_t sub = 0) : value_(level), sublevel_(sub) {}
-	static RunLevel _E_STOP_HARDWARE_();
-	static RunLevel _E_STOP_SOFTWARE_();
-};
-
 //class Device;
 //typedef boost::shared_ptr<Device> DevicePtr;
 //typedef boost::weak_ptr<Device> DeviceWeakPtr;
@@ -78,9 +44,6 @@ private:
 	//static boost::circular_buffer<DevicePtr> HISTORY;
 	static History<Device>::Type HISTORY;
 
-	static bool RUNLEVEL_IS_INITED;
-	static RunLevel* RUNLEVEL;
-
 	DeviceType type_;
 	ros::Time timestamp_;
 
@@ -93,19 +56,10 @@ private:
 	static void init(DevicePtr dev);
 	void internalFinishUpdate(bool updateTimestamp);
 public:
-	static RunLevel runlevel();
-	static void setRunlevel(RunLevel level);
-	static void setSublevel(runlevel_t sublevel);
-
-	static void eStop();
-	static bool getPedal();
-	static void setPedal(bool down);
-
-	static bool isInitialized();
-
 	static DevicePtr current(); //locks, returns clone
 	static void current(DevicePtr& device); //locks, returns clone
 	static DevicePtr currentNoClone(); //no lock, use carefully
+	static ros::Time currentTimestamp();
 
 	static void beginCurrentUpdate(ros::Time updateTime);
 	static void finishCurrentUpdate();

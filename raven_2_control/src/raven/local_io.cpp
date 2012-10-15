@@ -33,6 +33,7 @@ active use.
 #include <raven/kinematics/kinematics_defines.h>
 #include "shared_modes.h"
 #include "trajectory.h"
+#include <raven/state/runlevel.h>
 
 extern bool disable_arm_id[2];
 extern int NUM_MECH;
@@ -84,6 +85,7 @@ int initLocalioData(void)
         Q_ori[i] = Q_ori[i].getIdentity();
     }
     data1.surgeon_mode=0;
+    RunLevel::setPedal(false);
     {
         _localio_counter = 0;
         for (i=0;i<NUM_MECH;i++) {
@@ -222,6 +224,7 @@ void teleopIntoDS1(struct u_struct *t)
 //           data1.xd[1].x, data1.xd[1].y, data1.xd[1].z);
 
     data1.surgeon_mode = t->surgeon_mode;
+    RunLevel::setPedal(t->surgeon_mode);
     pthread_mutex_unlock(&data1Mutex);
 }
 
@@ -247,11 +250,16 @@ int checkLocalUpdates()
     {
         lastUpdated = gTime;
     }
-    else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
+#ifdef USE_NEW_RUNLEVEL
+    else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && RunLevel::getPedal() && !hasTrajectory())
+#else
+	else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
+#endif
     {
         // if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
         log_msg("Master connection timeout.  surgeon_mode -> up.\n");
         data1.surgeon_mode = SURGEON_DISENGAGED;
+        RunLevel::setPedal(false);
         lastUpdated = gTime;
         isUpdated = TRUE;
     }

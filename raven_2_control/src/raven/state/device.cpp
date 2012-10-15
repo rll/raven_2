@@ -23,79 +23,6 @@ DevicePtr Device::INSTANCE;
 //boost::circular_buffer<DevicePtr> Device::HISTORY = boost::circular_buffer<DevicePtr>(DEVICE_HISTORY_SIZE);
 History<Device>::Type Device::HISTORY = History<Device>::Type(DEVICE_HISTORY_SIZE);
 
-#define USE_RUNLEVEL_MUTEX
-boost::mutex runlevelMutex;
-RunLevel* Device::RUNLEVEL = new RunLevel(RunLevel::_E_STOP_HARDWARE_());
-bool Device::RUNLEVEL_IS_INITED = false;
-
-RunLevel RunLevel::_E_STOP_() { return RunLevel::_E_STOP_SOFTWARE_(); }
-RunLevel RunLevel::_E_STOP_SOFTWARE_() { return RunLevel(0,1); }
-RunLevel RunLevel::_E_STOP_HARDWARE_() { return RunLevel(0,0); }
-RunLevel RunLevel::_INIT_(runlevel_t sublevel) { return RunLevel(1,sublevel); }
-RunLevel RunLevel::_PEDAL_UP_() { return RunLevel(2); }
-RunLevel RunLevel::_PEDAL_DOWN_() { return RunLevel(3); }
-
-RunLevel RunLevel::fromNumber(runlevel_t level) { return RunLevel(level,0); }
-
-bool RunLevel::isEstop() const {
-	return value_ == 0;
-}
-
-bool RunLevel::isHardwareEstop() const {
-	return isEstop() && sublevel_ == 0;
-}
-bool RunLevel::isSoftwareEstop() const {
-	return isEstop() && sublevel_ == 1;
-}
-
-bool RunLevel::isInit(runlevel_t sublevel) const {
-	return value_ == 1 && (sublevel_ == (runlevel_t)-1 || sublevel_ == this->sublevel_);
-}
-
-bool RunLevel::isPedalUp() const {
-	return value_ == 2;
-}
-
-bool RunLevel::isPedalDown() const {
-	return value_ == 3;
-}
-
-bool RunLevel::isActive() const {
-	return value_ >= 2;
-}
-
-std::string
-RunLevel::str() const {
-	switch (value_) {
-	case 0:
-		return "E_STOP";
-	case 1:
-		switch (sublevel_) {
-		case 0:
-			return "INIT:0";
-		case 1:
-			return "INIT:1";
-		case 2:
-			return "INIT:2";
-		case 3:
-			return "INIT:3";
-		default:
-			std::stringstream ss;
-			ss << "INIT:UNKNOWN[" << sublevel_ << "]";
-			return ss.str();
-		}
-		break;
-	case 2:
-		return "PEDAL_UP";
-	case 3:
-		return "PEDAL_DOWN";
-	default:
-		std::stringstream ss;
-		ss << "UNKNOWN[" << value_ << "]";
-		return ss.str();
-	}
-}
-
 DevicePtr
 Device::current() {
 	//printf("Current\n");
@@ -127,75 +54,17 @@ Device::currentNoClone() {
 	return Device::INSTANCE;
 }
 
-RunLevel
-Device::runlevel() {
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+ros::Time
+Device::currentTimestamp() {
+	ros::Time t;
+#ifdef USE_DEVICE_MUTEX
+	deviceInstanceMutex.lock();
 #endif
-	RunLevel rl(*Device::RUNLEVEL);
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
+	t = Device::INSTANCE->timestamp_;
+#ifdef USE_DEVICE_MUTEX
+	deviceInstanceMutex.unlock();
 #endif
-	return rl;
-}
-void Device::setRunlevel(RunLevel level) {
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
-#endif
-	//if (Device::RUNLEVEL->value_ != level.value_) {
-	if (Device::RUNLEVEL->value_ != level.value_ || Device::RUNLEVEL->sublevel_ != level.sublevel_) {
-		if (level.isPedalUpOrDown() && Device::RUNLEVEL->isInit()) {
-			Device::RUNLEVEL_IS_INITED = true;
-		}
-		*Device::RUNLEVEL = level;
-
-		log_msg("Entered runlevel %s", Device::RUNLEVEL->str().c_str());
-	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
-}
-void Device::setSublevel(runlevel_t sublevel) {
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
-#endif
-	if (Device::RUNLEVEL->isInit() && Device::RUNLEVEL->sublevel_ != sublevel) {
-		Device::RUNLEVEL->sublevel_ = sublevel;
-		log_msg("Entered runlevel %s", Device::RUNLEVEL->str().c_str());
-	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
-}
-
-bool
-Device::isInitialized() {
-	return Device::RUNLEVEL_IS_INITED;
-}
-
-void
-Device::eStop() {
-	setRunlevel(RunLevel::_E_STOP_SOFTWARE_());
-}
-bool
-Device::getPedal() {
-	return Device::runlevel().isPedalDown();
-}
-void
-Device::setPedal(bool down) {
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
-#endif
-	if (down && Device::RUNLEVEL->value_ == 2) {
-		*Device::RUNLEVEL = RunLevel::_PEDAL_DOWN_();
-		log_msg("Entered runlevel %s", Device::RUNLEVEL->str().c_str());
-	} else if (!down && Device::RUNLEVEL->value_ == 3) {
-		*Device::RUNLEVEL = RunLevel::_PEDAL_UP_();
-		log_msg("Entered runlevel %s", Device::RUNLEVEL->str().c_str());
-	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
+	return t;
 }
 
 static int numD = 0;

@@ -11,7 +11,7 @@
 
 #include <iostream>
 
-#include <raven/state/device.h>
+#include <raven/state/runlevel.h>
 
 extern struct robot_device device0;
 
@@ -32,7 +32,11 @@ MasterMode getMasterMode() {
 bool checkMasterMode(MasterMode mode) {
 	if (mode == MasterMode::NONE) {
 		return false;
+#ifdef USE_NEW_RUNLEVEL
+	} else if (!RunLevel::isInitialized()) {
+#else
 	} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
+#endif
 		return false;
 	}
 	bool succeeded = false;
@@ -111,7 +115,7 @@ bool checkControlMode(t_controlmode mode) {
 	pthread_mutex_lock(&controlModeMutex);
 	//change controllers ok if runlevel is pedal up
 	if (controlMode == mode || controlMode == no_control
-			|| (!Device::runlevel().isPedalDown() && !Device::runlevel().isInit())) {
+			|| (!RunLevel::get().isPedalDown() && !RunLevel::get().isInit())) {
 		controlMode = mode;
 		succeeded = true;
 	} else {

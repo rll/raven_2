@@ -36,9 +36,13 @@
 #include "control_process.h"
 #include "saveload.h"
 
+#include <raven/state/runlevel.h>
 #include <raven/util/timing.h>
 
 #include <raven/state/initializer.h>
+
+#include <raven/control/controller.h>
+#include <raven/control/controllers/motor_position_pid.h>
 
 using namespace std;
 
@@ -141,8 +145,10 @@ static void *rt_process(void* )
         exit(-1);
     }
 
+#ifndef USE_NEW_RUNLEVEL
     currParams.runlevel = STOP;
     currParams.sublevel = 0;
+#endif
 
     log_msg("Starting RT Process...");
 
@@ -236,8 +242,12 @@ static void *rt_process(void* )
 
         // Check for overcurrent and impose safe torque limits
         if (overdriveDetect(&device0,currParams.runlevel)) {
-            log_msg("Setting soft e stop");
+            log_warn("Setting soft e stop");
+#ifdef USE_NEW_RUNLEVEL
+            RunLevel::eStop();
+#else
         	soft_estopped = TRUE;
+#endif
         }
 
         t_info.mark_control_end();

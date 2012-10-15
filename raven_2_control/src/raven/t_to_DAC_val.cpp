@@ -13,6 +13,8 @@
 #include "utils.h"
 #include "log.h"
 
+#include <raven/state/runlevel.h>
+
 extern struct DOF_type DOF_types[];
 extern int NUM_MECH;
 
@@ -40,8 +42,14 @@ int TorqueToDAC(struct device *device0)
     		continue;
     	_joint->current_cmd = tToDACVal( _joint );  // Convert torque to DAC value
 
-    	if ( soft_estopped )
+#ifdef USE_NEW_RUNLEVEL
+    	if (RunLevel::get().isSoftwareEstop()) {
+    		//printf("SES T2D\n");
+#else
+    	if ( soft_estopped ) {
+#endif
     		_joint->current_cmd = 0;
+    	}
 
     }
     return 0;

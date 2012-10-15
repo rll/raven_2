@@ -20,6 +20,8 @@
 #include "utils.h"
 #include "defines.h"
 
+#include <raven/state/runlevel.h>
+
 static const int PRINT_EVERY_PEDAL_UP   = 1000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
@@ -54,7 +56,12 @@ void fwdKin(struct device *device0, int runlevel) {
 		}*/
 	}
 
+#ifdef USE_NEW_RUNLEVEL
+	RunLevel rl = RunLevel::get();
+	if (!rl.isPedalDown() && !rl.isInit()) {
+#else
 	if ((runlevel != RL_PEDAL_DN) && (runlevel != RL_INIT)) {
+#endif
 		// set cartesian pos_d = pos.
 		// That way, if anything wonky happens during state transitions
 		// there won't be any discontinuities.

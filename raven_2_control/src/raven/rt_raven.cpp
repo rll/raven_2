@@ -30,6 +30,7 @@
 #include "shared_modes.h"
 #include "saveload.h"
 
+#include <raven/state/runlevel.h>
 #include <raven/state/device.h>
 
 using namespace std;
@@ -79,16 +80,16 @@ controller getController(t_controlmode mode) {
 	case cartesian_space_control:
 		return &raven_cartesian_space_command;
 	case motor_pd_control:
-		initialized = false;
+//		initialized = false;
 		return &raven_motor_position_control;
 	case joint_velocity_control:
-		initialized = false;
+//		initialized = false;
 		return &raven_joint_velocity_control;
 	case apply_arbitrary_torque:
-		initialized = false;
+//		initialized = false;
 		return &applyTorque;
 	case multi_dof_sinusoid:
-		initialized = false;
+//		initialized = false;
 		return &raven_sinusoidal_joint_motion;
 	case joint_torque_control:
 		return &raven_joint_torque_command;
@@ -129,7 +130,11 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     //log_msg("1 (%d,%d,%d)",device0->mech[1].pos.x,device0->mech[1].pos.y,device0->mech[1].pos.z);
 
     if (controlmode == homing_mode) {
+#ifdef USE_NEW_RUNLEVEL
+    	RunLevel::setInitialized(false);
+#else
     	initialized = false;
+#endif
 		//initialized = robot_ready(device0) ? true:false;
 		ret = raven_homing(device0, currParams);
 		set_posd_to_pos(device0);
@@ -154,8 +159,12 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 
     		switch (param_status.value()) {
     		case TrajectoryStatus::OK:
+#ifdef USE_NEW_RUNLEVEL
+    			RunLevel::get().getNumbers<u_08>(traj_params.runlevel,traj_params.sublevel);
+#else
     			traj_params.runlevel = currParams->runlevel;
     			traj_params.sublevel = currParams->sublevel;
+#endif
     			*currParams = traj_params;
     			break;
     		case TrajectoryStatus::BEFORE_START:
@@ -170,8 +179,12 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     			//printf("Trajectory ended\n");
     			set_posd_to_pos(device0);
     			printf("Setting control mode to cartestian space\n");
+#ifdef USE_NEW_RUNLEVEL
+    			RunLevel::setPedal(false);
+#else
     			device0->surgeon_mode = false;
     			currParams->runlevel = RL_PEDAL_UP;
+#endif
     			setRobotControlMode(cartesian_space_control);
     			skip = true;
     			break;
@@ -191,7 +204,11 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 				ret = (*ctlr)(device0,currParams);
 			} else {
 				if (traj_ctrl) {
+#ifdef USE_NEW_RUNLEVEL
+					log_msg_throttle(0.25,"Traj ctrl didn't find controller %i %i RL: %s\n",(int) controlmode,(int)RunLevel::getPedal(),RunLevel::get().str().c_str());
+#else
 					log_msg_throttle(0.25,"Traj ctrl didn't find controller %i %i RL(%i,%i)\n",(int) controlmode,(int)currParams->surgeon_mode,currParams->runlevel,currParams->sublevel);
+#endif
 				}
 				set_posd_to_pos(device0);
 			}
@@ -275,7 +292,11 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     struct mechanism* _mech = NULL;
     int i=0,j=0;
 
+#ifdef USE_NEW_RUNLEVEL
+    if (!RunLevel::get().isPedalDown()) {
+#else
     if (currParams->runlevel != RL_PEDAL_DN) {
+#endif
         set_posd_to_pos(device0);
         updateMasterRelativeOrigin(device0);
     }
@@ -316,8 +337,12 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
-        if (currParams->runlevel != RL_PEDAL_DN || disable_arm_id[armIdFromMechType(_mech->type)]) {
-            _joint->tau_d=0;
+#ifdef USE_NEW_RUNLEVEL
+    	if (!RunLevel::get().isPedalDown() || disable_arm_id[armIdFromMechType(_mech->type)]) {
+#else
+    	if (currParams->runlevel != RL_PEDAL_DN || disable_arm_id[armIdFromMechType(_mech->type)]) {
+#endif
+    		_joint->tau_d=0;
         } else {
             mpos_PD_control(_joint);
         }
@@ -364,7 +389,11 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
     int i=0,j=0;
 
     // If we're not in pedal down or init.init then do nothing.
+#ifdef USE_NEW_RUNLEVEL
+    if (! RunLevel::get().isInitSublevel(3))
+#else
     if (! ( currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
+#endif
     {
         controlStart = 0;
         delay = gTime;
@@ -427,7 +456,11 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
 int applyTorque(struct device *device0, struct param_pass *currParams)
 {
 	// Only run in runlevel 1.2
+#ifdef USE_NEW_RUNLEVEL
+	if ( !RunLevel::get().isInitSublevel(3))
+#else
 	if ( ! (currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
+#endif
 		return 0;
 
 	struct DOF *_joint = NULL;
@@ -461,9 +494,14 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
     int i=0,j=0;
 
     // If we're not in pedal down or init.init then do nothing.
+#ifdef USE_NEW_RUNLEVEL
+    RunLevel rl = RunLevel::get();
+    if (!( rl.isPedalDown() || rl.isInitSublevel(3))) {
+#else
     if (! ( currParams->runlevel == RL_PEDAL_DN ||
           ( currParams->runlevel == RL_INIT     && currParams->sublevel == SL_AUTO_INIT ))) {
-        controlStart = 0;
+#endif
+    	controlStart = 0;
         delay = gTime;
 
         // Set all joints to zero torque, and mpos_d = mpos
@@ -531,9 +569,14 @@ int raven_joint_velocity_control(struct device *device0, struct param_pass *curr
     int i=0,j=0;
 
     // Run velocity control
+#ifdef USE_NEW_RUNLEVEL
+    RunLevel rl = RunLevel::get();
+    if ( rl.isPedalDown() || rl.isInitSublevel(3)) {
+#else
     if ( currParams->runlevel == RL_PEDAL_DN ||
             ( currParams->runlevel == RL_INIT &&
               currParams->sublevel == SL_AUTO_INIT )) {
+#endif
         // delay the start of control for 300ms b/c the amps have to turn on.
         if (gTime - delay < 800)
         	return 0;

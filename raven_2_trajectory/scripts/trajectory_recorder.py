@@ -33,7 +33,7 @@ TOOL_POSE_ARM_TOPIC = TOOL_POSE_TOPIC + "/%s";
 
 class TrajectoryRecorder:
 	
-	def __init__(self,listener):
+	def __init__(self,listener,use_array_state=False,use_pose_arrays=False):
 		self.listener = listener
 		rospy.loginfo("waiting for transform from %s to %s",BASE_FRAME, END_EFFECTOR_FRAME)
 		tries = 0
@@ -59,7 +59,8 @@ class TrajectoryRecorder:
 		self.raven_state_sub = rospy.Subscriber(RAVEN_STATE_TOPIC,RavenState,self.raven_state_callback)
 		
 		self.raven_array_state = None
-		self.raven_array_state_sub = rospy.Subscriber(RAVEN_ARRAY_STATE_TOPIC,RavenArrayState,self.raven_array_state_callback)
+		if use_array_state:
+			self.raven_array_state_sub = rospy.Subscriber(RAVEN_ARRAY_STATE_TOPIC,RavenArrayState,self.raven_array_state_callback)
 		
 		self.joint_state = None
 		self.joint_state_sub = rospy.Subscriber("joint_states",JointState,self.joint_callback)
@@ -71,18 +72,27 @@ class TrajectoryRecorder:
 		self.raven_command_sub = rospy.Subscriber(RAVEN_COMMAND_TOPIC,RavenCommand,self.raven_command_callback)
 		
 		self.raven_command_trajectory = None
+		
+		self.tool_pose_array = None
+		self.tool_pose = {}
+		
+		if use_pose_arrays:
+			self.tool_pose_array_sub = rospy.Subscriber(TOOL_POSE_TOPIC,PoseArray,self.tool_pose_array_callback)
+		else:
+			self.tool_pose_sub = {}
+			for arm in ARMS:
+				self.tool_pose_sub[arm] = rospy.Subscriber(TOOL_POSE_ARM_TOPIC % arm,PoseStamped,lambda msg,arm=arm: self.tool_pose_callback(msg,arm))
 
+		self.cmd_pose_array = None
 		self.cmd_pose = {}
-		self.cmd_pose_sub = {}
-		for arm in ARMS:
-			self.cmd_pose_sub[arm] = rospy.Subscriber(COMMAND_POSE_ARM_TOPIC % arm,PoseStamped,lambda msg,arm=arm: self.cmd_pose_callback(msg,arm))
+		if use_pose_arrays:
+			self.cmd_pose_array_sub = rospy.Subscriber(COMMAND_POSE_TOPIC,PoseArray,self.cmd_pose_array_callback)
+		else:
+			self.cmd_pose_sub = {}
+			for arm in ARMS:
+				self.cmd_pose_sub[arm] = rospy.Subscriber(COMMAND_POSE_ARM_TOPIC % arm,PoseStamped,lambda msg,arm=arm: self.cmd_pose_callback(msg,arm))
 
 		self.cmd_pose_trajectory = None
-		
-		self.tool_pose = {}
-		self.tool_pose_sub = {}
-		for arm in ARMS:
-			self.tool_pose_sub[arm] = rospy.Subscriber(TOOL_POSE_ARM_TOPIC % arm,PoseStamped,lambda msg,arm=arm: self.tool_pose_callback(msg,arm))
 
 		rospy.loginfo("let's do this!")
 	
@@ -148,6 +158,9 @@ class TrajectoryRecorder:
 
 	def tool_pose_callback(self,msg,arm):
 		self.tool_pose[arm] = msg
+	
+	def tool_pose_array_callback(self,msg):
+		self.tool_pose_array = msg
 
 	def cmd_pose_callback(self,msg,arm):
 		armid = ARMS.index(arm)
@@ -183,7 +196,9 @@ class TrajectoryRecorder:
 		tool_cmd.tool_pose = msg.pose
 		tool_cmd.set_grasp = False
 		self.cmd_pose_trajectory.commands[ind].arms[armid].tool_command = tool_cmd
-		
+	
+	def cmd_pose_array_callback(self,msg):
+		self.cmd_pose_array = msg;
 				 
 
 	def close(self):
@@ -212,11 +227,13 @@ class TrajectoryRecorder:
 			self.bagwrite(RAVEN_ARRAY_STATE_TOPIC,self.raven_array_state)
 			self.bagwrite('/tf',self.tf)
 			self.bagwrite(RAVEN_COMMAND_TOPIC, self.raven_command)
+			self.bagwrite(TOOL_POSE_TOPIC, self.tool_pose_array)
+			self.bagwrite(COMMAND_POSE_TOPIC, self.cmd_pose_array)
 			for arm in ARMS:
-				if self.cmd_pose.has_key(arm):
-					self.bagwrite(COMMAND_POSE_ARM_TOPIC % arm,self.cmd_pose[arm])
 				if self.tool_pose.has_key(arm):
 					self.bagwrite(TOOL_POSE_ARM_TOPIC % arm,self.tool_pose[arm])
+				if self.cmd_pose.has_key(arm):
+					self.bagwrite(COMMAND_POSE_ARM_TOPIC % arm,self.cmd_pose[arm])
 			now = self.joint_state.header.stamp
 		except (tf.LookupException, tf.ConnectivityException), e:
 			rospy.logerr("exception! %s",str(e))
@@ -240,11 +257,15 @@ if __name__ == "__main__":
 	
 	parser.add_option('-d','--dir',help='Directory to save to')
 	
-	parser.add_option('-a','--array',help='Use array state',action='store_true',default=False)
+	parser.add_option('-a','--use-arrays',help='Use array state and pose arrays',action='store_true',default=False)
+	parser.add_option('--array-state',action='store_true',default=False)
+	parser.add_option('--pose-arrays',action='store_true',default=False)
 	
 	(options,args) = parser.parse_args(rospy.myargv())
 
-	tr = TrajectoryRecorder(listener)
+	tr = TrajectoryRecorder(listener,
+						use_array_state = options.array_state or options.use_arrays,
+						use_pose_arrays = options.pose_arrays or options.use_arrays)
 	
 	if options.dir:
 		tr.dir = options.dir

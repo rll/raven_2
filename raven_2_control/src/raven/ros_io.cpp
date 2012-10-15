@@ -14,6 +14,9 @@
 #include <tf/transform_datatypes.h>
 #include <iostream>
 
+#include <raven/state/runlevel.h>
+#include <raven/state/device.h>
+
 #include "log.h"
 #include "utils.h"
 #include "mapping.h"
@@ -40,6 +43,8 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 
+#include <raven/util/stringify.h>
+
 extern int NUM_MECH;
 extern USBStruct USBBoards;
 extern unsigned long int gTime;
@@ -62,10 +67,14 @@ ros::Publisher pub_raven_state;
 ros::Publisher pub_raven_array_state;
 ros::Publisher joint_publisher;
 
-ros::Publisher pub_tool_pose_command[2];
+ros::Publisher pub_tool_pose_array;
 ros::Publisher pub_tool_pose[2];
-ros::Publisher pub_master_pose_raw[2];
+
+ros::Publisher pub_tool_pose_command_array;
+ros::Publisher pub_tool_pose_command[2];
+
 ros::Publisher pub_master_pose[2];
+ros::Publisher pub_master_pose_raw[2];
 
 ros::Publisher vis_pub1;
 ros::Publisher vis_pub2;
@@ -86,16 +95,26 @@ void publish_tool_pose(struct robot_device*);
 void publish_master_pose(struct robot_device*);
 void publish_marker(struct robot_device*);
 
+#define APPEND_TOPIC(base,topic) (std::string(base) + "/" + std::string(topic))
+
 #define RAVEN_STATE_TOPIC "raven_state"
-#define RAVEN_ARRAY_STATE_TOPIC "raven_state/array"
-#define TOOL_POSE_COMMAND_TOPIC(side) (std::string("tool_pose/command/")+std::string(side))
-#define TOOL_POSE_TOPIC(side)    (std::string("tool_pose/")+std::string(side))
-#define MASTER_POSE_TOPIC(side) (std::string("master_pose/")+std::string(side))
-#define MASTER_POSE_RAW_TOPIC(side) (std::string("master_pose/raw/")+std::string(side))
+#define RAVEN_ARRAY_STATE_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"array")
+
+#define TOOL_POSE_TOPIC "tool_pose"
+#define TOOL_POSE_SIDE_TOPIC(side) APPEND_TOPIC(TOOL_POSE_TOPIC,side)
+
+#define TOOL_POSE_COMMAND_TOPIC APPEND_TOPIC(TOOL_POSE_TOPIC,"command")
+#define TOOL_POSE_COMMAND_SIDE_TOPIC(side) APPEND_TOPIC(TOOL_POSE_COMMAND_TOPIC,side)
+
+#define MASTER_POSE_TOPIC "master_pose"
+#define MASTER_POSE_SIDE_TOPIC(side) APPEND_TOPIC(MASTER_POSE_TOPIC,side)
+
+#define MASTER_POSE_RAW_TOPIC APPEND_TOPIC(MASTER_POSE_TOPIC,"raw")
+#define MASTER_POSE_RAW_SIDE_TOPIC(side) APPEND_TOPIC(MASTER_POSE_RAW_TOPIC,side)
 
 #define RAVEN_COMMAND_TOPIC "raven_command"
-#define RAVEN_COMMAND_TRAJECTORY_TOPIC "raven_command/trajectory"
-#define RAVEN_COMMAND_POSE_TOPIC(side) (std::string(RAVEN_COMMAND_TOPIC) + std::string("/pose/")+std::string(side))
+#define RAVEN_COMMAND_TRAJECTORY_TOPIC APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"trajectory")
+#define RAVEN_COMMAND_POSE_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_TOPIC,side)
 
 bool checkRate(ros::Time& last_pub,ros::Duration interval,ros::Duration& since_last_pub) {
 	ros::Time now = ros::Time::now();
@@ -213,6 +232,7 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 	} else {
 		params.surgeon_mode = SURGEON_ENGAGED;
 	}
+	RunLevel::setPedal(cmd.pedal_down);
 	if (cmd.pedal_down) {
 		switch (cmd.controller) {
 		case raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR:
@@ -436,13 +456,26 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 sublevel,ros::Duration since_last_pub);
 
 void publish_ros(struct robot_device *device0,param_pass currParams) {
-	u_08 runlevel = currParams.runlevel;
-	u_08 sublevel = currParams.sublevel;
+	u_08 runlevel;
+	u_08 sublevel;
+#ifdef USE_NEW_RUNLEVEL
+	RunLevel currRunlevel = RunLevel::get();
+	currRunlevel.getNumbers<u_08>(runlevel,sublevel);
+#else
+	runlevel = currParams.runlevel;
+	sublevel = currParams.sublevel;
+#endif
 	static bool hasHomed = false;
 	static raven_2_msgs::RavenState raven_state;
 	raven_state.arms.clear();
 
-	if (runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP) {
+	if (
+#ifdef USE_NEW_RUNLEVEL
+			RunLevel::isInitialized()
+#else
+			runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP
+#endif
+			) {
 		hasHomed = true;
 	}
 
@@ -457,7 +490,13 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	if (hasHomed) {
 		publish_joints(device0);
 		//publish_marker(device0);
-		if (runlevel != RL_E_STOP) {
+		if (
+#ifdef USE_NEW_RUNLEVEL
+				!currRunlevel.isEstop()
+#else
+				runlevel != RL_E_STOP
+#endif
+				) {
 			publish_command_pose(device0);
 		}
 		publish_tool_pose(device0);
@@ -467,11 +506,21 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 
 	//raven_state
 
+#ifdef USE_NEW_DEVICE
+	raven_state.header.stamp = Device::currentTimestamp();
+#else
 	raven_state.header.stamp = ros::Time::now();
+#endif
 	raven_state.header.frame_id = "/0_link";
+#ifdef USE_NEW_RUNLEVEL
+	RunLevel rl = RunLevel::get();
+	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
+	raven_state.surgeon_mode = RunLevel::getPedal();
+#else
 	raven_state.runlevel = runlevel;
 	raven_state.sublevel = sublevel;
 	raven_state.surgeon_mode = device0->surgeon_mode;
+#endif
 
 	//t_controlmode controlMode = (t_controlmode)currParams.robotControlMode;
 	t_controlmode controlMode = getControlMode();
@@ -659,11 +708,20 @@ void publish_command_pose(struct robot_device* device0) {
 	static ros::Duration since_last_pub;
 	if (!checkRate(last_pub,interval,since_last_pub)) { return; }
 
-	geometry_msgs::PoseStamped command_pose;
-	command_pose.header.stamp = ros::Time::now();
-	command_pose.header.frame_id = "/0_link";
+#ifdef USE_NEW_DEVICE
+	ros::Time now = Device::currentTimestamp();
+#else
+	ros::Time now = ros::Time::now();
+#endif
 
-	mechanism* _mech = NULL;
+	geometry_msgs::PoseArray command_pose_array;
+	command_pose_array.header.stamp = now;
+	command_pose_array.header.frame_id = "/0_link";
+
+	geometry_msgs::PoseStamped command_pose;
+	command_pose.header = command_pose_array.header;
+
+		mechanism* _mech = NULL;
 	int mechnum = 0;
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		int armId = armIdFromMechType(_mech->type);
@@ -678,8 +736,12 @@ void publish_command_pose(struct robot_device* device0) {
 
 		tf::poseTFToMsg(pose,command_pose.pose);
 
+		command_pose_array.poses.push_back(command_pose.pose);
+
 		pub_tool_pose_command[armId].publish(command_pose);
 	}
+
+	pub_tool_pose_command_array.publish(command_pose_array);
 }
 
 void publish_tool_pose(struct robot_device* device0) {
@@ -688,9 +750,18 @@ void publish_tool_pose(struct robot_device* device0) {
 	static ros::Duration since_last_pub;
 	if (!checkRate(last_pub,interval,since_last_pub)) { return; }
 
+#ifdef USE_NEW_DEVICE
+	ros::Time now = Device::currentTimestamp();
+#else
+	ros::Time now = ros::Time::now();
+#endif
+
+	geometry_msgs::PoseArray tool_pose_array;
+	tool_pose_array.header.stamp = now;
+	tool_pose_array.header.frame_id = "/0_link";
+
 	geometry_msgs::PoseStamped tool_pose;
-	tool_pose.header.stamp = ros::Time::now();
-	tool_pose.header.frame_id = "/0_link";
+	tool_pose.header = tool_pose_array.header;
 
 	mechanism* _mech = NULL;
 	int mechnum = 0;
@@ -724,8 +795,12 @@ void publish_tool_pose(struct robot_device* device0) {
 
 		tf::poseTFToMsg(pose,tool_pose.pose);
 
+		tool_pose_array.poses.push_back(tool_pose.pose);
+
 		pub_tool_pose[armId].publish(tool_pose);
 	}
+
+	pub_tool_pose_array.publish(tool_pose_array);
 }
 
 void publish_master_pose(struct robot_device* device0) {
@@ -736,8 +811,14 @@ void publish_master_pose(struct robot_device* device0) {
 
 	btQuaternion q;
 
+#ifdef USE_NEW_DEVICE
+	ros::Time now = Device::currentTimestamp();
+#else
+	ros::Time now = ros::Time::now();
+#endif
+
 	geometry_msgs::PoseStamped master_pose;
-	master_pose.header.stamp = ros::Time::now();
+	master_pose.header.stamp = now;
 	master_pose.header.frame_id = "/0_link";
 
 	geometry_msgs::PoseStamped master_pose_raw;
@@ -771,8 +852,8 @@ void publish_master_pose(struct robot_device* device0) {
 		master_pose_raw.pose.orientation.z = q.z();
 		master_pose_raw.pose.orientation.w = q.w();
 
-		pub_master_pose_raw[armId].publish(master_pose_raw);
 		pub_master_pose[armId].publish(master_pose);
+		pub_master_pose_raw[armId].publish(master_pose_raw);
 	}
 }
 
@@ -787,9 +868,15 @@ void publish_joints(struct robot_device* device0){
     static ros::Duration since_last_pub;
     if (!checkRate(last_pub,interval,since_last_pub)) { return; }
 
+#ifdef USE_NEW_DEVICE
+	ros::Time now = Device::currentTimestamp();
+#else
+	ros::Time now = ros::Time::now();
+#endif
+
     sensor_msgs::JointState joint_state;
     //update joint_state
-    joint_state.header.stamp = ros::Time::now();
+    joint_state.header.stamp = now;
 //    joint_state.name.resize(32);
 //    joint_state.position.resize(32);
 //    joint_state.name.resize(14);
@@ -864,10 +951,14 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		int armId = armIdFromMechType(_mech->type);
 		std::string armName = rosArmName(armId);
-		pub_tool_pose_command[armId] = n.advertise<geometry_msgs::PoseStamped>( TOOL_POSE_COMMAND_TOPIC(armName), 1);
-		pub_tool_pose[armId] = n.advertise<geometry_msgs::PoseStamped>(TOOL_POSE_TOPIC(armName), 1);
-		pub_master_pose_raw[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_TOPIC(armName), 1);
-		pub_master_pose[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_RAW_TOPIC(armName), 1);
+		pub_tool_pose_array = n.advertise<geometry_msgs::PoseArray>(TOOL_POSE_TOPIC,1);
+		pub_tool_pose[armId] = n.advertise<geometry_msgs::PoseStamped>(TOOL_POSE_SIDE_TOPIC(armName), 1);
+
+		pub_tool_pose_command_array = n.advertise<geometry_msgs::PoseArray>(TOOL_POSE_COMMAND_TOPIC,1);
+		pub_tool_pose_command[armId] = n.advertise<geometry_msgs::PoseStamped>( TOOL_POSE_COMMAND_SIDE_TOPIC(armName), 1);
+
+		pub_master_pose[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_SIDE_TOPIC(armName), 1);
+		pub_master_pose_raw[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_RAW_SIDE_TOPIC(armName), 1);
 	}
 
 	vis_pub1 = n.advertise<visualization_msgs::Marker>( "visualization_marker1", 0 );

@@ -11,6 +11,8 @@
 #include "overdrive_detect.h"
 #include "defines.h"
 
+#include <raven/state/runlevel.h>
+
 extern struct DOF_type DOF_types[];
 extern int NUM_MECH;
 extern int soft_estopped;
@@ -37,7 +39,11 @@ int overdriveDetect(struct device *device0,u_08 runlevel)
             int _dac_max = DOF_types[_joint->type].DAC_max;
 
             // Kill current if greater than MAX_INST_DAC.  Probably indicates a problem.
+#ifdef USE_NEW_RUNLEVEL
+            if (!RunLevel::get().isInit() && abs(_joint->current_cmd) > MAX_INST_DAC)
+#else
             if (runlevel != RL_INIT && abs(_joint->current_cmd) > MAX_INST_DAC)
+#endif
             {
                 log_msg("Joint %s instant current command too high. DAC:%d \t tau:%0.3f \t jpos:%0.3f jpos_d:%0.3f\n", jointIndexAndArmName(_joint->type).c_str(), _joint->current_cmd, _joint->tau_d,_joint->jpos,_joint->jpos_d);
                 _joint->current_cmd = 0;

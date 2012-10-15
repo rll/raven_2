@@ -169,6 +169,7 @@ public:
 
 	int encoderCountsPerRev() const { return encoderCountsPerRev_; }
 	int dacMax() const { return dacMax_; }
+	float torqueMax() const;
 
 	float transmissionRatio() const { return transmissionRatio_; }
 	float tauPerAmp() const { return tauPerAmp_; }

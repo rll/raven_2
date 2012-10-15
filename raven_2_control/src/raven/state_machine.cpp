@@ -10,7 +10,7 @@
 #include "state_machine.h"
 #include "log.h"
 
-#include <raven/state/device.h>
+#include <raven/state/runlevel.h>
 
 extern int initialized;
 extern int NUM_MECH;
@@ -29,12 +29,13 @@ struct tms dummy_times;
  * inputs - state, stateD
  *
  */
-void stateMachine(struct device *device0, struct param_pass *currParams, struct param_pass *rcvdParams)
-{
+void stateMachine(struct device *device0, struct param_pass *currParams, struct param_pass *rcvdParams) {
     static int rlDelayCounter = 0; // This is a software workaround to a PLC switching transient.  Wait two cycles for the delay.
 
     u_08 rlDesired;
+#ifndef USE_NEW_RUNLEVEL
     u_08 *rl = &(currParams->runlevel);
+#endif
     int i;
     u_08 tmp;
     rlDesired = 9; // arbitrary large number
@@ -50,28 +51,40 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
     }
 
     // already in desired runlevel.  Exit.
-    if ( *rl == rlDesired)
-    {
+#ifdef USE_NEW_RUNLEVEL
+    u_08 curr_rl;
+    u_08 curr_sl;
+    RunLevel::get().getNumbers<u_08>(curr_rl,curr_sl);
+    RunLevel::updateRunlevel(rlDesired);
+    if (curr_rl == rlDesired) {
+#else
+	if ( *rl == rlDesired) {
+#endif
         return;
-    }
-    else if (rlDelayCounter < 3)
-    {
+    } else if (rlDelayCounter < 3) {
         rlDelayCounter++;
         return;
     }
 
     rlDelayCounter = 0;
+#ifdef USE_NEW_RUNLEVEL
+    //RunLevel::updateRunlevel(rlDesired);
+#else
     *rl = rlDesired;            // Update Run Level
     device0->runlevel = *rl;    // Log runlevels in DS0.
-    Device::setRunlevel(RunLevel::fromNumber(*rl));
-    log_msg("Entered runlevel %d", *rl);
-    //log_msg("Entered runlevel %s", Device::runlevel().str().c_str());
+    RunLevel::updateRunlevel(*rl);
+#endif
+    //log_msg("Entered runlevel %d", *rl);
 
-
-    if (*rl == RL_E_STOP)
-    {
+#ifdef USE_NEW_RUNLEVEL
+    RunLevel runlevel = RunLevel::get();
+    if (runlevel.isEstop()) {
+#else
+    if (*rl == RL_E_STOP) {
+#endif
+#ifndef USE_NEW_RUNLEVEL
         if (soft_estopped) {
-            err_msg("Software e-stop.\n");
+        	err_msg("Software e-stop.\n");
             soft_estopped = FALSE;
         } else {
         	for (i=0;i<NUM_MECH;i++) {
@@ -83,9 +96,9 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
         }
 
         err_msg("*** ENTERED E-STOP STATE ***\n");
-
         initialized = FALSE;
         currParams->sublevel = 0;
+#endif
     }
 
 }

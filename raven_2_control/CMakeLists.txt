@@ -60,6 +60,7 @@ link_directories(${OpenRAVE_LIBRARY_DIRS})
 #target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
 rosbuild_add_library(r2_state 
+src/raven/state/runlevel.cpp
 src/raven/state/dof.cpp
 src/raven/state/arm.cpp
 src/raven/kinematics/kinematics.cpp

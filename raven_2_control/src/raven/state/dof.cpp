@@ -119,8 +119,8 @@ void
 Motor::setTorque(float torque) {
 	torque_ = torque;
 
-	float TFmotor     = 1 / tauPerAmp_;    // Determine the motor TF  = 1/(tau per amp)
-	float TFamplifier =     dacCountsPerAmp_;    // Determine the amplifier TF = (DAC_per_amp)
+	const float TFmotor     = 1 / tauPerAmp_;    // Determine the motor TF  = 1/(tau per amp)
+	const float TFamplifier =     dacCountsPerAmp_;    // Determine the amplifier TF = (DAC_per_amp)
 
 	int DACVal = (int)(torque_ * TFmotor * TFamplifier);  //compute DAC value: DAC=[tau*(amp/torque)*(DACs/amp)]
 
@@ -129,6 +129,14 @@ Motor::setTorque(float torque) {
 	toShort(DACVal, &dacCommand_);
 
 	updateTimestamp();
+}
+
+float
+Motor::torqueMax() const {
+	const float TFmotor     = 1 / tauPerAmp_;    // Determine the motor TF  = 1/(tau per amp)
+	const float TFamplifier =     dacCountsPerAmp_;    // Determine the amplifier TF = (DAC_per_amp)
+
+	return ((float)dacMax_) / (TFmotor * TFamplifier);
 }
 
 void

@@ -18,6 +18,7 @@
 #include "saveload.h"
 
 #include <raven/state/device.h>
+#include <raven/state/runlevel.h>
 #include <raven/control/control_input.h>
 
 extern int initialized;
@@ -43,23 +44,76 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     // init_wait_loop is a klugy way to wait a few times through the loop for our kinematics to propogate.
     static int init_wait_loop=0;
 
-    //In ESTOP reset initialization
-    if (runlevel == RL_E_STOP)
-        initialized = FALSE;
+    RunLevel rl = RunLevel::get();
+    //log_msg_throttle(0.25,"rl %s",rl.str().c_str());
 
-    if (soft_estopped)
+    //In ESTOP reset initialization
+#ifdef USE_NEW_RUNLEVEL
+    if (rl.isEstop()) {
+    	RunLevel::setInitialized(false);
+    }
+#else
+    if (runlevel == RL_E_STOP) {
+    	initialized = FALSE;
+    }
+#endif
+
+#ifdef USE_NEW_RUNLEVEL
+    if (rl.isSoftwareEstop()) {
+#else
+    if (soft_estopped) {
+#endif
+    	//printf("SOFT ESTOPPED iRD\n");
         device0->mech[0].joint[0].state=jstate_pos_unknown;
+#ifdef USE_NEW_RUNLEVEL
+        return;
+#endif
+    }
 
     //Do nothing if we are not in the init runlevel
-    if (runlevel != RL_INIT)
+#ifdef USE_NEW_RUNLEVEL
+    if (!rl.isInit()) {
+#else
+    if (runlevel != RL_INIT) {
+#endif
         return;
+    }
 
+#ifdef USE_NEW_RUNLEVEL
+    if (rl.isInitSublevel(0)) {
+    	//printf("init 0\n");
+    	RunLevel::setSublevel(1);
+    } else if (rl.isInitSublevel(1)) {
+    	if (RunLevel::isInitialized()) {
+    		return;
+    	}
+    	initDOFs(device0);
+    	setStartXYZ(device0);      // Set pos_d = current position
+
+    	RunLevel::setSublevel(2);
+    	//log_msg("    -> sublevel %d", currParams->sublevel);
+    } else if (rl.isInitSublevel(2)) {
+    	// Automatically jump to next sublevel after small delay
+    	init_wait_loop++;
+    	setStartXYZ(device0);                 // set cartesian pos_d = current position
+
+    	if ( init_wait_loop > 10) {
+    		// Go to auto init sublevel
+    		RunLevel::setSublevel(3);
+    		init_wait_loop=0;
+    	}
+    } else if (rl.isInitSublevel(3)) {
+    	RunLevel::setInitialized(true);
+    }
+
+    return;
+#else
     switch (currParams->sublevel)
     {
     case 0:
         {
             currParams->sublevel = 1;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
-            Device::setSublevel(1);
+            RunLevel::setSublevel(1);
         }
     case 1:     // Initialization off all joint variables
         if (initialized)     //If already initialized do nothing
@@ -71,7 +125,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
         setStartXYZ(device0);      // Set pos_d = current position
 
         currParams->sublevel = 2;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
-        Device::setSublevel(2);
+        RunLevel::setSublevel(2);
         log_msg("    -> sublevel %d", currParams->sublevel);
         break;
 
@@ -84,7 +138,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
         {
             // Go to auto init sublevel
             currParams->sublevel = SL_AUTO_INIT;
-            Device::setSublevel(SL_AUTO_INIT);
+            RunLevel::setSublevel(SL_AUTO_INIT);
             init_wait_loop=0;
         }
         break;
@@ -94,6 +148,7 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     }
 
     return;
+#endif
 }
 
 /**

@@ -6,6 +6,7 @@
  */
 
 #include <raven/control/controller.h>
+#include <raven/state/runlevel.h>
 
 #include <boost/thread/mutex.hpp>
 
@@ -113,7 +114,7 @@ Controller::registerController(const std::string& type,ControllerPtr controller)
 
 bool
 Controller::setController(const std::string& type) {
-	if (Device::runlevel().isPedalDown() && Device::runlevel().isInit()) {
+	if (RunLevel::get().isPedalDown() && RunLevel::get().isInit()) {
 		return false;
 	}
 	controllerMutex.lock();

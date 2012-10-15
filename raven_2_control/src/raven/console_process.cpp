@@ -15,6 +15,7 @@
 
 #include <raven/util/timing.h>
 
+#include <raven/state/runlevel.h>
 #include <raven/state/device.h>
 #include <raven/control/control_input.h>
 using namespace std;
@@ -25,6 +26,7 @@ extern struct device device0;
 extern unsigned long int gTime;
 extern int soft_estopped;
 extern struct DOF_type DOF_types[];
+extern int initialized;
 
 void outputRobotState();
 void outputTiming();
@@ -126,7 +128,11 @@ void *console_process(void *)
             case '0':
             {
                 output_robot = 0;
+#ifdef USE_NEW_RUNLEVEL
+                RunLevel::eStop();
+#else
                 soft_estopped=TRUE;
+#endif
                 print_msg=1;
                 log_msg("Soft estopped");
                 break;
@@ -250,7 +256,11 @@ int getkey() {
 }
 
 void outputRobotState(){
-    cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
+	RunLevel rl = RunLevel::get();
+	cout << "Runlevel: " << RunLevel::get().str() << " " << rl.isInit() << " " << rl.isInitSublevel(0) << " " << rl.isInitSublevel(1) << " " << rl.isInitSublevel(2) << endl;
+	cout << "Pedal: " << RunLevel::getPedal() << " " << device0.surgeon_mode << endl;
+	cout << "inited " << RunLevel::isInitialized() << " " << initialized << endl;
+	cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
     cout << "Master mode: " << getMasterMode().str() << endl;
     cout << "Controller: " << controlModeToString(getControlMode()) << endl;
     mechanism* _mech = NULL;

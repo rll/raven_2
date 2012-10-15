@@ -7,6 +7,8 @@
 #include "log.h"
 #include "shared_modes.h"
 
+#include <raven/state/runlevel.h>
+
 extern struct DOF_type DOF_types[];
 extern struct traj trajectory[];
 extern int NUM_MECH;
@@ -50,7 +52,12 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     */
 
     // set desired mech position in pedal_down runlevel
+#ifdef USE_NEW_RUNLEVEL
+    RunLevel rl = RunLevel::get();
+    if (rl.isPedalDown())
+#else
     if (currParams->runlevel == RL_PEDAL_DN)
+#endif
     {
         for (int i = 0; i < NUM_MECH; i++)
         {
@@ -83,7 +90,11 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     	t_controlmode currRobotControlMode = getControlMode();
         //log_msg("Current control mode: %d",(int)currRobotControlMode);
         newRobotControlMode = currRobotControlMode;
+#ifdef USE_NEW_RUNLEVEL
+    } else if (!rl.isPedalDown()) {
+#else
     } else if ( currParams->runlevel != RL_PEDAL_DN) {
+#endif
         bool changed = setControlMode(newRobotControlMode);
         if (changed) {
         	log_msg("Control mode updated: %s",controlModeToString(newRobotControlMode).c_str());
@@ -110,6 +121,7 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     if ( device0->surgeon_mode != rcvdParams->surgeon_mode)
     {
         device0->surgeon_mode=rcvdParams->surgeon_mode; //store the surgeon_mode to DS0
+        RunLevel::setPedal(rcvdParams->surgeon_mode);
     }
 
     return 0;

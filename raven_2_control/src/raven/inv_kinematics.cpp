@@ -22,10 +22,12 @@
 #include "utils.h"
 #include "t_to_DAC_val.h"
 
+#include <raven/state/runlevel.h>
+
 #define EPS2 0.00001
 #define EPS 0.01
 
-#define DISABLE_ALL_PRINTING true
+#define DISABLE_ALL_PRINTING false
 
 static const int PRINT_EVERY_PEDAL_UP   = 1000000;
 static const int PRINT_EVERY_PEDAL_DOWN = 1000;
@@ -71,7 +73,11 @@ void invKin(struct device *device0, struct param_pass* currParams)
   _prev_rl = _curr_rl;
   _curr_rl = runlevel;
 
+#ifdef USE_NEW_RUNLEVEL
+  if (RunLevel::get().isPedalDown()) {
+#else
   if (runlevel == RL_PEDAL_DN) {
+#endif
 	  PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
   } else {
 	  PRINT_EVERY = PRINT_EVERY_PEDAL_UP;
