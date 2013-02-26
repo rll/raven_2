@@ -33,7 +33,7 @@ TOOL_POSE_ARM_TOPIC = TOOL_POSE_TOPIC + "/%s";
 
 class TrajectoryRecorder:
 	
-	def __init__(self,listener,use_array_state=False,use_pose_arrays=False):
+	def __init__(self,listener,use_array_state=False,use_pose_arrays=False,service=True):
 		self.listener = listener
 		rospy.loginfo("waiting for transform from %s to %s",BASE_FRAME, END_EFFECTOR_FRAME)
 		tries = 0
@@ -52,8 +52,6 @@ class TrajectoryRecorder:
 		self.dir = ''
 		self.default_fileprefix = "traj"
 		self.current_fileprefix = None
-		
-		self.service = rospy.Service("record_trajectory",RecordTrajectory,self.service_callback)
 		
 		self.raven_state = None
 		self.raven_state_sub = rospy.Subscriber(RAVEN_STATE_TOPIC,RavenState,self.raven_state_callback)
@@ -93,6 +91,9 @@ class TrajectoryRecorder:
 				self.cmd_pose_sub[arm] = rospy.Subscriber(COMMAND_POSE_ARM_TOPIC % arm,PoseStamped,lambda msg,arm=arm: self.cmd_pose_callback(msg,arm))
 
 		self.cmd_pose_trajectory = None
+		
+		if service:
+			self.service = rospy.Service("record_trajectory",RecordTrajectory,self.service_callback)
 
 		rospy.loginfo("let's do this!")
 	
@@ -151,6 +152,7 @@ class TrajectoryRecorder:
 			self.raven_command_trajectory.header = msg.header
 			self.raven_command_trajectory.controller = msg.controller
 		pt = RavenTrajectoryCommandPoint()
+		pt.arm_names = msg.arm_names
 		pt.arms = msg.arms
 		pt.time_from_start = msg.header.stamp - self.raven_command_trajectory.header.stamp
 		self.raven_command_trajectory.commands.append(pt)
@@ -181,12 +183,14 @@ class TrajectoryRecorder:
 			if self.cmd_pose_trajectory.commands[i].time_from_start < time_from_start:
 				new_pt = RavenTrajectoryCommandPoint()
 				new_pt.time_from_start = time_from_start
+				new_pt.arm_names = [arm for arm in ARMS]
 				new_pt.arms = [ArmCommand() for arm in ARMS]
 				self.cmd_pose_trajectory.commands.append(new_pt)
 				break
 		else:
 			new_pt = RavenTrajectoryCommandPoint()
 			new_pt.time_from_start = time_from_start
+			new_pt.arm_names = [arm for arm in ARMS]
 			new_pt.arms = [ArmCommand() for arm in ARMS]
 			self.cmd_pose_trajectory.commands.append(new_pt)
 		
@@ -194,7 +198,7 @@ class TrajectoryRecorder:
 		tool_cmd = ToolCommand()
 		tool_cmd.relative = False
 		tool_cmd.tool_pose = msg.pose
-		tool_cmd.set_grasp = False
+		tool_cmd.grasp_option = ToolCommand.GRASP_OFF
 		self.cmd_pose_trajectory.commands[ind].arms[armid].tool_command = tool_cmd
 	
 	def cmd_pose_array_callback(self,msg):
@@ -220,6 +224,7 @@ class TrajectoryRecorder:
 	
 	def write(self):
 		if not self.active: return
+		if not self.joint_state: return
 		try:
 			#print "writing..."
 			self.bagwrite('joint_states',self.joint_state)
@@ -261,9 +266,11 @@ if __name__ == "__main__":
 	parser.add_option('--array-state',action='store_true',default=False)
 	parser.add_option('--pose-arrays',action='store_true',default=False)
 	
+	parser.add_option('--now',action='store_true',default=False)
+	
 	(options,args) = parser.parse_args(rospy.myargv())
-
-	tr = TrajectoryRecorder(listener,
+	
+	tr = TrajectoryRecorder(listener, service= not options.now,
 						use_array_state = options.array_state or options.use_arrays,
 						use_pose_arrays = options.pose_arrays or options.use_arrays)
 	
@@ -272,6 +279,10 @@ if __name__ == "__main__":
 
 	if len(args) > 1:
 		tr.default_fileprefix += args[-1]
+
+	if options.now:
+		req = RecordTrajectoryRequest(True,False,"")
+		tr.service_callback(req)
 
 	try:
 		rate = rospy.Rate(50)
