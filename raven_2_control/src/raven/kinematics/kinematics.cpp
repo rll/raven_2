@@ -51,12 +51,12 @@ KinematicSolver::forward(btTransform& pose) const {
 						* Xu
 						* Ze(THE_TO_IK(armId,arm_->getJointByType(Joint::Type::ELBOW_)->position()))
 						* Xf
-						* Zr(THR_TO_IK(armId,arm_->getJointByType(Joint::Type::TOOL_ROT_)->position()))
+						* Zr(THR_TO_IK(armId,arm_->getJointByType(Joint::Type::ROTATION_)->position()))
 						* Zi(D_TO_IK(armId,arm_->getJointByType(Joint::Type::INSERTION_)->position()))
 						* Xip
 						* Zp(THP_TO_IK(armId,arm_->getJointByType(Joint::Type::WRIST_)->position()))
 						* Xpy
-						* Zy(THY_TO_IK_FROM_FINGERS(armId,arm_->getJointByType(Joint::Type::GRIPPER1_)->position(),arm_->getJointByType(Joint::Type::GRIPPER2_)->position()))
+						* Zy(THY_TO_IK_FROM_FINGERS(armId,arm_->getJointByType(Joint::Type::FINGER1_)->position(),arm_->getJointByType(Joint::Type::FINGER2_)->position()))
 						* Tg;
 
 	//int grasp = MECH_GRASP_FROM_MECH_FINGERS(armId,arm_->getJointByType(Joint::Type::GRIPPER1_)->position(),arm_->getJointByType(Joint::Type::GRIPPER2_)->position());
@@ -385,10 +385,10 @@ KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm) const {
 			ths_diff = arm->getJointByType(Joint::Type::SHOULDER_)->position() - ths_act[i];
 			the_diff = arm->getJointByType(Joint::Type::ELBOW_)->position()    - the_act[i];
 			d_diff = arm->getJointByType(Joint::Type::INSERTION_)->position()    - d_act;
-			thr_diff = arm->getJointByType(Joint::Type::TOOL_ROT_)->position() - thr_act[i];
+			thr_diff = arm->getJointByType(Joint::Type::ROTATION_)->position() - thr_act[i];
 			thp_diff = arm->getJointByType(Joint::Type::WRIST_)->position()    - thp_act;
-			thg1_diff = arm->getJointByType(Joint::Type::GRIPPER1_)->position()   - g1_act;
-			thg2_diff = arm->getJointByType(Joint::Type::GRIPPER2_)->position()   - g2_act;
+			thg1_diff = arm->getJointByType(Joint::Type::FINGER1_)->position()   - g1_act;
+			thg2_diff = arm->getJointByType(Joint::Type::FINGER2_)->position()   - g2_act;
 			/*
 			ths_diff = arm->getJointByType(Joint::Type::SHOULDER_)->position()_d - ths_act;
 			the_diff = arm->getJointByType(Joint::Type::ELBOW_)->position()_d    - the_act;
@@ -495,8 +495,8 @@ KinematicSolver::setJointsWithLimits1(Arm* arm, float d_act, float thp_act, floa
 	//	}
 	arm->getJointByType(Joint::Type::INSERTION_)->setPosition(d_act);
 	arm->getJointByType(Joint::Type::WRIST_)->setPosition(thp_act); //WRIST_HOME_ANGLE; int WARNING_WRIST_NOT_SET;
-	arm->getJointByType(Joint::Type::GRIPPER1_)->setPosition(g1_act); //GRASP1_HOME_ANGLE; int WARNING_GRASP1_NOT_SET;
-	arm->getJointByType(Joint::Type::GRIPPER2_)->setPosition(g2_act); //GRASP2_HOME_ANGLE; int WARNING_GRASP2_NOT_SET;
+	arm->getJointByType(Joint::Type::FINGER1_)->setPosition(g1_act); //GRASP1_HOME_ANGLE; int WARNING_GRASP1_NOT_SET;
+	arm->getJointByType(Joint::Type::FINGER2_)->setPosition(g2_act); //GRASP2_HOME_ANGLE; int WARNING_GRASP2_NOT_SET;
 
 	int limits=0;
 
@@ -520,24 +520,24 @@ KinematicSolver::setJointsWithLimits1(Arm* arm, float d_act, float thp_act, floa
 		arm->getJointByType(Joint::Type::WRIST_)->setPosition(TOOL_WRIST_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::GRIPPER1_)->position()  < TOOL_GRASP1_MIN_LIMIT) {
+	if (arm->getJointByType(Joint::Type::FINGER1_)->position()  < TOOL_GRASP1_MIN_LIMIT) {
 		limits++;
 		log_msg("grasp1 min limit");
-		arm->getJointByType(Joint::Type::GRIPPER1_)->setPosition(TOOL_GRASP1_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::GRIPPER1_)->position()  > TOOL_GRASP1_MAX_LIMIT) {
+		arm->getJointByType(Joint::Type::FINGER1_)->setPosition(TOOL_GRASP1_MIN_LIMIT);
+	} else if (arm->getJointByType(Joint::Type::FINGER1_)->position()  > TOOL_GRASP1_MAX_LIMIT) {
 		limits++;
 		log_msg("grasp1 max limit");
-		arm->getJointByType(Joint::Type::GRIPPER1_)->setPosition(TOOL_GRASP1_MAX_LIMIT);
+		arm->getJointByType(Joint::Type::FINGER1_)->setPosition(TOOL_GRASP1_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::GRIPPER2_)->position()  < TOOL_GRASP2_MIN_LIMIT) {
+	if (arm->getJointByType(Joint::Type::FINGER2_)->position()  < TOOL_GRASP2_MIN_LIMIT) {
 		log_msg("grasp2 min limit");
 		limits++;
-		arm->getJointByType(Joint::Type::GRIPPER2_)->setPosition(TOOL_GRASP2_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::GRIPPER2_)->position()  > TOOL_GRASP2_MAX_LIMIT) {
+		arm->getJointByType(Joint::Type::FINGER2_)->setPosition(TOOL_GRASP2_MIN_LIMIT);
+	} else if (arm->getJointByType(Joint::Type::FINGER2_)->position()  > TOOL_GRASP2_MAX_LIMIT) {
 		limits++;
 		log_msg("grasp2 max limit");
-		arm->getJointByType(Joint::Type::GRIPPER2_)->setPosition(TOOL_GRASP2_MAX_LIMIT);
+		arm->getJointByType(Joint::Type::FINGER2_)->setPosition(TOOL_GRASP2_MAX_LIMIT);
 	}
 
 	return limits;
@@ -551,7 +551,7 @@ KinematicSolver::setJointsWithLimits2(Arm* arm, float ths_act, float the_act, fl
 	arm->getJointByType(Joint::Type::SHOULDER_)->setPosition(ths_act);
 	arm->getJointByType(Joint::Type::ELBOW_)->setPosition(the_act);
 	//arm->getJointByType(Joint::Type::TOOL_ROT_)->setPosition(fix_angle(thr_act + M_PI); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
-	arm->getJointByType(Joint::Type::TOOL_ROT_)->setPosition(thr_act); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
+	arm->getJointByType(Joint::Type::ROTATION_)->setPosition(thr_act); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
 
 	int limits = 0;
 	if (arm->getJointByType(Joint::Type::SHOULDER_)->position() < SHOULDER_MIN_LIMIT) {
@@ -574,14 +574,14 @@ KinematicSolver::setJointsWithLimits2(Arm* arm, float ths_act, float the_act, fl
 		arm->getJointByType(Joint::Type::ELBOW_)->setPosition(ELBOW_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::TOOL_ROT_)->position() < TOOL_ROLL_MIN_LIMIT) {
+	if (arm->getJointByType(Joint::Type::ROTATION_)->position() < TOOL_ROLL_MIN_LIMIT) {
 		limits++;
-		log_msg("roll % 3.1fdeg under min limit",arm->getJointByType(Joint::Type::TOOL_ROT_)->position() RAD2DEG);
-		arm->getJointByType(Joint::Type::TOOL_ROT_)->setPosition(TOOL_ROLL_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::TOOL_ROT_)->position() > TOOL_ROLL_MAX_LIMIT) {
+		log_msg("roll % 3.1fdeg under min limit",arm->getJointByType(Joint::Type::ROTATION_)->position() RAD2DEG);
+		arm->getJointByType(Joint::Type::ROTATION_)->setPosition(TOOL_ROLL_MIN_LIMIT);
+	} else if (arm->getJointByType(Joint::Type::ROTATION_)->position() > TOOL_ROLL_MAX_LIMIT) {
 		limits++;
-		log_msg("roll % 3.1fdeg over max limit",arm->getJointByType(Joint::Type::TOOL_ROT_)->position() RAD2DEG);
-		arm->getJointByType(Joint::Type::TOOL_ROT_)->setPosition(TOOL_ROLL_MAX_LIMIT);
+		log_msg("roll % 3.1fdeg over max limit",arm->getJointByType(Joint::Type::ROTATION_)->position() RAD2DEG);
+		arm->getJointByType(Joint::Type::ROTATION_)->setPosition(TOOL_ROLL_MAX_LIMIT);
 	}
 
 	return limits;

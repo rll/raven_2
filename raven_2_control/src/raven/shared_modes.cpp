@@ -46,6 +46,7 @@ std::string getMasterModeString() {
 }
 
 MasterMode getMasterMode() {
+	boost::mutex::scoped_lock _lock(masterModeMutex);
 	return masterMode;
 }
 

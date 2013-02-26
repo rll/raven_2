@@ -157,7 +157,7 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		insertion_joint->maxPosition_ = Z_INS_MAX_LIMIT;
 		insertion_joint->homePosition_ = Z_INS_HOME_ANGLE;
 
-		JointPtr tool_rot_joint(new Joint(Joint::Type::TOOL_ROT_));
+		JointPtr tool_rot_joint(new Joint(Joint::Type::ROTATION_));
 		arm->joints_.push_back(tool_rot_joint);
 		tool_rot_joint->minPosition_ = TOOL_ROLL_MIN_LIMIT;
 		tool_rot_joint->maxPosition_ = TOOL_ROLL_MAX_LIMIT;
@@ -169,13 +169,13 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		wrist_joint->maxPosition_ = TOOL_WRIST_MAX_LIMIT;
 		wrist_joint->homePosition_ = WRIST_HOME_ANGLE;
 
-		JointPtr gripper1_joint(new Joint(Joint::Type::GRIPPER1_));
+		JointPtr gripper1_joint(new Joint(Joint::Type::FINGER1_));
 		arm->joints_.push_back(gripper1_joint);
 		gripper1_joint->minPosition_ = TOOL_GRASP1_MIN_LIMIT;
 		gripper1_joint->maxPosition_ = TOOL_GRASP1_MAX_LIMIT;
 		gripper1_joint->homePosition_ = GRASP1_HOME_ANGLE;
 
-		JointPtr gripper2_joint(new Joint(Joint::Type::GRIPPER2_));
+		JointPtr gripper2_joint(new Joint(Joint::Type::FINGER2_));
 		arm->joints_.push_back(gripper2_joint);
 		gripper2_joint->minPosition_ = TOOL_GRASP2_MIN_LIMIT;
 		gripper2_joint->maxPosition_ = TOOL_GRASP2_MAX_LIMIT;
@@ -241,7 +241,7 @@ JointList
 YawGraspCoupler::getBaseJoints(const JointList& joints) const {
 	JointList bj;
 	for (size_t i=0;i<joints.size();i++) {
-		if (joints.at(i)->type() == Joint::Type::GRIPPER1_ || joints.at(i)->type() == Joint::Type::GRIPPER2_) {
+		if (joints.at(i)->type() == Joint::Type::FINGER1_ || joints.at(i)->type() == Joint::Type::FINGER2_) {
 			bj.push_back(joints.at(i));
 		}
 	}
@@ -264,8 +264,8 @@ YawGraspCoupler::coupleForward(const JointList& baseJoints,const JointList& depJ
 	JointPtr gripper1;
 	JointPtr gripper2;
 	BOOST_FOREACH(JointPtr bj,baseJoints) {
-		if (bj->type() == Joint::Type::GRIPPER1_) { gripper1 = bj; }
-		if (bj->type() == Joint::Type::GRIPPER2_) { gripper2 = bj; }
+		if (bj->type() == Joint::Type::FINGER1_) { gripper1 = bj; }
+		if (bj->type() == Joint::Type::FINGER2_) { gripper2 = bj; }
 	}
 	JointPtr yaw;
 	JointPtr grasp;

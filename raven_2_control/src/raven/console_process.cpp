@@ -28,6 +28,9 @@ extern int soft_estopped;
 extern struct DOF_type DOF_types[];
 extern int initialized;
 
+static int precision = 2;
+static float conv = 1;
+
 void outputRobotState();
 void outputTiming();
 int getkey();
@@ -209,6 +212,20 @@ void *console_process(void *)
             	print_msg=1;
             	break;
             }
+            case 'd':
+            case 'D':
+            {
+            	if (conv == 1) {
+            		conv = 1 RAD2DEG;
+            		precision = 1;
+            		log_msg("Output is now in degrees");
+            	} else {
+            		conv = 1;
+            		precision = 2;
+            		log_msg("Output is now in radians");
+            	}
+            	break;
+            }
         }
 
         // Output the robot state once/sec
@@ -297,15 +314,19 @@ void outputRobotState(){
 
         cout<<"type:\t\t";
         _joint = NULL; jnum=0;
-        while (loop_over_joints(_mech,_joint,jnum))
-        	cout << _joint->type<<"\t";
+        while (loop_over_joints(_mech,_joint,jnum)) {
+        	cout << jointIndexAndArmName(_joint->type).substr(0,6) << "\t";
+        	//cout << _joint->type<<"\t";
+        }
         cout << endl;
+
+        cout << right;
 
 #ifdef USE_NEW_DEVICE
         cout<<"     \t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << std::string(arm->getJointByOldType(_joint->type)->type().str()).substr(0,6) <<"\t";
+        	cout << std::string(arm->getJointByOldType(_joint->type)->type().str()).substr(0,7) <<"\t";
         cout << endl;
 #endif
 
@@ -397,16 +418,19 @@ void outputRobotState(){
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	if (jnum != Z_INS)
-        		cout<<fixed<<setprecision(2)<<_joint->jpos <<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jpos * conv <<"\t";
         	else
-        		cout<<fixed<<setprecision(2)<<_joint->jpos<<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jpos<<"\t";
         cout << endl;
 
 #ifdef USE_NEW_DEVICE
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << arm->getJointByOldType(_joint->type)->position()<<"\t";
+        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        		cout << arm->getJointByOldType(_joint->type)->position() * conv <<"\t";
+        	else
+        		cout << arm->getJointByOldType(_joint->type)->position()<<"\t";
         cout << endl;
 #endif
 
@@ -414,16 +438,19 @@ void outputRobotState(){
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	if (jnum != Z_INS)
-        		cout<<fixed<<setprecision(2)<<_joint->jpos_d <<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jpos_d * conv <<"\t";
         	else
-        		cout<<fixed<<setprecision(2)<<_joint->jpos_d<<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jpos_d<<"\t";
         cout << endl;
 
 #ifdef USE_NEW_DEVICE
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << input->jointPositionByOldType(_joint->type) <<"\t";
+        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        		cout << input->jointPositionByOldType(_joint->type) * conv <<"\t";
+        	else
+        		cout << input->jointPositionByOldType(_joint->type) <<"\t";
         cout << endl;
 #endif
 
@@ -431,16 +458,19 @@ void outputRobotState(){
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	if (jnum != Z_INS)
-        		cout<<fixed<<setprecision(2)<<_joint->jvel <<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jvel * conv <<"\t";
         	else
-        		cout<<fixed<<setprecision(2)<<_joint->jvel<<"\t";
+        		cout<<fixed<<setprecision(precision)<<_joint->jvel<<"\t";
         cout << endl;
 
 #ifdef USE_NEW_DEVICE
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << arm->getJointByOldType(_joint->type)->velocity()<<"\t";
+        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        		cout << arm->getJointByOldType(_joint->type)->velocity() * conv <<"\t";
+        	else
+        		cout << arm->getJointByOldType(_joint->type)->velocity() <<"\t";
         cout << endl;
 #endif
 
@@ -448,7 +478,7 @@ void outputRobotState(){
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
         	if (jnum != Z_INS)
-        		cout<<fixed<<setprecision(2)<<_joint->jvel_d <<"\t";
+        		cout<<fixed<<setprecision(2)<<_joint->jvel_d * conv <<"\t";
         	else
         		cout<<fixed<<setprecision(2)<<_joint->jvel_d<<"\t";
         cout << endl;
@@ -457,7 +487,10 @@ void outputRobotState(){
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << input->jointVelocityByOldType(_joint->type) <<"\t";
+        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        		cout << input->jointVelocityByOldType(_joint->type) * conv <<"\t";
+        	else
+        		cout << input->jointVelocityByOldType(_joint->type) <<"\t";
         cout << endl;
 #endif
 

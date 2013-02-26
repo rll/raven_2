@@ -60,3 +60,11 @@ gains_green_ki:
 - 0.02
 - 0.02
 
+max_position:
+  rotation:
+    gold: 160
+    green: 60
+  wrist:
+    green: -10
+  grasp:
+    gold: 20

@@ -373,15 +373,6 @@ const float A12  = 1.30899694;    /*Link1 - 75deg in RAD*/
 #define GRASP1_MAX_DAC     1900  // 15000
 #define GRASP2_MAX_DAC     1900
 
-
-#define SHOULDER_MAX_ANGLE   0.0
-#define ELBOW_MAX_ANGLE      3*M_PI/4
-#define Z_INS_MAX_ANGLE      0.1    // NOT THE REAL LIMIT
-#define TOOL_ROT_MAX_ANGLE   317 DEG2RAD
-#define WRIST_MAX_ANGLE      105 DEG2RAD
-#define GRASP1_MAX_ANGLE     120 DEG2RAD
-#define GRASP2_MAX_ANGLE     130 DEG2RAD
-
 //Joint values for Homing
 #define SHOULDER_HOME_ANGLE   M_PI/6
 #define ELBOW_HOME_ANGLE      M_PI/2

@@ -49,10 +49,12 @@ class HydraTeleop:
 	joystick_active = [True,True]
 	recorder = None
 
-	def __init__(self,listener,record=False, scale=None):
+	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False):
 		self.scale = scale
 		self.scale_increment = scale / 20
 		self.scale_adjusting_mode = False
+		
+		self.grasp_while_inactive = grasp_while_inactive
 	
 		
 		self.pub = rospy.Publisher('raven_command', RavenCommand)
@@ -227,8 +229,15 @@ class HydraTeleop:
 					tool_cmd.pose.position = Point(0,0,0)
 
 			arm_cmd.active = active[i] and SIDE_ACTIVE[i]
+			
 			tool_cmd.grasp_option = ToolCommand.GRASP_INCREMENT_SIGN
-			tool_cmd.grasp = grip[i]
+			if arm_cmd.active:
+				tool_cmd.grasp = grip[i]
+			elif SIDE_ACTIVE[i] and grip[i] and self.grasp_while_inactive:
+				arm_cmd.active = True
+				tool_cmd.grasp = grip[i]
+				tool_cmd.tool_pose = Pose(Point(0,0,0),Quaternion(0,0,0,1))
+				
 			arm_cmd.tool_command = tool_cmd
 			raven_command.arm_names.append(SIDE_NAMES[i])
 			raven_command.arms.append(arm_cmd)
@@ -267,15 +276,17 @@ if __name__ == "__main__":
 	
 	parser = OptionParser()
 	
-	parser.add_option('-r','--record',action='store_true',default=False)
+	parser.add_option('-g','--grasp-while-inactive',action='store_true',default=False)
 	
 	parser.add_option('-s','--scale',default=DEFAULT_SCALE)
+	
+	parser.add_option('-r','--record',action='store_true',default=False)
 	
 	(options,args) = parser.parse_args()
 
 	listener = tf.TransformListener()
 
-	HT = HydraTeleop(listener,record=options.record,scale=options.scale)
+	HT = HydraTeleop(listener,record=options.record,scale=options.scale,grasp_while_inactive=options.grasp_while_inactive)
 	rospy.spin()
 	
 	rospy.loginfo('shutting down')

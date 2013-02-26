@@ -144,7 +144,8 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         	bool ready = (  !tools_ready(_mech) &&
                     _mech->joint[TOOL_ROT].state==jstate_hard_stop &&
                     _mech->joint[WRIST   ].state==jstate_hard_stop &&
-                    _mech->joint[GRASP1  ].state==jstate_hard_stop )
+                    _mech->joint[GRASP1  ].state==jstate_hard_stop /*&&
+                    _mech->joint[GRASP2  ].state==jstate_hard_stop*/)
                      ||
                  (  tools_ready( _mech ) &&
                     _mech->joint[SHOULDER].state==jstate_hard_stop &&

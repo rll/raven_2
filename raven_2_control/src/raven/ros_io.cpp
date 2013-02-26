@@ -544,7 +544,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	publish_master_pose(device0);
 
 	//Only publish these if we've homed already
-	if (hasHomed) {
+	if (true || hasHomed) {
 		publish_joints(device0);
 		//publish_marker(device0);
 		if (

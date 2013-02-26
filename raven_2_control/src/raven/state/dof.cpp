@@ -16,7 +16,7 @@
 static int numJ = 0;
 Joint::Joint(Type type) : Updateable(), type_(type), state_(Joint::State::NOT_READY), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
 	//printf("+J  %i %p\n",++numJ,this);
-	toolJoint_ = type_==Type::TOOL_ROT_ || type_==Type::WRIST_ || type_ == Type::GRIPPER1_ || type_ == Type::GRIPPER2_ || type_ == Type::YAW_ || type_ == Type::GRASP_;
+	toolJoint_ = type_==Type::ROTATION_ || type_==Type::WRIST_ || type_ == Type::FINGER1_ || type_ == Type::FINGER2_ || type_ == Type::YAW_ || type_ == Type::GRASP_;
 }
 
 Joint::~Joint() {

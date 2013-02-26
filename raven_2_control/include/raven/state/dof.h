@@ -27,7 +27,7 @@ class Joint : public Updateable {
 	friend class DeviceInitializer;
 	friend class CableCoupler;
 public:
-	BOOST_ENUM(Type, (SHOULDER_)(ELBOW_)(INSERTION_)(TOOL_ROT_)(WRIST_)(GRIPPER1_)(GRIPPER2_)(YAW_)(GRASP_ ));
+	BOOST_ENUM(Type, (SHOULDER_)(ELBOW_)(INSERTION_)(ROTATION_)(WRIST_)(FINGER1_)(FINGER2_)(YAW_)(GRASP_ ));
 
 	BOOST_ENUM(State, (NOT_READY)(POS_UNKNOWN)(HOMING1)(HOMING2)(READY)(WAIT)(HARD_STOP));
 
