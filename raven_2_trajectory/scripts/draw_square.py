@@ -122,7 +122,9 @@ def add_arm_cmd(cmd,arm_name,tool_pose,pose_option=ToolCommand.POSE_ABSOLUTE,gra
 
 class Foo:
 	def __init__(self,height,x_dim,y_dim):
-		self.init_pos = canonical_point(-0.108616,-0.02029,-0.1408) #canonical_point(-0.088616,-0.02029,-0.11908)
+		#self.init_pos = canonical_point(-0.108616,-0.02029,-0.1408) #canonical_point(-0.088616,-0.02029,-0.11908)
+		#self.init_pos = canonical_point(-0.148616,-0.02029,-0.1408)
+		self.init_pos = canonical_point(-0.148616,0.03029,-0.1408)
 		self.height = height
 		self.x_dim = x_dim
 		self.y_dim = y_dim
@@ -367,7 +369,7 @@ if __name__ == '__main__':
 	tf_listener.waitForTransform('/0_link','/tool_R',rospy.Time(0),rospy.Duration(5))
 	rospy.loginfo('got it')
 	
-	init_pose_left = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
+	#init_pose_left = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
 	init_pose_right = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 	
 	pub_cmd = rospy.Publisher('/raven_command', RavenCommand)
@@ -375,7 +377,9 @@ if __name__ == '__main__':
 	header = Header()
 	header.frame_id = '/0_link'
 	
-	height = -0.227 #float(raw_input('Enter table height'))
+	#height = float(raw_input('Enter table height'))
+	#height = -0.227
+	height = -0.187
 	
 	foo = Foo(height=height,x_dim=x_dim,y_dim=y_dim)
 	
