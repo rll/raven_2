@@ -121,7 +121,6 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     if ( device0->surgeon_mode != rcvdParams->surgeon_mode)
     {
         device0->surgeon_mode=rcvdParams->surgeon_mode; //store the surgeon_mode to DS0
-        RunLevel::setPedal(rcvdParams->surgeon_mode);
     }
 
     return 0;

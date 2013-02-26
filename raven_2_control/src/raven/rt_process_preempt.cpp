@@ -43,8 +43,11 @@
 
 #include <raven/control/controller.h>
 #include <raven/control/controllers/motor_position_pid.h>
+#include <raven/control/controllers/end_effector_control.h>
 
 using namespace std;
+
+//#define TEST_NEW_CTRL
 
 // Defines
 #define POOLSIZE (200*1024*1024) // 200 MB   Size of mlocked memory pool
@@ -159,6 +162,25 @@ static void *rt_process(void* )
 #endif
     initDOFs(&device0);
 
+#ifdef TEST_NEW_CTRL
+    {
+    	log_msg("Creating controllers");
+
+    	ControllerPtr pid(new MotorPositionPID());
+		ControllerPtr ee(new EndEffectorController());
+
+    	log_msg("Registering controllers");
+
+    	Controller::registerController("motor/position",pid);
+		Controller::registerController("end_effector/pose",ee);
+		Controller::registerController("end_effector/grasp+pose",ee);
+
+    	log_msg("Setting controller");
+    	//Controller::setController("motor/position");
+		Controller::setController("end_effector/pose");
+    }
+#endif
+
     /*{
     	int numIter=50000;
     	{
@@ -232,11 +254,44 @@ static void *rt_process(void* )
         clearDACs(&device0);
 
         t_info.mark_control_start();
-        //////////////// SURGICAL ROBOT CODE //////////////////////////
-        if (deviceType == SURGICAL_ROBOT)
-        {
-            // Calculate Raven control
-            controlRaven(&device0, &currParams);
+        // Calculate Raven control
+        if (!RunLevel::hasHomed()) {
+        	controlRaven(&device0, &currParams);
+        } else {
+        	controlRaven(&device0, &currParams);
+#ifdef TEST_NEW_CTRL
+        	OldControlInputPtr ptr = ControlInput::oldControlInputUpdateBegin();
+        	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
+        		ptr->armById(arm->id()).pose() = arm->pose();
+        	}
+        	ControlInput::oldControlInputUpdateEnd();
+
+        	int ctrl_ret = Controller::executeInProcessControl();
+
+        	DevicePtr ctrl_output = Controller::getControlOutput();
+
+        	struct DOF *_joint = NULL;
+        	struct mechanism* _mech = NULL;
+        	int i=0,j=0;
+
+        	std::stringstream ss;
+
+        	ss << "tau diff: " << std::endl;
+        	while (loop_over_joints(&device0, _mech, _joint, i,j) ) {
+        		int joint_ind = j;
+        		if (joint_ind == 3) {
+        			continue;
+        		} else if (joint_ind > 3) {
+        			joint_ind--;
+        		}
+        		MotorPtr m = ctrl_output->arm(i)->motor(joint_ind);
+        		float old_torque = _joint->tau_d;
+        		float new_torque = m->torque();
+        		ss << "  " << i << " " << joint_ind << ": " << old_torque-new_torque << " (" << old_torque << "," << new_torque << ")" << std::endl;
+        	}
+        	ss << std::endl;
+        	log_msg_throttle(0.25,"%s",ss.str().c_str());
+#endif
         }
         //////////////// END SURGICAL ROBOT CODE ///////////////////////////
 
@@ -273,6 +328,21 @@ static void *rt_process(void* )
         t_info.mark_overall_end();
 
         TimingInfo::mark_loop_end();
+
+        /*
+        static bool test_done = false;
+        if (!test_done &&  TimingInfo::NUM_LOOPS_ALL >= 50) {
+        	History<Device>::Type hist = Device::HISTORY;
+        	printf("ptrs equal? %p %p %i\n",hist.front().value.get(),Device::HISTORY.front().value.get(),hist.front().value.get()==Device::HISTORY.front().value.get());
+        	if (hist.front().value->timestamp() == hist.back().value->timestamp()) {
+        		printf("Timestamps equal!\n");
+        	} else {
+        		hist.push_front(CloningWrapper<Device>(Device::HISTORY.back().value));
+        		printf("timestamps equal? %i\n",hist.front().value->timestamp() == Device::HISTORY.front().value->timestamp());
+        	}
+        	test_done = true;
+        }
+        */
 
         //Done for this cycle
     }

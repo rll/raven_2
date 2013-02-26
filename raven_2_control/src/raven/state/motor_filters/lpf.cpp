@@ -12,7 +12,7 @@
 static int numLF = 0;
 template<int order>
 LowPassMotorFilter<order>::LowPassMotorFilter(const MotorList& motors,Arm::Type armType) : MotorFilter(motors), armType_(armType),
-		order_(ORDER), history_(motors.size()), filteredHistory_(motors.size()), lastCallTime_(0) {
+		order_(ORDER), history_(motors.size(),0,CloningWrapper<Motor>()), filteredHistory_(motors.size(),0,CloningWrapper<Motor>()), lastCallTime_(0) {
 	//printf("+LF %i %p\n",++numLF,this);
 	//A_.resize(order_+1);
 	A_ << 1.0000  ,  1.5189  , -0.9600  ,  0.2120;

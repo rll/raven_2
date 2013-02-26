@@ -8,7 +8,7 @@
 #include <raven/kinematics/kinematics.h>
 #include <raven/kinematics/kinematics_defines.h>
 
-#include <raven/log.h>
+#include "log.h"
 
 #include <raven/state/arm.h>
 
@@ -66,6 +66,13 @@ KinematicSolver::forward(btTransform& pose) const {
 	return 0;
 }
 
+btTransform
+KinematicSolver::forwardPose() const {
+	btTransform pose;
+	int ret = forward(pose);
+	return pose;
+}
+
 InverseKinematicsReportPtr
 KinematicSolver::inverse(const btTransform& pose) {
 	if (invKinTimestamp_ == arm_->timestamp() && pose == invKinCached_) {
@@ -84,15 +91,13 @@ KinematicSolver::inverse(const btTransform& pose) {
 
 InverseKinematicsReportPtr
 KinematicSolver::inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln) const {
-	if (soln.get() != arm_) {
-		soln = arm_->clone();
-	}
+	arm_->cloneInto(soln);
 
 	soln->holdUpdateBegin();
 	InverseKinematicsReportPtr report = internalInverseSoln(pose,soln.get());
 	soln->holdUpdateEnd();
 
-	if (report->success() && soln.get() != arm_) {
+	if (!report->success()) {
 		soln.reset();
 	}
 

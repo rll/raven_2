@@ -11,6 +11,8 @@ int log_warn(const char* fmt,...);
 int log_err(const char* fmt,...);
 
 int log_msg_throttle(float interval,const char* fmt,...);
+int log_warn_throttle(float interval,const char* fmt,...);
+int log_err_throttle(float interval,const char* fmt,...);
 
 int err_msg(const char* fmt,...);
 

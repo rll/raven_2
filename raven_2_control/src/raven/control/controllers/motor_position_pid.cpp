@@ -12,9 +12,7 @@
 #include <string>
 
 #include <iostream>
-#include <raven/log.h>
-
-std::vector<std::string>* MotorPositionPID::INPUT_TYPES = 0;
+#include "log.h"
 
 ControllerStatePtr
 MotorPositionPID::internalApplyControl(DevicePtr device) {
@@ -32,12 +30,36 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 
 	Eigen::VectorXf pos_d;
 	Eigen::VectorXf vel_d;
-	if (positionInput_ && velocityInput_) {
-		pos_d = positionInput_->values();
-		vel_d = velocityInput_->values();
+
+	MotorPositionInputPtr posInput;
+	MotorVelocityInputPtr velInput;
+	MultipleControlInputPtr multiInput;
+
+	if (getInput(posInput)) {
+		pos_d = posInput->values();
+	} else if (getInput(velInput)){
+		vel_d = velInput->values();
+	} else if (getInput(multiInput)) {
+		if (multiInput->getInput("position",posInput)) {
+			pos_d = posInput->values();
+		}
+		if (multiInput->getInput("velocity",velInput)) {
+			vel_d = velInput->values();
+		}
 	} else {
-		pos_d = oldControlInput_->motorPositionVector();
-		vel_d = oldControlInput_->motorVelocityVector();
+		OldControlInputPtr oldControlInput = ControlInput::getOldControlInput();
+		pos_d = oldControlInput->motorPositionVector();
+		vel_d = oldControlInput->motorVelocityVector();
+	}
+
+	if (pos_d.rows() == 0) {
+		if (vel_d.rows() == 0) {
+			//TODO: nothing
+		} else {
+			pos_d.setZero(vel_d.rows());
+		}
+	} else if (vel_d.rows() == 0) {
+		vel_d.setZero(pos_d.rows());
 	}
 
 	Eigen::VectorXf pos_err = pos_d - pos;
@@ -51,30 +73,10 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 	}
 	state->positionErrorIntegral = int_err;
 
-//	std::cout << "p sz " << pos_err.rows() << " " << KP_.rows() << std::endl;
-//	std::cout << "i sz " << int_err.rows() << " " << KI_.rows() << std::endl;
-//	std::cout << "d sz " << vel_err.rows() << " " << KD_.rows() << std::endl;
-//
-//	std::cerr << pos_err << std::endl << std::endl << KP_ << std::endl << std::endl;
-//	std::cerr << int_err << std::endl << std::endl << KI_ << std::endl << std::endl;
-//	std::cerr << vel_err << std::endl << std::endl << KD_ << std::endl << std::endl;
-
 	Eigen::VectorXf p_term = KP_.cwiseProduct(pos_err);
 	Eigen::VectorXf i_term = KI_.cwiseProduct(int_err);
 	Eigen::VectorXf d_term = KD_.cwiseProduct(vel_err);
-
-//	if (p_term.rows() != i_term.rows() || i_term.rows() != d_term.rows()) {
-//		log_err("sizes different! %i %i %i",p_term.rows(), i_term.rows(),d_term.rows());
-//		std::cerr << pos_err << " " << KP_ << p_term << std::endl;
-//		std::cerr << int_err << " " << KI_ << i_term << std::endl;
-//		std::cerr << vel_err << " " << KD_ << d_term << std::endl;
-//	}
-//	if (p_term.rows() != i_term.rows() || i_term.rows() != d_term.rows() || p_term.rows() != d_term.rows()|| p_term.cols() != i_term.cols() || i_term.cols() != d_term.cols() || p_term.cols() != d_term.cols()) {
-//		log_err("sizes different! (%i,%i) (%i,%i) (%i,%i)",p_term.rows(), p_term.cols(), i_term.rows(), i_term.cols(), d_term.rows(), d_term.cols());
-//		std::cerr << pos_err << " " << KP_ << p_term << std::endl;
-//		std::cerr << int_err << " " << KI_ << i_term << std::endl;
-//		std::cerr << vel_err << " " << KD_ << d_term << std::endl;
-//	}
+	log_msg_throttle(0.25,"pos err %f",pos_err(0));
 
 	Eigen::VectorXf values1 = p_term + i_term;
 	Eigen::VectorXf values2 = i_term + d_term;
@@ -82,6 +84,7 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 
 	Eigen::VectorXf values = p_term + i_term + d_term;
 
+	float tmp = -1;
 	size_t begin_ind = 0;
 	for (size_t i=0;i<device->arms().size();i++) {
 		device->arm(i)->motorFilter()->getMotorsForUpdate(motorsForUpdate);
@@ -89,11 +92,13 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 
 		for (size_t j=0;j<motorsForUpdate.size();j++) {
 			float val = armVals(j);
+			if (val!=0) { tmp = val; }
 			motorsForUpdate[j]->setTorque(val);
 		}
 
 		begin_ind += motorsForUpdate.size();
 	}
+	log_msg_throttle(0.25,"tmp: %f",tmp);
 
 	TRACER_LEAVE();
 	return state;
@@ -161,35 +166,6 @@ MotorPositionPID::MotorPositionPID() : Controller(1), reset_(false) {
 			KD_[startInd + j] = gains_[i].gains[j].KD;
 		}
 		startInd += gains_[i].gains.size();
-	}
-}
-
-const std::vector<std::string>&
-MotorPositionPID::getInputTypes() const {
-	if (!INPUT_TYPES) {
-		INPUT_TYPES = new std::vector<std::string>();
-		INPUT_TYPES->push_back("old");
-		INPUT_TYPES->push_back("motor/position");
-		INPUT_TYPES->push_back("motor/velocity");
-	}
-	return *INPUT_TYPES;
-}
-
-void
-MotorPositionPID::clearInput() {
-	oldControlInput_.reset();
-	positionInput_.reset();
-	velocityInput_.reset();
-}
-
-void
-MotorPositionPID::setInput(std::string type, ControlInputPtr input) {
-	if (type == "old") {
-		oldControlInput_ = boost::dynamic_pointer_cast<OldControlInput>(input);
-	} else if (type == "motor/position") {
-		positionInput_ = boost::dynamic_pointer_cast<MotorPositionInput>(input);
-	} else if (type == "motor/velocity") {
-		velocityInput_ = boost::dynamic_pointer_cast<MotorVelocityInput>(input);
 	}
 }
 

@@ -312,8 +312,5 @@ Arm::setMotorFilter(MotorFilterPtr filter) {
 
 btTransform
 Arm::pose() const {
-	btTransform thePose = btTransform::getIdentity();
-	int ret = kinematicSolver_->forward(thePose);
-	//TODO: check return value
-	return thePose;
+	return kinematicSolver_->forwardPose();
 }

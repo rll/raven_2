@@ -62,6 +62,7 @@ public:
 	void setTruncateJointsAtLimits(bool on) { truncateJointsAtLimits_ = on; }
 
 	virtual int forward(btTransform& pose) const;
+	btTransform forwardPose() const;
 	InverseKinematicsReportPtr inverse(const btTransform& pose);
 	virtual InverseKinematicsReportPtr inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln) const;
 

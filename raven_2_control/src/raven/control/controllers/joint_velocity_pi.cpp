@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <string>
 
-std::vector<std::string>* JointVelocityPI::INPUT_TYPES = 0;
-
 ControllerStatePtr
 JointVelocityPI::internalApplyControl(DevicePtr device) {
 	static MotorList motorsForUpdate;
@@ -25,10 +23,13 @@ JointVelocityPI::internalApplyControl(DevicePtr device) {
 	Eigen::VectorXf vel = device->motorVelocityVector();
 
 	Eigen::VectorXf vel_d;
-	if (velocityInput_) {
-		vel_d = velocityInput_->values();
+
+	JointVelocityInputPtr input;
+	if (getInput(input)) {
+		vel_d = input->values();
 	} else {
-		vel_d = oldControlInput_->motorVelocityVector();
+		OldControlInputPtr oldControlInput = ControlInput::getOldControlInput();
+		vel_d = oldControlInput->jointVelocityVector();
 	}
 
 	Eigen::VectorXf vel_err = vel_d - vel;
@@ -86,30 +87,5 @@ JointVelocityPI::JointVelocityPI(size_t history_size) : reset_(false) {
 			//KD_ << g.KD;
 		}
 		gains_.push_back(armGains);
-	}
-}
-
-const std::vector<std::string>&
-JointVelocityPI::getInputTypes() const {
-	if (!INPUT_TYPES) {
-		INPUT_TYPES = new std::vector<std::string>();
-		INPUT_TYPES->push_back("old");
-		INPUT_TYPES->push_back("joint.velocity");
-	}
-	return *INPUT_TYPES;
-}
-
-void
-JointVelocityPI::clearInput() {
-	oldControlInput_.reset();
-	velocityInput_.reset();
-}
-
-void
-JointVelocityPI::setInput(std::string type, ControlInputPtr input) {
-	if (type == "old") {
-		oldControlInput_ = boost::dynamic_pointer_cast<OldControlInput>(input);
-	} else if (type == "joint.velocity") {
-		velocityInput_ = boost::dynamic_pointer_cast<JointVelocityInput>(input);
 	}
 }

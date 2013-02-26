@@ -191,7 +191,7 @@ void cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
 }
 
 void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId) {
-	printf("cmd pose callback\n");
+	//printf("cmd pose callback\n");
 #ifdef MASTER_MODE_STRING
 	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
 #else
@@ -661,7 +661,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			joint_state.motor_position = _joint->mpos;
 			joint_state.motor_velocity = _joint->mvel;
 
-			joint_state.torque = _joint->tau;
+			joint_state.torque = _joint->tau_d;
 			joint_state.gravitation_torque_estimate = _joint->tau_g;
 
 			joint_state.integrated_position_error = _joint->perror_int;

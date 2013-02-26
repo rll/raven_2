@@ -43,16 +43,46 @@ int TorqueToDAC(struct device *device0)
     	_joint->current_cmd = tToDACVal( _joint );  // Convert torque to DAC value
 
 #ifdef USE_NEW_RUNLEVEL
-    	if (RunLevel::get().isSoftwareEstop()) {
+    	if (RunLevel::get().isSoftwareEstop())
     		//printf("SES T2D\n");
 #else
-    	if ( soft_estopped ) {
+    	if ( soft_estopped )
 #endif
+		{
     		_joint->current_cmd = 0;
     	}
 
     }
     return 0;
+}
+
+int toShort(int value, short int *target) {
+	//Short maximum and minimum
+	#define SHORT_MAX 32767
+	#define SHORT_MIN -32768
+
+	//Return values
+	#define SHORT_OVERFLOW    1
+	#define SHORT_UNDERFLOW  -1
+
+	//Overflow
+	if (value > SHORT_MAX)
+	{
+		*target = SHORT_MAX;
+		return SHORT_OVERFLOW;
+	}
+	//Underflow
+	else if (value < SHORT_MIN)
+	{
+		*target = SHORT_MIN;
+		return SHORT_UNDERFLOW;
+	}
+	//No problems
+	else
+	{
+		*target = value;
+		return 0;
+	}
 }
 
 /**

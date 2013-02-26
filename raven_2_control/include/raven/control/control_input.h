@@ -9,27 +9,31 @@
 #define CONTROL_INPUT_H_
 
 #include <raven/state/device.h>
+#include <sstream>
+#include <stdexcept>
+#include <map>
 
 POINTER_TYPES(ControlInput)
 POINTER_TYPES(OldControlInput)
 
 class ControlInput {
+	friend class Controller;
 private:
 	static std::map<std::string,ControlInputPtr> CONTROL_INPUT;
 	static OldControlInputPtr OLD_CONTROL_INPUT;
+	static ControlInputPtr getControlInput(const std::string& type);
+protected:
+	ros::Time timestamp_;
 public:
 	virtual ~ControlInput() {}
+
+	virtual ros::Time timestamp() const { return timestamp_; }
+	virtual void setTimestamp(ros::Time time) { timestamp_ = time; }
+	void updateTimestamp() { setTimestamp(ros::Time::now()); }
 
 	virtual void setFrom(DevicePtr dev) = 0;
 
 	static void setControlInput(const std::string& type,ControlInputPtr input);
-
-	/*
-	template<class C>
-	static boost::shared_ptr<C> getControlInput() {
-		return boost::dynamic_pointer_cast<C,ControlInput>(getControlInput());
-	}
-	*/
 
 	template<class C>
 	static boost::shared_ptr<C> getControlInput(const std::string& type) {
@@ -37,10 +41,58 @@ public:
 	}
 
 	static OldControlInputPtr getOldControlInput();
-
-	//static ControlInputPtr getControlInput();
-	static ControlInputPtr getControlInput(const std::string& type);
+	static OldControlInputPtr oldControlInputUpdateBegin();
+	static void oldControlInputUpdateEnd();
 };
+
+class MultipleControlInput : public ControlInput {
+private:
+	std::map<std::string,ControlInputPtr> inputs_;
+public:
+	virtual ros::Time timestamp() const;
+	virtual void setTimestamp(ros::Time time);
+
+	virtual void setFrom(DevicePtr dev);
+
+	std::map<std::string,ControlInputPtr> inputs() const { return inputs_; }
+
+	void setInput(const std::string& name,ControlInputPtr input);
+	void removeInput(const std::string& name);
+	void clearInputs();
+
+	bool hasInput(const std::string& name) const;
+	ControlInputPtr getInput(const std::string& name);
+	ControlInputConstPtr getInput(const std::string& name) const;
+
+	template<class T>
+	boost::shared_ptr<T> getInput(const std::string& name) {
+		ControlInputPtr p = getInput(name);
+		boost::shared_ptr<T> out = boost::dynamic_pointer_cast<T>(p);
+		return out;
+	}
+
+	template<class T>
+	boost::shared_ptr<const T> getInput(const std::string& name) const {
+		ControlInputConstPtr p = getInput(name);
+		boost::shared_ptr<const T> out = boost::dynamic_pointer_cast<const T>(p);
+		return out;
+	}
+
+	template<class T>
+	bool getInput(const std::string& name,boost::shared_ptr<T>& input) {
+		ControlInputPtr p = getInput(name);
+		input = boost::dynamic_pointer_cast<T>(p);
+		return input.get();
+	}
+
+	template<class T>
+	bool getInput(const std::string& name,boost::shared_ptr<const T>& input) const {
+		ControlInputConstPtr p = getInput(name);
+		input = boost::dynamic_pointer_cast<T>(p);
+		return input.get();
+	}
+};
+POINTER_TYPES(MultipleControlInput)
 
 template<typename T>
 class SeparateArmControlInput : public ControlInput {
@@ -57,7 +109,7 @@ public:
 		}
 	}
 
-	T& arm(size_t i) {return arms_.at(i); }
+	T& arm(size_t i) { return arms_.at(i); }
 	const T& arm(size_t i) const { return arms_.at(i); }
 
 	T& armById(Arm::IdType id) {
@@ -66,6 +118,9 @@ public:
 				return arms_.at(i);
 			}
 		}
+		std::stringstream ss;
+		ss << "Arm " << id << " not found!";
+		throw std::out_of_range(ss.str());
 	}
 	const T& armById(Arm::IdType id) const  {
 		for (size_t i=0;i<armIds_.size();i++) {
@@ -73,6 +128,9 @@ public:
 				return arms_.at(i);
 			}
 		}
+		std::stringstream ss;
+		ss << "Arm " << id << " not found!";
+		throw std::out_of_range(ss.str());
 	}
 };
 

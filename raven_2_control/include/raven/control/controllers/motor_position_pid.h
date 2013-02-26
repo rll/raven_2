@@ -42,23 +42,13 @@ private:
 	Eigen::VectorXf KD_;
 	bool reset_;
 
-	OldControlInputPtr oldControlInput_;
-	MotorPositionInputPtr positionInput_;
-	MotorVelocityInputPtr velocityInput_;
-
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device);
 public:
-	static std::vector<std::string>* INPUT_TYPES;
-
 	MotorPositionPID();
 	virtual ~MotorPositionPID() {}
 
 	virtual std::string name() const { return "motor/position/pid"; }
 	virtual std::string type() const { return "motor/position"; }
-	virtual const std::vector<std::string>& getInputTypes() const;
-
-	virtual void clearInput();
-	virtual void setInput(std::string type, ControlInputPtr input);
 
 	void resetIntegrator() { reset_ = true; }
 };

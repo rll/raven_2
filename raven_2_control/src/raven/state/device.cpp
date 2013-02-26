@@ -6,64 +6,56 @@
  */
 
 #include <raven/state/device.h>
-#include <raven/log.h>
+#include "log.h"
+
+#include "defines.h"
 
 #include <boost/foreach.hpp>
 
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/recursive_mutex.hpp>
 
 #include <sstream>
 
 static ros::Time theUpdateTime(0);
 
-#define USE_DEVICE_MUTEX
-boost::mutex deviceInstanceMutex;
+#define USE_DEVICE_INSTANCE_MUTEX
+boost::recursive_mutex deviceInstanceMutex;
 DevicePtr Device::INSTANCE;
 
-//boost::circular_buffer<DevicePtr> Device::HISTORY = boost::circular_buffer<DevicePtr>(DEVICE_HISTORY_SIZE);
-History<Device>::Type Device::HISTORY = History<Device>::Type(DEVICE_HISTORY_SIZE);
+#define USE_DEVICE_HISTORY_MUTEX
+boost::mutex deviceHistoryMutex;
+History<Device>::Type Device::HISTORY = History<Device>::Type(DEVICE_HISTORY_SIZE,0,CloningWrapper<Device>());
 
 DevicePtr
 Device::current() {
-	//printf("Current\n");
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.lock();
+#ifdef USE_DEVICE_INSTANCE_MUTEX
+	boost::recursive_mutex::scoped_lock l(deviceInstanceMutex);
 #endif
 	DevicePtr d = Device::INSTANCE->clone();
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.unlock();
-#endif
 	return d;
 }
 
 void
 Device::current(DevicePtr& device) {
-	//printf("Current\n");
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.lock();
+#ifdef USE_DEVICE_INSTANCE_MUTEX
+	boost::recursive_mutex::scoped_lock l(deviceInstanceMutex);
 #endif
 	Device::INSTANCE->cloneInto(device);
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.unlock();
-#endif
 }
 
 DevicePtr
 Device::currentNoClone() {
-	//printf("Current no clone\n");
 	return Device::INSTANCE;
 }
 
 ros::Time
 Device::currentTimestamp() {
 	ros::Time t;
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.lock();
+#ifdef USE_DEVICE_INSTANCE_MUTEX
+	boost::recursive_mutex::scoped_lock l(deviceInstanceMutex);
 #endif
 	t = Device::INSTANCE->timestamp_;
-#ifdef USE_DEVICE_MUTEX
-	deviceInstanceMutex.unlock();
-#endif
 	return t;
 }
 
@@ -140,17 +132,26 @@ Device::finishCurrentUpdate() {
 	//deviceInstanceMutex.unlock(); //pthread_mutex_unlock(&deviceInstanceMutex);
 }
 */
-void
+DevicePtr
 Device::beginCurrentUpdate(ros::Time updateTime) {
-	//deviceInstanceMutex.lock(); //pthread_mutex_lock(&deviceInstanceMutex);
+#ifdef USE_DEVICE_INSTANCE_MUTEX
+	deviceInstanceMutex.lock();
+#endif
 	if (updateTime.isZero()) {
 		theUpdateTime = Device::INSTANCE->timestamp();
 	} else {
 		//save to history
+#ifdef USE_DEVICE_HISTORY_MUTEX
+		deviceHistoryMutex.lock();
+#endif
 		Device::HISTORY.push_front(CloningWrapper<Device>(Device::INSTANCE));
+#ifdef USE_DEVICE_HISTORY_MUTEX
+		deviceHistoryMutex.unlock();
+#endif
 	}
 	theUpdateTime = updateTime;
 	Device::INSTANCE->beginUpdate();
+	return Device::INSTANCE;
 }
 
 void
@@ -158,7 +159,10 @@ Device::finishCurrentUpdate() {
 	Device::INSTANCE->internalFinishUpdate(false);
 	Device::INSTANCE->timestamp_ = theUpdateTime;
 	theUpdateTime = ros::Time(0);
-	//deviceInstanceMutex.unlock(); //pthread_mutex_unlock(&deviceInstanceMutex);
+
+#ifdef USE_DEVICE_INSTANCE_MUTEX
+	deviceInstanceMutex.unlock();
+#endif
 }
 
 void
@@ -186,13 +190,20 @@ Device::finishUpdate() {
 
 std::vector<DevicePtr>
 Device::history(int numSteps) {
+	std::vector<DevicePtr> hist;
+#ifdef USE_DEVICE_HISTORY_MUTEX
+		deviceHistoryMutex.lock();
+#endif
 	if (numSteps < 0 || numSteps > (int)Device::HISTORY.size()) {
 		numSteps = Device::HISTORY.size();
 	}
-	std::vector<DevicePtr> hist(numSteps);
+	hist.reserve(numSteps);
 	for (int i=0;i<numSteps;i++) {
 		hist.push_back(Device::HISTORY[i].value);
 	}
+#ifdef USE_DEVICE_HISTORY_MUTEX
+		deviceHistoryMutex.unlock();
+#endif
 	return hist;
 }
 
@@ -218,6 +229,16 @@ Device::getArmByName(const std::string& name) const {
 		}
 	}
 	return ArmPtr();
+}
+
+JointPtr
+Device::getJointByOldType(int type) const {
+	JointPtr joint;
+	int arm_id;
+	int joint_ind;
+	getArmAndJointIndices(type,arm_id,joint_ind);
+	ArmPtr arm = getArmById(arm_id);
+	return arm->getJointByOldType(type);
 }
 
 Eigen::VectorXf

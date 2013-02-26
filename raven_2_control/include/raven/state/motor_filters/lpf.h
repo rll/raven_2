@@ -27,9 +27,7 @@ private:
 	Eigen::Matrix<float,order+1,1> A_;
 	Eigen::Matrix<float,order+1,1> B_;
 
-	//std::vector<boost::circular_buffer<MotorPtr> > history_;
 	std::vector<History<Motor>::Type> history_;
-	//std::vector<boost::circular_buffer<MotorPtr> > filteredHistory_;
 	std::vector<History<Motor>::Type> filteredHistory_;
 
 	ros::Time lastCallTime_;

@@ -27,6 +27,7 @@ POINTER_TYPES(ControllerState)
 
 class ControllerState {
 public:
+	ControlInputConstPtr input;
 	const DeviceConstPtr device;
 	int returnCode;
 public:
@@ -51,6 +52,8 @@ private:
 	void saveState(ControllerStatePtr state);
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device)=0;
 
+	ControlInputPtr input_;
+
 	boost::shared_ptr<ros::Rate> rate_;
 public:
 
@@ -67,15 +70,53 @@ public:
 
 	virtual std::string name() const=0;
 	virtual std::string type() const=0;
-	virtual const std::vector<std::string>& getInputTypes() const=0;
 
 	virtual bool inProcess() const { return true; }
 	ros::Rate& rate() const { return *rate_; }
 
-	virtual void clearInput() = 0;
-	virtual void setInput(const std::string type, ControlInputPtr input)=0;
+	virtual void setInput(ControlInputPtr input) { input_ = input; }
+	virtual void clearInput() { input_.reset(); }
+	virtual ControlInputPtr getInput() const { return input_; }
+	template<class T>
+	boost::shared_ptr<T> getInput() const {
+		ControlInputPtr p = getInput();
+		boost::shared_ptr<T> out = boost::dynamic_pointer_cast<T>(p);
+		return out;
+	}
+
+	template<class T>
+	bool getInput(boost::shared_ptr<T>& input) const {
+		ControlInputPtr p = getInput();
+		input = boost::dynamic_pointer_cast<T>(p);
+		return input.get();
+	}
+
+
 
 	virtual int applyControl(DevicePtr device);
+
+	std::vector<ControllerStatePtr> stateHistory(int numSteps=-1) const;
+	ControllerStatePtr lastState() const;
+
+	template<typename T>
+	std::vector<boost::shared_ptr<T> > stateHistory(int numSteps=-1) const {
+		if (numSteps < 0 || numSteps > (int)history_.size()) {
+			numSteps = history_.size();
+		}
+		std::vector<boost::shared_ptr<T> > hist(numSteps);
+		for (int i=0;i<numSteps;i++) {
+			boost::shared_ptr<T> ptr = boost::dynamic_pointer_cast<T>(history_[i]);
+			if (!ptr) {
+				throw std::runtime_error("History cast failed!");
+			}
+			hist.push_back(ptr);
+		}
+		return hist;
+	}
+	template<typename T>
+	boost::shared_ptr<T> lastState() const {
+		return boost::dynamic_pointer_cast<T>(lastState());
+	}
 
 	virtual ControllerPtr clone() const { return ControllerPtr(); };
 

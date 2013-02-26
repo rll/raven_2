@@ -78,6 +78,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     		for (size_t i=0;i<arm->joints().size();i++) {
     			armData.jointPosition(i) = arm->joint(i)->position();
     			armData.jointVelocity(i) = 0;
+    			arm->joint(i)->setState(Joint::State::NOT_READY);
     		}
     	}
 #endif

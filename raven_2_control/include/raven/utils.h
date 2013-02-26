@@ -12,6 +12,7 @@
 
 #include <time.h>
 #include <tf/transform_datatypes.h>
+#include <LinearMath/btMatrix3x3.h>
 
 #include "DS0.h"
 
@@ -76,7 +77,6 @@ int loop_over_mechs(struct robot_device* device0, struct mechanism*& _mech, int&
 int loop_over_joints(struct robot_device*, struct mechanism*&, struct DOF*&, int&, int&);
 int loop_over_joints(struct mechanism* _mech, struct DOF*& _joint, int& jnum);
 
-int toShort(int value, short int *target);
 void strtoken(char *str, char *result, char delim);
 void strcopy(const char *src, char *dest);
 

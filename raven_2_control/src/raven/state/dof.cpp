@@ -14,7 +14,7 @@
 
 
 static int numJ = 0;
-Joint::Joint(Type type) : Updateable(), type_(type), state_(jstate_not_ready), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
+Joint::Joint(Type type) : Updateable(), type_(type), state_(Joint::State::NOT_READY), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
 	//printf("+J  %i %p\n",++numJ,this);
 	toolJoint_ = type_==Type::TOOL_ROT_ || type_==Type::WRIST_ || type_ == Type::GRIPPER1_ || type_ == Type::GRIPPER2_ || type_ == Type::YAW_ || type_ == Type::GRASP_;
 }
@@ -86,7 +86,7 @@ Motor::setPosition(float pos) {
 	updateTimestamp();
 }
 
-int toShort(int value, short int *target) {
+int saturateShort(int value, short int *target) {
 	//Short maximum and minimum
 	#define SHORT_MAX 32767
 	#define SHORT_MIN -32768
@@ -125,8 +125,8 @@ Motor::setTorque(float torque) {
 	int DACVal = (int)(torque_ * TFmotor * TFamplifier);  //compute DAC value: DAC=[tau*(amp/torque)*(DACs/amp)]
 
 	//Perform range checking and convert to short int
-	//Note: toShort saturates at max value for short int.
-	toShort(DACVal, &dacCommand_);
+	//Note: saturateShort saturates at max value for short int.
+	saturateShort(DACVal, &dacCommand_);
 
 	updateTimestamp();
 }

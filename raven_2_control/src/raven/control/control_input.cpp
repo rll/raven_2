@@ -11,17 +11,19 @@
 #include "defines.h"
 
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/recursive_mutex.hpp>
 
 boost::mutex inputMutex;
-
 std::map<std::string,ControlInputPtr> ControlInput::CONTROL_INPUT;
+
+
+boost::recursive_mutex oldInputMutex;
 OldControlInputPtr ControlInput::OLD_CONTROL_INPUT;
 
 void
 ControlInput::setControlInput(const std::string& type,ControlInputPtr input) {
-	inputMutex.lock();
+	boost::mutex::scoped_lock(inputMutex);
 	ControlInput::CONTROL_INPUT[type] = input;
-	inputMutex.unlock();
 }
 
 /*
@@ -33,24 +35,91 @@ ControlInput::getControlInput() {
 
 ControlInputPtr
 ControlInput::getControlInput(const std::string& type) {
+	boost::mutex::scoped_lock(inputMutex);
 	ControlInputPtr input;
-	inputMutex.lock();
 	if (type == "old") {
 		input = getOldControlInput();
 	} else {
 		input = CONTROL_INPUT[type];
 	}
-	inputMutex.unlock();
 	return input;
 }
 
 OldControlInputPtr
 ControlInput::getOldControlInput() {
-	if (!OLD_CONTROL_INPUT) {
+	boost::mutex::scoped_lock(inputMutex);
+	OldControlInputPtr ptr;
+	if (ROS_UNLIKELY(!OLD_CONTROL_INPUT)) {
 		OLD_CONTROL_INPUT.reset(new OldControlInput());
 	}
-	return OLD_CONTROL_INPUT;
+	ptr = OLD_CONTROL_INPUT;
+	return ptr;
 }
+
+OldControlInputPtr
+ControlInput::oldControlInputUpdateBegin() {
+	oldInputMutex.lock();
+	return getOldControlInput();
+}
+void
+ControlInput::oldControlInputUpdateEnd() {
+	oldInputMutex.unlock();
+}
+
+ros::Time
+MultipleControlInput::timestamp() const {
+	ros::Time stamp(0);
+	std::map<std::string,ControlInputPtr>::const_iterator itr;
+	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
+		ros::Time t =  itr->second->timestamp();
+		if (t>stamp) {
+			stamp = t;
+		}
+	}
+	return stamp;
+}
+void
+MultipleControlInput::setTimestamp(ros::Time time) {
+	std::map<std::string,ControlInputPtr>::iterator itr;
+	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
+		itr->second->setTimestamp(time);
+	}
+}
+
+void
+MultipleControlInput::setFrom(DevicePtr dev) {
+	std::map<std::string,ControlInputPtr>::iterator itr;
+	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
+		itr->second->setFrom(dev);
+	}
+}
+
+bool
+MultipleControlInput::hasInput(const std::string& name) const {
+	return inputs_.find(name) != inputs_.end();
+}
+ControlInputPtr
+MultipleControlInput::getInput(const std::string& name) {
+	return inputs_.at(name);
+}
+ControlInputConstPtr
+MultipleControlInput::getInput(const std::string& name) const {
+	return inputs_.at(name);
+}
+
+void
+MultipleControlInput::setInput(const std::string& name,ControlInputPtr input) {
+	inputs_[name] = input;
+}
+void
+MultipleControlInput::removeInput(const std::string& name) {
+	inputs_.erase(name);
+}
+void
+MultipleControlInput::clearInputs() {
+	inputs_.clear();
+}
+
 
 OldArmInputData::OldArmInputData(const OldArmInputData& other) : //id_(other.id_),
 			motorPositions_(new std::vector<float>(other.motorPositions_->begin(),other.motorPositions_->end())),

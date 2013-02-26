@@ -59,30 +59,53 @@ link_directories(${OpenRAVE_LIBRARY_DIRS})
 #rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
 #target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
-rosbuild_add_library(r2_state 
-src/raven/state/runlevel.cpp
-src/raven/state/dof.cpp
-src/raven/state/arm.cpp
-src/raven/kinematics/kinematics.cpp
-src/raven/state/device.cpp
-)
+#rosbuild_add_library(r2_state 
+#src/raven/state/runlevel.cpp
+#src/raven/state/dof.cpp
+#src/raven/state/arm.cpp
+#src/raven/kinematics/kinematics.cpp
+#src/raven/state/device.cpp
+#)
 
 
-rosbuild_add_library(r2_controllers 
-src/raven/control/controller.cpp
-src/raven/control/control_input.cpp
-src/raven/control/input/motor_input.cpp
-src/raven/control/input/joint_input.cpp
-src/raven/control/input/end_effector_grasp_input.cpp
-src/raven/control/input/end_effector_pose_input.cpp
-src/raven/control/controllers/motor_position_pid.cpp
-src/raven/control/controllers/joint_velocity_pi.cpp
-)
-target_link_libraries(r2_controllers r2_state) 
+#rosbuild_add_library(r2_controllers 
+#src/raven/control/controller.cpp
+#src/raven/control/control_input.cpp
+#src/raven/control/input/motor_input.cpp
+#src/raven/control/input/joint_input.cpp
+#src/raven/control/input/end_effector_grasp_input.cpp
+#src/raven/control/input/end_effector_pose_input.cpp
+#src/raven/control/controllers/motor_position_pid.cpp
+#src/raven/control/controllers/joint_velocity_pi.cpp
+#)
+#target_link_libraries(r2_controllers r2_state) 
 
 rosbuild_add_boost_directories()
 
 rosbuild_add_executable(r2_control
+
+#src/raven/util/logging.cpp
+src/raven/log.cpp
+src/raven/util/timing.cpp
+
+src/raven/state/runlevel.cpp
+src/raven/state/dof.cpp
+src/raven/state/arm.cpp
+src/raven/state/device.cpp
+src/raven/kinematics/kinematics.cpp
+
+src/raven/control/controller.cpp
+src/raven/control/control_input.cpp
+
+src/raven/control/input/motor_input.cpp
+src/raven/control/input/joint_input.cpp
+src/raven/control/input/end_effector_grasp_input.cpp
+src/raven/control/input/end_effector_pose_input.cpp
+
+src/raven/control/controllers/motor_position_pid.cpp
+src/raven/control/controllers/joint_velocity_pi.cpp
+src/raven/control/controllers/end_effector_control.cpp
+
 src/raven/state/initializer.cpp
 src/raven/state/motor_filters/lpf.cpp
 
@@ -100,7 +123,6 @@ src/raven/inv_cable_coupling.cpp
 src/raven/inv_kinematics.cpp
 #src/raven/linear_parabolic_traj.cpp
 src/raven/local_io.cpp
-src/raven/log.cpp
 src/raven/mapping.cpp
 src/raven/shared_modes.cpp
 src/raven/motor.cpp
@@ -126,12 +148,11 @@ src/raven/USB_init.cpp
 src/raven/utils.cpp
 #src/raven/velocity.cpp
 src/raven/saveload.cpp
-src/raven/util/timing.cpp
 )
 
 rosbuild_link_boost(r2_control filesystem system)
 
-target_link_libraries(r2_control r2_state r2_controllers)
+#target_link_libraries(r2_control r2_state r2_controllers)
 
 #target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
 #target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )

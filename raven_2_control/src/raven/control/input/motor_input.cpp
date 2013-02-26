@@ -16,7 +16,7 @@ MotorValuesInput::valueByOldType(int type) {
 	getArmAndJointIndices(type,arm_id,joint_ind);
 
 	if (joint_ind == 3) {
-		//return 0;
+		throw std::out_of_range("MVI::vBOT bad ind!");
 	}
 	if (joint_ind > 3) {
 		joint_ind -= 1;
@@ -31,7 +31,7 @@ MotorValuesInput::valueByOldType(int type) const {
 	getArmAndJointIndices(type,arm_id,joint_ind);
 
 	if (joint_ind == 3) {
-		//return 0;
+		throw std::out_of_range("MVI::vBOT bad ind!");
 	}
 	if (joint_ind > 3) {
 		joint_ind -= 1;
@@ -41,9 +41,16 @@ MotorValuesInput::valueByOldType(int type) const {
 
 Eigen::VectorXf
 MotorValuesInput::values() const {
-	Eigen::VectorXf v;
+	size_t numEl = 0;
 	for (size_t i=0;i<arms_.size();i++) {
-		v << arms_[i].values();
+		numEl += arms_[i].values().rows();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	for (size_t i=0;i<arms_.size();i++) {
+		size_t numElInArm = arms_[i].values().rows();
+		v.segment(ind,numElInArm) = arms_[i].values();
+		ind += numElInArm;
 	}
 	return v;
 }

@@ -34,6 +34,7 @@ active use.
 #include "shared_modes.h"
 #include "trajectory.h"
 #include <raven/state/runlevel.h>
+#include <raven/control/control_input.h>
 
 extern bool disable_arm_id[2];
 extern int NUM_MECH;
@@ -232,11 +233,27 @@ void teleopIntoDS1(struct u_struct *t)
 }
 
 void writeUpdate(struct param_pass* data_in) {
-	pthread_mutex_lock(&data1Mutex);
-	memcpy(&data1, data_in, sizeof(struct param_pass));
 
+	pthread_mutex_lock(&data1Mutex);
+
+	memcpy(&data1, data_in, sizeof(struct param_pass));
 	isUpdated = TRUE;
 	pthread_mutex_unlock(&data1Mutex);
+
+#ifdef USE_NEW_DEVICE
+	OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
+	for (int i=0;i<NUM_MECH;i++) {
+		for (int j=0;j<MAX_DOF_PER_MECH;j++) {
+			int joint_ind = i * MAX_DOF_PER_MECH + j;
+			input->arm(i).jointPosition(j) = data_in->jpos_d[joint_ind];
+			input->arm(i).jointVelocity(j) = data_in->jvel_d[joint_ind];
+		}
+		btTransform tf = toBt(data_in->xd[i],data_in->rd[i]);
+		input->arm(i).pose() = tf;
+		input->arm(i).grasp() = ((float)data_in->rd[i].grasp)/1000;
+	}
+	ControlInput::oldControlInputUpdateEnd();
+#endif
 }
 
 // checkLocalUpdates()

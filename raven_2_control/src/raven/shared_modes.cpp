@@ -70,7 +70,6 @@ bool checkMasterMode(const MasterMode& mode) {
 #else
 	} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
 #endif
-		//printf("hasn't homed\n");
 		return false;
 	}
 	bool succeeded = false;

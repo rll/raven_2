@@ -74,36 +74,6 @@ btTransform X(float alpha,float a) {
 */
 
 
-/*
- * toShort - function that takes an integer and places it in the
- *   target short int, reporting under/overflow
- *
- * inputs - value
- *
- */
-int toShort(int value, short int *target)
-{
-
-    //Overflow
-    if (value > SHORT_MAX)
-    {
-        *target = SHORT_MAX;
-        return SHORT_OVERFLOW;
-    }
-    //Underflow
-    else if (value < SHORT_MIN)
-    {
-        *target = SHORT_MIN;
-        return SHORT_UNDERFLOW;
-    }
-    //No problems
-    else
-    {
-        *target = value;
-        return 0;
-    }
-}
-
 int loop_over_mechs(struct robot_device* device0, struct mechanism*& _mech, int& mechnum) {
 	// Initialize iterators
 	if (_mech == NULL) {
@@ -381,8 +351,10 @@ void set_posd_to_pos(struct robot_device* device0)
 #ifdef USE_NEW_DEVICE
     	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[m].type);
     	btTransform tf = toBt(device0->mech[m].pos,device0->mech[m].ori);
-    	ControlInput::getOldControlInput()->armById(device0->mech[m].type).pose() = tf;
-    	ControlInput::getOldControlInput()->armById(device0->mech[m].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+    	OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
+    	input->armById(device0->mech[m].type).pose() = tf;
+    	input->armById(device0->mech[m].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+    	ControlInput::oldControlInputUpdateEnd();
 #endif
     	device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
         device0->mech[m].pos_d.y     = device0->mech[m].pos.y;

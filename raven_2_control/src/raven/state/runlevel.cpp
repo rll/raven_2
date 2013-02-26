@@ -29,7 +29,7 @@ RunLevel RunLevel::_PEDAL_DOWN_() { return RunLevel(3); }
 
 void RunLevel::updateRunlevel(runlevel_t level) {
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	if (SOFTWARE_ESTOP) {
 		setInitialized(false);
@@ -42,6 +42,7 @@ void RunLevel::updateRunlevel(runlevel_t level) {
 		}
 	} else if (INSTANCE->value_ != level) {
 		if (ROS_UNLIKELY(!HAS_HOMED) && level >= 2) {
+			log_msg("Homing completed");
 			HAS_HOMED = true;
 		}
 		*INSTANCE = RunLevel(level,0);
@@ -51,9 +52,6 @@ void RunLevel::updateRunlevel(runlevel_t level) {
 			log_msg("Entered runlevel %s", INSTANCE->str().c_str());
 		}
 	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 }
 
 bool RunLevel::isEstop() const {
@@ -122,63 +120,29 @@ RunLevel::str() const {
 RunLevel
 RunLevel::get() {
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	RunLevel rl(*INSTANCE);
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 	return rl;
 }
-/*
-void RunLevel::setRunlevel(RunLevel level) {
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
-#endif
-	//if (INSTANCE->value_ != level.value_) {
-	if (INSTANCE->value_ != level.value_ || INSTANCE->sublevel_ != level.sublevel_) {
-//		if (level.isPedalUpOrDown() && INSTANCE->isInit()) {
-//			RunLevel::IS_INITED = true;
-//		}
-//		if (level.isInitSublevel(3)) {
-//			RunLevel::IS_INITED = true;
-//		}
-		*INSTANCE = level;
-		//Don't print for estop change from software to hardware
-		if (!(INSTANCE->value_ == 0 && level.value_ == 0)) {
-			log_msg("Entered runlevel %s", INSTANCE->str().c_str());
-		} else {
-			log_msg("Entered %s", INSTANCE->str().c_str());
-		}
-	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
-}
-*/
+
 void RunLevel::setSublevel(runlevel_t sublevel) {
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	if (INSTANCE->isInit() && INSTANCE->sublevel_ != sublevel) {
 		INSTANCE->sublevel_ = sublevel;
 		log_msg("Entered runlevel %s", INSTANCE->str().c_str());
 	}
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 }
 
 bool
 RunLevel::hasHomed() {
 	bool ret;
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	ret = HAS_HOMED;
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 	return ret;
 }
 
@@ -198,37 +162,31 @@ RunLevel::isInitialized() {
 void
 RunLevel::setInitialized(bool value) {
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	IS_INITED = value;
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 }
 
 void
 RunLevel::eStop() {
-	//setRunlevel(RunLevel::_E_STOP_SOFTWARE_());
 #ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
 #endif
 	SOFTWARE_ESTOP = true;
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
 }
 void
 RunLevel::setPedal(bool down) {
+#ifdef USE_RUNLEVEL_MUTEX
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
+#endif
 	RunLevel::PEDAL = down;
-//	if (down && INSTANCE->value_ == 2) {
-//		*INSTANCE = RunLevel::_PEDAL_DOWN_();
-//		log_msg("Entered runlevel %s", INSTANCE->str().c_str());
-//	} else if (!down && INSTANCE->value_ == 3) {
-//		*INSTANCE = RunLevel::_PEDAL_UP_();
-//		log_msg("Entered runlevel %s", INSTANCE->str().c_str());
-//	}
 }
 bool
 RunLevel::getPedal() {
-	return RunLevel::PEDAL;
+	bool pedal;
+#ifdef USE_RUNLEVEL_MUTEX
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
+#endif
+	pedal = RunLevel::PEDAL;
+	return pedal;
 }

@@ -32,6 +32,7 @@
 
 #include <raven/state/runlevel.h>
 #include <raven/state/device.h>
+#include <raven/control/control_input.h>
 
 using namespace std;
 
@@ -403,6 +404,21 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
                 _joint->jpos_d = _joint->jpos;
                 _joint->tau_d = 0;
         }
+
+#ifdef USE_NEW_DEVICE
+        OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
+    	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
+    		OldArmInputData& armData = input->armById(arm->id());
+    		for (size_t i=0;i<arm->motors().size();i++) {
+    			armData.motorTorque(i) = 0;
+    			armData.motorPosition(i) = arm->motor(i)->position();
+    		}
+    		for (size_t i=0;i<arm->joints().size();i++) {
+    			armData.jointPosition(i) = arm->joint(i)->position();
+    		}
+    	}
+    	ControlInput::oldControlInputUpdateEnd();
+#endif
         return 0;
     }
 
@@ -436,8 +452,9 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
     while (loop_over_joints(device0, _mech, _joint, i,j) ) {
     	// Do PD control
     	mpos_PD_control(_joint);
-    	if (_joint->type == TOOL_ROT_GREEN || _joint->type == TOOL_ROT_GOLD)
+    	if (_joint->type == TOOL_ROT_GREEN || _joint->type == TOOL_ROT_GOLD) {
     		_joint->tau_d = 0;
+    	}
     }
 
 

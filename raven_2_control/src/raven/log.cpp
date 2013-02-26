@@ -42,7 +42,7 @@ int log_warn(const char* fmt,...)
 int log_err(const char* fmt,...)
 {
 	SET_BUF
-    ROS_WARN("%s",buf);
+    ROS_ERROR("%s",buf);
     return 0;
 }
 
@@ -53,6 +53,30 @@ int log_msg_throttle(float interval,const char* fmt,...) {
 	  last_hit = now.toSec();
 	  SET_BUF
 	  ROS_INFO("%s",buf);
+	  return 0;
+	}
+	return 1;
+}
+
+int log_warn_throttle(float interval,const char* fmt,...) {
+	static double last_hit = 0.0;
+	::ros::Time now = ::ros::Time::now();
+	if (ROS_UNLIKELY(last_hit + interval <= now.toSec())) {
+	  last_hit = now.toSec();
+	  SET_BUF
+	  ROS_WARN("%s",buf);
+	  return 0;
+	}
+	return 1;
+}
+
+int log_err_throttle(float interval,const char* fmt,...) {
+	static double last_hit = 0.0;
+	::ros::Time now = ::ros::Time::now();
+	if (ROS_UNLIKELY(last_hit + interval <= now.toSec())) {
+	  last_hit = now.toSec();
+	  SET_BUF
+	  ROS_ERROR("%s",buf);
 	  return 0;
 	}
 	return 1;

@@ -40,22 +40,13 @@ private:
 	//Eigen::VectorXf KD_;
 	bool reset_;
 
-	OldControlInputPtr oldControlInput_;
-	JointVelocityInputPtr velocityInput_;
-
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device);
 public:
-	static std::vector<std::string>* INPUT_TYPES;
-
 	JointVelocityPI(size_t history_size=0);
 	virtual ~JointVelocityPI() {}
 
 	virtual std::string name() const { return "joint_velocity_pi"; }
 	virtual std::string type() const { return "joint_velocity"; }
-	virtual const std::vector<std::string>& getInputTypes() const;
-
-	virtual void clearInput();
-	virtual void setInput(std::string type, ControlInputPtr input);
 
 	void resetIntegrator() { reset_ = true; }
 };

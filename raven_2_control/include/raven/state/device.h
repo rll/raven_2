@@ -42,6 +42,7 @@ public:
 private:
 	static DevicePtr INSTANCE;
 	//static boost::circular_buffer<DevicePtr> HISTORY;
+public:
 	static History<Device>::Type HISTORY;
 
 	DeviceType type_;
@@ -61,7 +62,7 @@ public:
 	static DevicePtr currentNoClone(); //no lock, use carefully
 	static ros::Time currentTimestamp();
 
-	static void beginCurrentUpdate(ros::Time updateTime);
+	static DevicePtr beginCurrentUpdate(ros::Time updateTime);
 	static void finishCurrentUpdate();
 
 	static std::vector<DevicePtr> history(int numSteps=-1);
@@ -79,6 +80,8 @@ public:
 	ArmPtr arm(size_t i) const { return arms_[i]; }
 	ArmPtr getArmById(Arm::IdType id) const;
 	ArmPtr getArmByName(const std::string& name) const;
+
+	JointPtr getJointByOldType(int type) const;
 
 	Eigen::VectorXf jointVector() const { return jointPositionVector(); }
 	Eigen::VectorXf jointPositionVector() const;

@@ -29,6 +29,9 @@ class Joint : public Updateable {
 public:
 	BOOST_ENUM(Type, (SHOULDER_)(ELBOW_)(INSERTION_)(TOOL_ROT_)(WRIST_)(GRIPPER1_)(GRIPPER2_)(YAW_)(GRASP_ ));
 
+	BOOST_ENUM(State, (NOT_READY)(POS_UNKNOWN)(HOMING1)(HOMING2)(READY)(WAIT)(HARD_STOP));
+
+	/*
 	enum JointState{
 	    jstate_not_ready   = 0,
 	    jstate_pos_unknown = 1,
@@ -39,10 +42,11 @@ public:
 	    jstate_hard_stop   = 6,
 	    jstate_last_type
 	};
+	*/
 private:
 	Type type_;
 	bool toolJoint_;
-	JointState state_;
+	State state_;
 
 	float position_;
 	float velocity_;
@@ -64,9 +68,9 @@ public:
 
 	Type type() const { return type_; }
 	bool isToolJoint() const { return toolJoint_; }
-	JointState state() const { return state_; }
+	State state() const { return state_; }
 
-	void setState(JointState state ) { state_ = state; updateTimestamp(); }
+	void setState(State state ) { state_ = state; updateTimestamp(); }
 
 	float position() const { return position_; }
 	float velocity() const { return velocity_; }
