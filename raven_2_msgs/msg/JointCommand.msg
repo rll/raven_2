@@ -1,10 +1,13 @@
 uint8 command_type
 float32 value
 
-uint8 COMMAND_TYPE_POSITION=0 # desired DOF coordinate (rad)
-uint8 COMMAND_TYPE_VELOCITY=1 # desired DOF velocity (q-dot-desired)
+uint8 COMMAND_TYPE_NONE=0
+uint8 COMMAND_TYPE_POSITION=1 # desired DOF coordinate (rad)
+uint8 COMMAND_TYPE_VELOCITY=2 # desired DOF velocity (q-dot-desired)
 
-uint8 COMMAND_TYPE_MOTOR_POSITION=2
-uint8 COMMAND_TYPE_MOTOR_VELOCITY=3
+uint8 COMMAND_TYPE_MOTOR_POSITION=3
+uint8 COMMAND_TYPE_MOTOR_VELOCITY=4
 
-uint8 COMMAND_TYPE_TORQUE=4          # desired DOF force/torque
+uint8 COMMAND_TYPE_TORQUE=5          # desired DOF force/torque
+
+string COMMAND_TYPE_STRINGS = NONE,POSITION,VELOCITY,MOTOR_POSITION,MOTOR_VELOCITY,TORQUE

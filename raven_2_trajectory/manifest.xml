@@ -10,6 +10,7 @@
   <url>http://ros.org/wiki/raven_2_trajectory</url>
   <depend package="rospy"/>
   <depend package="tf"/>
+  <depend package="tf_conversions"/>
   <depend package="tfx"/>
   <depend package="geometry_msgs"/>
   <depend package="sensor_msgs"/>

@@ -18,3 +18,5 @@ err_network.log
 .settings/
 raven_2_vision/data/old/
 raven_2_vision/data/*/*_pose*.yaml
+raven_2_trajectory/trajectories/*
+raven_2_params/data/script_test/*

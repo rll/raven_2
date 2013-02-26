@@ -20,6 +20,8 @@
 #include "t_to_DAC_val.h"
 #include "homing.h"
 
+#include <raven/state/runlevel.h>
+
 #include <iostream>
 using namespace std;
 
@@ -57,12 +59,14 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     float errVel=0.0;
     float errSign=1;
     static float errInt[MAX_MECH*MAX_DOF_PER_MECH] = {0};
-    float pTerm=0.0, vTerm=0.0, iTerm = 0.0;
+    float pTerm=0.0, dTerm=0.0, iTerm = 0.0;
     float friction_feedforward = 0.0;
 
     float kp = DOF_types[joint->type].KP;
     float kd = DOF_types[joint->type].KD;
     float ki = DOF_types[joint->type].KI;
+
+    std::string jointName = jointIndexAndArmName(joint->type);
 
     /* PD CONTROL LAW */
 
@@ -79,13 +83,15 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     pTerm = err * kp;
 
     //Calculate velocity term
-    vTerm = errVel * kd;
+    dTerm = errVel * kd;
 
     //Calculate integral
-    if (reset_I)
+    if (reset_I) {
+    	//log_warn("PID %-16s: Resetting integral [%i]",jointName.c_str(),LoopNumber::get());
         errInt[joint->type]= 0;
-    else
+    } else {
         errInt[joint->type] += err * ONE_MS;
+    }
 
     //Calculate integral term
     iTerm = errInt[joint->type] * ki;
@@ -99,7 +105,16 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
 //        friction_feedforward = err * friction_comp_torque[joint->type] / eps;
 //    }
 
-    float tau_d = pTerm + vTerm +iTerm + friction_feedforward;
+    float tau_d = pTerm + iTerm + dTerm + friction_feedforward;
+
+    /*
+    if (RunLevel::get().isPedalDown() && LoopNumber::every(1)) {
+    	//printf("PID: %-16s P: % 7.3f  I: % 7.3f  D: % 7.3f\n",jointIndexAndArmName(joint->type).c_str(),pTerm,iTerm,dTerm);
+    	if (fabs(err)>=0.0005 || fabs(pTerm) >=0.0005 || fabs(iTerm) >= 0.0005) {
+    		//printf("PID: %-16s ERR: % 7.2f [% 7.2f % 7.2f] [% 7.3f % 7.3f]  P: % 7.3f  I: % 7.3f\n",jointIndexAndArmName(joint->type).c_str(),err,joint->mpos_d,joint->mpos,joint->jpos_d,joint->jpos,pTerm,iTerm);
+    	}
+    }
+    */
 
     //Finally place torque
     joint->tau_d = tau_d;
@@ -121,10 +136,10 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     /*Tau    history */ for (int i=HIST_SIZE-1;i>0;i--) { lastTau[joint->type][i]    = lastTau[joint->type][i-1]; }    lastTau[joint->type][0] = tau_d;
     /*err    history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErr[joint->type][i]    = lastErr[joint->type][i-1]; }    lastErr[joint->type][0] = err;
     /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastP[joint->type][i]      = lastP[joint->type][i-1]; }      lastP[joint->type][0] = pTerm;
-    /*errVel history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErrVel[joint->type][i] = lastErrVel[joint->type][i-1]; } lastErrVel[joint->type][0] = errVel;
-    /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastD[joint->type][i]      = lastD[joint->type][i-1]; }      lastD[joint->type][0] = vTerm;
     /*errInt history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErrInt[joint->type][i] = lastErrInt[joint->type][i-1]; } lastErrInt[joint->type][0] = errInt[joint->type];
-    /*pTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastI[joint->type][i]      = lastI[joint->type][i-1]; }      lastI[joint->type][0] = iTerm;
+    /*iTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastI[joint->type][i]      = lastI[joint->type][i-1]; }      lastI[joint->type][0] = iTerm;
+    /*errVel history */ for (int i=HIST_SIZE-1;i>0;i--) { lastErrVel[joint->type][i] = lastErrVel[joint->type][i-1]; } lastErrVel[joint->type][0] = errVel;
+    /*dTerm  history */ for (int i=HIST_SIZE-1;i>0;i--) { lastD[joint->type][i]      = lastD[joint->type][i-1]; }      lastD[joint->type][0] = dTerm;
     /*mpos_d history */ for (int i=HIST_SIZE-1;i>0;i--) { lastDes[joint->type][i]    = lastDes[joint->type][i-1]; }    lastDes[joint->type][0] = joint->mpos_d;
     /*mpos   history */ for (int i=HIST_SIZE-1;i>0;i--) { lastAct[joint->type][i]    = lastAct[joint->type][i-1]; }    lastAct[joint->type][0] = joint->mpos;
     /*mvel_d history */ for (int i=HIST_SIZE-1;i>0;i--) { lastDesVel[joint->type][i] = lastDesVel[joint->type][i-1]; } lastDesVel[joint->type][0] = joint->mvel_d;
@@ -136,7 +151,7 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     	cerr << "****** DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ******" << endl;
     	cerr << "tau " << tau_d << " = " << endl;
     	cerr << "  p " << pTerm << endl;
-    	cerr << " +d " << vTerm << endl;
+    	cerr << " +d " << dTerm << endl;
     	cerr << " +i " << iTerm << endl;
     	cerr << "err " << err << " errV " << errVel << " errInt " << errInt[joint->type] << endl;
     	cerr << "mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;
@@ -214,7 +229,7 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     	cerr << endl;
     	cerr << "tau " << tau_d << " = " << endl;
     	cerr << "  p " << pTerm << endl;
-    	cerr << " +d " << vTerm << endl;
+    	cerr << " +d " << dTerm << endl;
     	cerr << " +i " << iTerm << endl;
     	cerr << "err " << err << " errV " << errVel << " errInt " << errInt[joint->type] << endl;
     	cerr << "mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;

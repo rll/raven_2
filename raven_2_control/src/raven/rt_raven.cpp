@@ -250,65 +250,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     	}
     }
 
-    /*
-    //log_msg("control mode %d",(int)controlmode);
-    switch (controlmode){
-        case no_control:
-            break;
-
-        case homing_mode:
-            initialized = false;
-            //initialized = robot_ready(device0) ? true:false;
-            ret = raven_homing(device0, currParams);
-            set_posd_to_pos(device0);
-            updateMasterRelativeOrigin(device0);
-            if (robot_ready(device0))
-            {
-                log_msg("Homing finished, switching to cartesian space control");
-                currParams->robotControlMode = cartesian_space_control;
-                newRobotControlMode = cartesian_space_control;
-                resetControlMode();
-            }
-            break;
-
-        case end_effector_control:
-        case cartesian_space_control:
-            //initialized = false;
-        	ret = raven_cartesian_space_command(device0,currParams);
-            break;
-
-        case motor_pd_control:
-            initialized = false;
-            ret = raven_motor_position_control(device0,currParams);
-            break;
-
-        case joint_velocity_control:
-            initialized = false;
-            ret = raven_joint_velocity_control(device0, currParams);
-            break;
-
-        case apply_arbitrary_torque:
-            initialized = false;
-            ret = applyTorque(device0, currParams);
-            break;
-
-        case multi_dof_sinusoid:
-            initialized = false;
-            ret = raven_sinusoidal_joint_motion(device0, currParams);
-            break;
-
-        case joint_torque_control:
-        	ret = raven_joint_torque_command(device0,currParams);
-            break;
-        default:
-            printf("got control mode %i\n", (int)controlmode);
-            ROS_ERROR("Error: unknown control mode in controlRaven (rt_raven.cpp)");
-            ret = -1;
-            break;
-    }
-    */
-
-    if (controlmode != homing_mode) {
+     if (controlmode != homing_mode) {
     	turnOffSpeedyJoints(*device0);
     }
 
@@ -333,31 +275,6 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
         set_posd_to_pos(device0);
         updateMasterRelativeOrigin(device0);
     }
-
-    // Set desired transform to straight down
-    /*
-    for (int i=0;i<NUM_MECH;i++)
-    {
-        _mech = &(device0->mech[i]);
-        _mech->ori_d.R[0][0] = -1.0;
-        _mech->ori_d.R[0][1] = 0.0;
-        _mech->ori_d.R[0][2] = 0.0;
-
-        _mech->ori_d.R[1][0] = 0.0;
-        _mech->ori_d.R[1][1] = -1.0;
-        _mech->ori_d.R[1][2] = 0.0;
-
-        _mech->ori_d.R[2][0] = 0.0;
-        _mech->ori_d.R[2][1] = 0.0;
-        _mech->ori_d.R[2][2] = 1.0;
-
-    }
-    */
-    //cout << "ori_d" << device0->mech[0].ori_d.grasp << " " << device0->mech[1].ori_d.grasp << endl;
-    //device0->mech[0].ori_d.grasp = 900;
-    //device0->mech[1].ori_d.grasp = -900;
-
-
 
 
     //Inverse kinematics
@@ -478,13 +395,16 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
 
 //device* device0ptr;
 int raven_joint_torque_command(struct device *device0, struct param_pass *currParams){
-  device0->surgeon_mode=1;
-    //Inverse Cable Coupling
-    invCableCoupling(device0, currParams->runlevel);
+	struct DOF *_joint = NULL;
+	struct mechanism* _mech = NULL;
+	int i=0,j=0;
 
-    //device0ptr = device0;
-    ros::spinOnce();
-    TorqueToDAC(device0);
+
+	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+		_joint->tau_d = ((float)currParams->torque_vals[_joint->type]) / 1000.;
+	}
+
+	TorqueToDAC(device0);
 
     //    gravComp(device0);
 
@@ -628,44 +548,18 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
     struct mechanism* _mech = NULL;
     int i=0,j=0;
 
-    // If we're not in pedal down or init.init then do nothing.
 #ifdef USE_NEW_RUNLEVEL
-    RunLevel rl = RunLevel::get();
-    if (!( rl.isPedalDown() || rl.isInitSublevel(3))) {
+    if (!RunLevel::get().isPedalDown()) {
 #else
-    if (! ( currParams->runlevel == RL_PEDAL_DN ||
-          ( currParams->runlevel == RL_INIT     && currParams->sublevel == SL_AUTO_INIT ))) {
+    if (currParams->runlevel != RL_PEDAL_DN) {
 #endif
-    	controlStart = 0;
-        delay = gTime;
-
-        // Set all joints to zero torque, and mpos_d = mpos
-        _mech = NULL;  _joint = NULL;
-        while (loop_over_joints(device0, _mech, _joint, i,j) )
-        {
-            _joint->mpos_d = _joint->mpos;
-            _joint->tau_d = 0;
-        }
-        return 0;
-    }
-
-    if (gTime - delay < 800)
-        return 0;
-
-    // Set trajectory on all the joints
-    _mech = NULL;  _joint = NULL;
-    while (loop_over_joints(device0, _mech, _joint, i,j) )
-    {
-
-    	// initialize trajectory
-    	if (!controlStart && _joint->type == Z_INS_GREEN) {
-    		start_trajectory(_joint, 0.08, 8);
-    	} else if (!controlStart) {
-    		_joint->jpos_d = _joint->jpos;
-    	}
-    	// Get trajectory update
-    	if (_joint->type == Z_INS_GREEN) {
-    		update_sinusoid_position_trajectory(_joint);
+        set_posd_to_pos(device0);
+        updateMasterRelativeOrigin(device0);
+    } else {
+    	_mech = NULL;  _joint = NULL;
+    	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    		_joint->jpos_d = currParams->jpos_d[_joint->type];
+    		//_joint->jpos_d = _joint->jpos;
     	}
     }
 
@@ -674,19 +568,34 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
 
     // Do PD control on all the joints
     _mech = NULL;  _joint = NULL;
-    while (loop_over_joints(device0, _mech, _joint, i,j) )
-    {
-        // Do PD control
-        mpos_PD_control(_joint);
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	static bool printed_warning = false;
+    	if (_joint->type == GRASP2_GOLD) {
+    		if (!printed_warning) {
+    			log_err("************DISABLING GRASP2***************");
+    			printed_warning = true;
+    		}
+    		_joint->mpos_d = _joint->mpos;
+    	}
 
-//        if (device0->mech[i].type == GOLD_ARM) {
-//            _joint->tau_d=0;
-//        }
-    }
+#ifdef USE_NEW_RUNLEVEL
+    	if (!RunLevel::get().isPedalDown() || disable_arm_id[armIdFromMechType(_mech->type)]) {
+#else
+		if (currParams->runlevel != RL_PEDAL_DN || disable_arm_id[armIdFromMechType(_mech->type)]) {
+#endif
+			_joint->tau_d=0;
+		} else {
+			mpos_PD_control(_joint,!controlStart);
+		}
+	}
 
     TorqueToDAC(device0);
 
-    controlStart = 1;
+    if (RunLevel::get().isPedalDown()) {
+    	controlStart = 1;
+    } else {
+    	controlStart = 0;
+    }
     return 0;
 }
 

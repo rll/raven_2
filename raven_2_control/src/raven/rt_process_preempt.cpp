@@ -429,8 +429,8 @@ static void *rt_process(void* )
 
         updateAtmelInputs(device0, currParams.runlevel);
         //Get state updates from master
-        if ( checkLocalUpdates() == TRUE)
-            updateDeviceState(&currParams, getRcvdParams(&rcvdParams), &device0);
+        if ( getRcvdParams(&rcvdParams))
+            updateDeviceState(&currParams, &rcvdParams, &device0);
         else
             rcvdParams.runlevel = currParams.runlevel;
         t_info.mark_update_state_end();

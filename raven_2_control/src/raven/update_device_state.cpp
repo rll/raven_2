@@ -32,7 +32,7 @@ t_controlmode newRobotControlMode = homing_mode;
  */
 int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdParams, struct device *device0)
 {
-    for (int i = 0; i < NUM_MECH; i++)
+	for (int i = 0; i < NUM_MECH; i++)
     {
         currParams->xd[i].x = rcvdParams->xd[i].x;
         currParams->xd[i].y = rcvdParams->xd[i].y;
@@ -41,12 +41,22 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
         currParams->rd[i].pitch = rcvdParams->rd[i].pitch * WRIST_SCALE_FACTOR;
         currParams->rd[i].roll  = rcvdParams->rd[i].roll;
         currParams->rd[i].grasp = rcvdParams->rd[i].grasp;
+        for (int j=0; j < MAX_DOF_PER_MECH; j++) {
+        	currParams->jpos_d[i*MAX_DOF_PER_MECH + j] = rcvdParams->jpos_d[i*MAX_DOF_PER_MECH + j];
+        }
+        for (int j=0; j < MAX_DOF_PER_MECH; j++) {
+        	currParams->jvel_d[i*MAX_DOF_PER_MECH + j] = rcvdParams->jvel_d[i*MAX_DOF_PER_MECH + j];
+        }
+        for (int j=0; j < MAX_DOF_PER_MECH; j++) {
+        	currParams->torque_vals[i*MAX_DOF_PER_MECH + j] = rcvdParams->torque_vals[i*MAX_DOF_PER_MECH + j];
+        }
     }
 
     /*
     for (int i = 0; i < NUM_MECH; i++) {
     	for (int j=0; j < MAX_DOF_PER_MECH; j++) {
-    		device0->mech[i].joint[j].jvel_d = 0;
+    		//device0->mech[i].joint[j].jvel_d = 0;
+    		device0->mech[i].joint[j].jpos_d = rcvdParams->jpos_d[i*MAX_DOF_PER_MECH + j];
     	}
     }
     */

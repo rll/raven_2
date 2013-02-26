@@ -18,7 +18,7 @@ ARMS = ['L','R'] #lr = ['L','R']
 ACTIVE_ARMS = [True for arm in ARMS]
 
 BASE_FRAME = '/0_link'
-END_EFFECTOR_FRAME = 'tool_' + ARMS[0]
+END_EFFECTOR_FRAME = 'tool_' + ARMS[1]
 
 RAVEN_STATE_TOPIC = "raven_state"
 RAVEN_ARRAY_STATE_TOPIC = RAVEN_STATE_TOPIC + "/array"
@@ -33,8 +33,11 @@ TOOL_POSE_ARM_TOPIC = TOOL_POSE_TOPIC + "/%s";
 
 class TrajectoryRecorder:
 	
-	def __init__(self,listener,use_array_state=False,use_pose_arrays=False,service=True):
-		self.listener = listener
+	def __init__(self,dir,prefix,listener=None,use_array_state=False,use_pose_arrays=False,service=True):
+		if listener:
+			self.listener = listener
+		else:
+			self.listener = tf.TransformListener()
 		rospy.loginfo("waiting for transform from %s to %s",BASE_FRAME, END_EFFECTOR_FRAME)
 		tries = 0
 		while not rospy.is_shutdown():
@@ -48,13 +51,15 @@ class TrajectoryRecorder:
 		rospy.loginfo("got it!")
 		
 		self.bag = None
+		self.pkl = None
 		self.active = False
-		self.dir = ''
-		self.default_fileprefix = "traj"
+		self.dir = dir
+		self.default_fileprefix = prefix
 		self.current_fileprefix = None
 		
 		self.raven_state = None
-		self.raven_state_sub = rospy.Subscriber(RAVEN_STATE_TOPIC,RavenState,self.raven_state_callback)
+		if not use_array_state:
+			self.raven_state_sub = rospy.Subscriber(RAVEN_STATE_TOPIC,RavenState,self.raven_state_callback)
 		
 		self.raven_array_state = None
 		if use_array_state:
@@ -94,6 +99,9 @@ class TrajectoryRecorder:
 		
 		if service:
 			self.service = rospy.Service("record_trajectory",RecordTrajectory,self.service_callback)
+		
+		rospy.loginfo('Save directory is %s',self.dir)
+		rospy.loginfo('File prefix is %s',self.default_fileprefix)
 
 		rospy.loginfo("let's do this!")
 	
@@ -101,7 +109,8 @@ class TrajectoryRecorder:
 		if not prefix:
 			prefix = self.default_fileprefix
 		self.current_fileprefix = prefix
-		return os.path.join(self.dir,prefix + "_" + time.strftime("%Y_%m_%d_T%H_%M_%S") + ".bag")
+		filename = os.path.join(self.dir,prefix + "_" + time.strftime("%Y_%m_%d_T%H_%M_%S"))
+		return filename + ".bag"
 
 	def service_callback(self,req):
 		try:
@@ -196,8 +205,8 @@ class TrajectoryRecorder:
 		
 		self.cmd_pose_trajectory.commands[ind].arms[armid].active = True
 		tool_cmd = ToolCommand()
-		tool_cmd.relative = False
-		tool_cmd.tool_pose = msg.pose
+		tool_cmd.pose_option = ToolCommand.POSE_ABSOLUTE
+		tool_cmd.pose = msg.pose
 		tool_cmd.grasp_option = ToolCommand.GRASP_OFF
 		self.cmd_pose_trajectory.commands[ind].arms[armid].tool_command = tool_cmd
 	
@@ -256,11 +265,12 @@ class TrajectoryRecorder:
 
 if __name__ == "__main__":
 	rospy.init_node("raven_2_trajectory_recorder",anonymous=True)
-	listener = tf.TransformListener()
+	
 	
 	parser = OptionParser()
 	
 	parser.add_option('-d','--dir',help='Directory to save to')
+	parser.add_option('-p','--save-in-package',help='Save to raven_2_trajectory/trajectories',action='store_true',default=False)
 	
 	parser.add_option('-a','--use-arrays',help='Use array state and pose arrays',action='store_true',default=False)
 	parser.add_option('--array-state',action='store_true',default=False)
@@ -270,16 +280,23 @@ if __name__ == "__main__":
 	
 	(options,args) = parser.parse_args(rospy.myargv())
 	
-	tr = TrajectoryRecorder(listener, service= not options.now,
+	save_dir = ''
+	if options.dir:
+		save_dir = options.dir
+	elif options.save_in_package:
+		save_dir = roslib.packages.get_pkg_subdir('raven_2_trajectory','trajectories')
+	
+	prefix = 'raven_traj'
+	if len(args) > 1:
+		prefix = args[-1]
+	
+	listener = tf.TransformListener()
+	
+	tr = TrajectoryRecorder(save_dir,prefix,
+						listener = listener,
+						service = not options.now,
 						use_array_state = options.array_state or options.use_arrays,
 						use_pose_arrays = options.pose_arrays or options.use_arrays)
-	
-	if options.dir:
-		tr.dir = options.dir
-
-	if len(args) > 1:
-		tr.default_fileprefix += args[-1]
-
 	if options.now:
 		req = RecordTrajectoryRequest(True,False,"")
 		tr.service_callback(req)

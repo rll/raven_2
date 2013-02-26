@@ -13,6 +13,7 @@
 #include <tf/transform_listener.h>
 #include <tf/transform_datatypes.h>
 #include <iostream>
+#include <map>
 
 #include <raven/state/runlevel.h>
 #include <raven/state/device.h>
@@ -61,6 +62,8 @@ static const int PRINT_EVERY_PEDAL_DOWN = 1000;
 static int PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
 
 struct robot_device* device0ptr;
+
+static std::map<std::string,std::map<int,raven_2_msgs::JointCommand> > joint_commands;
 
 using namespace raven_2_control;
 // Global publisher for raven data
@@ -206,7 +209,6 @@ std::string rosArmName(int armId) {
 }
 
 void processRavenCmd(const raven_2_msgs::RavenCommand& cmd);
-void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params);
 
 void cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
 	if (!checkMasterMode(RAVEN_COMMAND_TOPIC)) { return; }
@@ -237,6 +239,9 @@ void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId)
 	processRavenCmd(cmd);
 }
 
+bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params);
+bool processJointControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params);
+
 void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 	raven_2_msgs::RavenCommand cmd = cmd1;
     if (cmd.controller == raven_2_msgs::Constants::CONTROLLER_NONE) {
@@ -255,8 +260,16 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 
 	//printf("cmd callback!\n");
 
+	joint_commands.clear();
+	for (size_t i=0;i<cmd.arms.size();i++) {
+		for (size_t j=0;j<cmd.arms[i].joint_commands.size();j++) {
+			raven_2_msgs::JointCommand jCmd = cmd.arms[i].joint_commands[j];
+			joint_commands[cmd.arm_names[i]][cmd.arms[i].joint_types[j]] = jCmd;
+		}
+	}
+
 	param_pass params;
-	getRcvdParams(&params);
+	peekRcvdParams(&params);
 
 	if (!cmd.pedal_down) {
 		if (_localio_counter % PRINT_EVERY == 0) { printf("inactive!\n"); }
@@ -265,36 +278,46 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 		params.surgeon_mode = SURGEON_ENGAGED;
 	}
 
-	//RunLevel::setPedal(cmd.pedal_down);
-	for (size_t i=0;i<cmd.arms.size();i++) {
-#ifdef USE_NEW_DEVICE
-		Arm::IdType armId = Device::getArmIdFromName(cmd.arm_names[i]);
-#else
-		int armId = armIdFromName(cmd.arm_names[i]);
-#endif
-		RunLevel::setArmActive(armId,cmd.arms[i].active);
+	bool write = false;
+
+	switch (cmd.controller) {
+	case raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR:
+	case raven_2_msgs::Constants::CONTROLLER_CARTESIAN_SPACE:
+		write = processEndEffectorControl(cmd,params);
+		break;
+	case raven_2_msgs::Constants::CONTROLLER_JOINT_POSITION:
+	case raven_2_msgs::Constants::CONTROLLER_JOINT_VELOCITY:
+	case raven_2_msgs::Constants::CONTROLLER_JOINT_TORQUE:
+		write = processJointControl(cmd,params);
+		break;
+	default:
+		log_err("Unknown control mode %s",controlModeToString((t_controlmode) cmd.controller).c_str());
+		break;
 	}
 
-	if (cmd.pedal_down) {
-		switch (cmd.controller) {
-		case raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR:
-		case raven_2_msgs::Constants::CONTROLLER_CARTESIAN_SPACE:
-			processCartesianSpaceControl(cmd,params);
-			break;
-		default:
-			log_err("Unknown control mode %s",controlModeToString((t_controlmode) cmd.controller).c_str());
-			break;
+	if (write) {
+
+		if (cmd.pedal_down) {
+			writeUpdate(&params);
+		}
+
+		//RunLevel::setPedal(cmd.pedal_down);
+		for (size_t i=0;i<cmd.arms.size();i++) {
+#ifdef USE_NEW_DEVICE
+			Arm::IdType armId = Device::getArmIdFromName(cmd.arm_names[i]);
+#else
+			int armId = armIdFromName(cmd.arm_names[i]);
+#endif
+			RunLevel::setArmActive(armId,cmd.arms[i].active);
 		}
 	}
-	//isUpdated = TRUE;
-	writeUpdate(&params);
 }
 
-void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params) {
+bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params) {
 	static ros::Time last_call(0);
 
     ros::Time now = ros::Time::now();
-    if (last_call.toSec() == 0) { last_call = now; return; }
+    if (last_call.toSec() == 0) { last_call = now; return false; }
     ros::Duration since_last_call = (now-last_call);
     last_call = now;
 
@@ -457,12 +480,156 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 
 
-		for (int j=0;j<3;j++) {
-			for (int k=0;k<3;k++) {
-				params.rd[mech_ind].R[j][k] = rot_mx_temp[j][k];
+		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+			for (int j=0;j<3;j++) {
+				for (int k=0;k<3;k++) {
+					params.rd[mech_ind].R[j][k] = rot_mx_temp[j][k];
+				}
 			}
 		}
+
+		if (params.rd[mech_ind].R[0][0] != params.rd[mech_ind].R[0][0]) {
+			printf("Input matrix is nan!\n");
+			std::cout << armCmd.tool_command << std::endl;
+			for (int i=0;i<3;i++) {
+				for (int j=0;j<3;j++) {
+					printf("%.4f ",tool_pose_raw.getBasis()[i][j]);
+				}
+				printf("\n");
+			}
+			for (int i=0;i<3;i++) {
+				printf("%.4f ",tool_pose_raw.getOrigin()[i]);
+			}
+			printf("\n");
+			for (int i=0;i<3;i++) {
+				for (int j=0;j<3;j++) {
+					printf("%.4f ",tool_pose.getBasis()[i][j]);
+				}
+				printf("\n");
+			}
+			for (int i=0;i<3;i++) {
+				printf("%.4f ",tool_pose.getOrigin()[i]);
+			}
+			printf("\n");
+			for (int i=0;i<3;i++) {
+				for (int j=0;j<3;j++) {
+
+				}
+			}
+			for (int i=0;i<3;i++) {
+				for (int j=0;j<3;j++) {
+
+				}
+			}
+			for (int i=0;i<4;i++) {
+				printf("%.4f ",rot[i]);
+			}
+			printf("\n");
+		}
 	}
+
+	return true;
+}
+
+bool processJointControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params) {
+	static ros::Time last_call(0);
+
+	ros::Time now = ros::Time::now();
+	if (last_call.toSec() == 0) { last_call = now; return false; }
+	ros::Duration since_last_call = (now-last_call);
+	last_call = now;
+
+	float max_interval = 0.5;
+	if (since_last_call.toSec() > max_interval) {
+		since_last_call = ros::Duration(max_interval);
+	}
+
+	for (int mech_ind=0;mech_ind<NUM_MECH;mech_ind++) {
+		int arm_serial = USBBoards.boards[mech_ind];
+		int arm_id = armIdFromSerial(arm_serial);
+
+		raven_2_msgs::ArmCommand armCmd;
+		bool found = false;
+		for (size_t i=0;i<cmd.arm_names.size();i++) {
+			if (cmd.arm_names.at(i) == armNameFromId(arm_id)) {
+				armCmd = cmd.arms.at(i);
+				found = true;
+				break;
+			}
+		}
+		if (!found || !armCmd.active) {
+			continue;
+		}
+
+		int yaw_pos_ind = -1;
+		int grasp_pos_ind = -1;
+
+		for (size_t i=0;i<armCmd.joint_types.size();i++) {
+			uint16_t joint_type = armCmd.joint_types[i];
+			uint8_t cmd_type = armCmd.joint_commands[i].command_type;
+
+			int joint_ind = combinedJointIndex(arm_id,joint_type);
+
+			if (joint_type == raven_2_msgs::Constants::JOINT_TYPE_YAW) {
+				if (cmd_type == raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION) {
+					yaw_pos_ind = i;
+				}
+				continue;
+			}
+			if (joint_type == raven_2_msgs::Constants::JOINT_TYPE_GRASP) {
+				if (cmd_type == raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION) {
+					grasp_pos_ind = i;
+				}
+				continue;
+			}
+
+			float cmd_value = armCmd.joint_commands[i].value;
+
+			switch (cmd_type) {
+			case raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION:
+				params.jpos_d[joint_ind] = cmd_value;
+				break;
+			case raven_2_msgs::JointCommand::COMMAND_TYPE_VELOCITY:
+				params.jvel_d[joint_ind] = cmd_value;
+				break;
+			case raven_2_msgs::JointCommand::COMMAND_TYPE_TORQUE:
+				params.torque_vals[joint_ind] = 1000*cmd_value;
+				break;
+			default:
+				continue;
+			}
+		}
+
+		const int graspmax = (M_PI/2 * 1000);
+		const int graspmin = (-20.0 * 1000.0 DEG2RAD);
+		if (yaw_pos_ind >= 0 || grasp_pos_ind >= 0) {
+
+			float yaw_cmd;
+			if (yaw_pos_ind >= 0) {
+				yaw_cmd = armCmd.joint_commands[yaw_pos_ind].value;
+			} else {
+				yaw_cmd = THY_MECH_FROM_FINGERS(arm_id,device0ptr->mech[mech_ind].joint[GRASP1].jpos,device0ptr->mech[mech_ind].joint[GRASP2].jpos);
+			}
+
+			int grasp_cmd;
+			if (grasp_pos_ind >= 0) {
+				grasp_cmd = 1000 * armCmd.joint_commands[grasp_pos_ind].value;
+			} else {
+				grasp_cmd = device0ptr->mech[mech_ind].ori.grasp;
+			}
+
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				params.rd[mech_ind].grasp = saturate(grasp_cmd,graspmin,graspmax);
+			} else {
+				params.rd[mech_ind].grasp = saturate(grasp_cmd,-graspmax,-graspmin);
+			}
+
+			params.jpos_d[combinedJointIndex(arm_id,GRASP1)] = FINGER1_FROM_THY_AND_GRASP_MECH(arm_id,yaw_cmd,grasp_cmd);
+			params.jpos_d[combinedJointIndex(arm_id,GRASP2)] = FINGER2_FROM_THY_AND_GRASP_MECH(arm_id,yaw_cmd,grasp_cmd);
+		}
+	}
+
+	return true;
 }
 
 void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_msg) {
@@ -495,7 +662,7 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 	traj.control_mode = controlmode;
 
 	param_pass params;
-	getRcvdParams(&params);
+	peekRcvdParams(&params);
 	params.surgeon_mode = SURGEON_ENGAGED;
 	for (size_t i=0;i<traj_msg.commands.size();i++) {
 		param_pass_trajectory_pt pt;
@@ -514,7 +681,7 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 		switch (cmd.controller) {
 		case raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR:
 		case raven_2_msgs::Constants::CONTROLLER_CARTESIAN_SPACE:
-			processCartesianSpaceControl(cmd,params);
+			processEndEffectorControl(cmd,params);
 			break;
 		default:
 			log_err("Unknown control mode for trajectory %s",controlModeToString((t_controlmode) cmd.controller).c_str());
@@ -591,10 +758,11 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		publish_tool_pose(device0);
 	}
 
-	publish_ravenstate_old(device0,runlevel,sublevel,since_last_pub);
+	//publish_ravenstate_old(device0,runlevel,sublevel,since_last_pub);
 
 	//raven_state
 
+	raven_state.header.seq = LoopNumber::getMain();
 #ifdef USE_NEW_DEVICE
 	raven_state.header.stamp = dev->timestamp();
 #else
@@ -649,8 +817,8 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		case TOOL_GRASPER_8MM: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_GRASPER_8MM; break;
 		}
 
-		arm_state.tool_pose = toRos(_mech->pos,_mech->ori,transform);
-		arm_state.tool_pose_desired = toRos(_mech->pos_d,_mech->ori_d,transform);
+		arm_state.tool.pose = toRos(_mech->pos,_mech->ori,transform);
+		arm_state.tool_set_point.pose = toRos(_mech->pos_d,_mech->ori_d,transform);
 
 #ifdef USE_NEW_DEVICE
 		{
@@ -684,8 +852,8 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		}
 #endif
 
-		arm_state.grasp = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori.grasp);
-		arm_state.grasp_desired = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori_d.grasp);
+		arm_state.tool.grasp = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori.grasp);
+		arm_state.tool_set_point.grasp = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori_d.grasp);
 
 		_joint = NULL;
 		int grasp1_index=-1;
@@ -731,8 +899,18 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			joint_state.integrated_position_error = _joint->perror_int;
 
 			raven_2_msgs::JointCommand joint_cmd;
-			joint_cmd.command_type = raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION;
-			joint_cmd.value = _joint->jpos_d;
+#ifdef USE_NEW_RUNLEVEL
+			if (currRunlevel.isPedalDown())
+#else
+			if (runlevel == RL_PEDAL_DN)
+#endif
+			{
+					joint_cmd = joint_commands[arm_state.name][joint_state.type];
+			} else {
+				joint_commands.clear();
+			}
+			//joint_cmd.command_type = raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION;
+			//joint_cmd.value = _joint->jpos_d;
 			/*
 	    		joint_cmd.position = _joint->jpos;
 	    		joint_cmd.velocity = _joint->jvel;
@@ -744,6 +922,11 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			 */
 
 			joint_state.command = joint_cmd;
+
+			joint_state.set_point.position = _joint->jpos_d;
+			joint_state.set_point.velocity = _joint->jvel_d;
+			joint_state.set_point.motor_position = _joint->mpos_d;
+			joint_state.set_point.motor_velocity = _joint->mvel_d;
 
 			arm_state.joints.push_back(joint_state);
 		}
@@ -774,7 +957,21 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		yaw_state.position = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].jpos,_mech->joint[grasp2_index].jpos);
 		yaw_state.velocity = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].jvel,_mech->joint[grasp2_index].jvel);
 
+		// "Motors"
+		yaw_state.motor_position = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mpos,_mech->joint[grasp2_index].mpos);
+		yaw_state.motor_velocity = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mvel,_mech->joint[grasp2_index].mvel);
+
+		yaw_state.set_point.position = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].jpos_d,_mech->joint[grasp2_index].jpos_d);
+		yaw_state.set_point.velocity = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].jvel_d,_mech->joint[grasp2_index].jvel_d);
+
+		yaw_state.set_point.motor_position = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mpos_d,_mech->joint[grasp2_index].mpos_d);
+		yaw_state.set_point.motor_velocity = THY_MECH_FROM_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mvel_d,_mech->joint[grasp2_index].mvel_d);
+
 		grasp_state.position = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori.grasp);
+		grasp_state.set_point.position = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori_d.grasp);
+
+		grasp_state.motor_position = rosGraspFromMech(armIdFromMechType(_mech->type),MECH_GRASP_FROM_MECH_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mpos,_mech->joint[grasp2_index].mpos));
+		grasp_state.set_point.motor_position = rosGraspFromMech(armIdFromMechType(_mech->type),MECH_GRASP_FROM_MECH_FINGERS(armIdFromMechType(_mech->type),_mech->joint[grasp1_index].mpos_d,_mech->joint[grasp2_index].mpos_d));
 
 		arm_state.joints.push_back(yaw_state);
 		arm_state.joints.push_back(grasp_state);
@@ -798,10 +995,10 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		array_state.arm_types.push_back(arm.type);
 		array_state.base_poses.push_back(arm.base_pose);
 		array_state.tool_types.push_back(arm.tool_type);
-		array_state.tool_poses.push_back(arm.tool_pose);
-		array_state.tool_poses_desired.push_back(arm.tool_pose_desired);
-		array_state.grasps.push_back(arm.grasp);
-		array_state.grasps_desired.push_back(arm.grasp_desired);
+		array_state.tool.poses.push_back(arm.tool.pose);
+		array_state.tool_set_points.poses.push_back(arm.tool_set_point.pose);
+		array_state.tool.grasps.push_back(arm.tool.grasp);
+		array_state.tool_set_points.grasps.push_back(arm.tool_set_point.grasp);
 
 		for (int j=0;j<(int)arm.joints.size();j++) {
 			raven_2_msgs::JointState joint = arm.joints[j];
@@ -820,6 +1017,11 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			array_state.joint_command_types.push_back(joint.command.command_type);
 			array_state.joint_commands.push_back(joint.command.value);
 			array_state.integrated_position_errors.push_back(joint.integrated_position_error);
+
+			array_state.set_points.joint_positions.push_back(joint.set_point.position);
+			array_state.set_points.joint_velocities.push_back(joint.set_point.velocity);
+			array_state.set_points.motor_positions.push_back(joint.set_point.motor_position);
+			array_state.set_points.motor_velocities.push_back(joint.set_point.motor_velocity);
 		}
 
 		array_state.input_pins.push_back(arm.input_pins);

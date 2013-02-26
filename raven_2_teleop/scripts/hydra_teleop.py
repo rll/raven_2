@@ -331,7 +331,7 @@ class HydraTeleop:
 		self.stop_recording_last = msg.paddles[0].buttons[STOP_RECORD_BUTTON[0]] or msg.paddles[1].buttons[STOP_RECORD_BUTTON[1]]
 
 if __name__ == "__main__":
-	rospy.init_node("teleop")
+	rospy.init_node("teleop",anonymous=True)
 	
 	parser = OptionParser()
 	

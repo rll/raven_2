@@ -5,11 +5,8 @@ geometry_msgs/Pose base_pose
 
 uint8 tool_type #see Constants.msg for values
 
-geometry_msgs/Pose tool_pose
-geometry_msgs/Pose tool_pose_desired
-
-float32 grasp
-float32 grasp_desired
+ToolState tool
+ToolSetPoint tool_set_point
 
 JointState[] joints
 

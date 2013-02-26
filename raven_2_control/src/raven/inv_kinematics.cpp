@@ -194,6 +194,15 @@ int invMechKinNew(struct mechanism *mech,bool test) {
 				actualPoint.x(),actualPoint.y(),actualPoint.z(),
 				actualPoseAngles.yaw_deg,actualPoseAngles.pitch_deg,actualPoseAngles.roll_deg,
 				grasp);
+		if (actualPoseAngles.yaw_deg != actualPoseAngles.yaw_deg) {
+			printf("ori_d tb nan!\n");
+			for (int i=0;i<3;i++) {
+				for (int j=0;j<3;j++) {
+					printf("%.4f ",ori_d->R[i][j]);
+				}
+				printf("\n");
+			}
+		}
 
 		btVector3 point = actualPose_fk.getOrigin();
 		tb_angles angles = tb_angles(actualPose_fk.getBasis());

@@ -54,7 +54,7 @@ int overdriveDetect(struct device *device0,u_08 runlevel)
             {
                 //Clip current to max_torque
                 if (gTime %100 == 0 || abs(_joint->current_cmd) > MAX_INST_DAC)
-                    err_msg("Joint %s is current clipped high (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max, _joint->current_cmd);
+                    log_warn("Joint %s is current clipped high (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max, _joint->current_cmd);
                 _joint->current_cmd = _dac_max;
             }
 
@@ -62,7 +62,7 @@ int overdriveDetect(struct device *device0,u_08 runlevel)
             {
                 //Clip current to -1*max_torque
                 if (gTime %100 == 0 || abs(_joint->current_cmd) > MAX_INST_DAC)
-                    err_msg("Joint %s is current clipped low (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max*-1,  _joint->current_cmd);
+                    log_warn("Joint %s is current clipped low (%d) at DAC:%d\n", jointIndexAndArmName(_joint->type).c_str(), _dac_max*-1,  _joint->current_cmd);
                 _joint->current_cmd = _dac_max*-1;
             }
         }

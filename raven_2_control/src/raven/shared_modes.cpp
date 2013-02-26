@@ -59,10 +59,12 @@ bool checkMasterMode(const MasterMode& mode) {
 	}
 	bool succeeded = false;
 	boost::mutex::scoped_lock _lock(masterModeMutex);
-	if (masterMode == mode || masterMode.empty())
-	{
+	if (masterMode == mode) {
+		succeeded = true;
+	} else if (masterMode.empty()) {
 		masterMode = mode;
 		succeeded = true;
+		log_msg("Entering master mode: %s\n",masterMode.c_str());
 	} else {
 		masterModeConflictSet.insert(mode);
 	}
@@ -129,10 +131,13 @@ bool checkControlMode(t_controlmode mode) {
 	bool succeeded = false;
 	boost::mutex::scoped_lock _lock(controlModeMutex);
 	//change controllers ok if runlevel is pedal up
-	if (controlMode == mode || controlMode == no_control
+	if (controlMode == mode) {
+		succeeded = true;
+	} else if (controlMode == no_control
 			|| (!RunLevel::get().isPedalDown() && !RunLevel::get().isInit())) {
 		controlMode = mode;
 		succeeded = true;
+		log_msg("Entering control mode: %s\n",controlModeToString(mode).c_str());
 	} else {
 		controlModeConflictSet.insert(mode);
 	}

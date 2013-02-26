@@ -62,12 +62,12 @@ gains_green_ki:
 
 max_position:
   shoulder:
-    gold: 10
+    gold: 0
   elbow:
     gold: 0
     green: 5
   insertion:
-    gold: 0.058
+    gold: 0.064
   rotation:
     gold: 160
     green: 60

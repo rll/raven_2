@@ -289,10 +289,6 @@ void teleopIntoDS1(struct u_struct *t)
                 data1.rd[mechnum].R[j][k] = rot_mx_temp[j][k];
     }
 
-//    log_msg("updated d1.xd to: (%d,%d,%d)/(%d,%d,%d)",
-//           data1.xd[0].x, data1.xd[0].y, data1.xd[0].z,
-//           data1.xd[1].x, data1.xd[1].y, data1.xd[1].z);
-
     data1.surgeon_mode = t->surgeon_mode;
 #ifdef USE_NEW_DEVICE
         FOREACH_ARM_ID(armId) {
@@ -308,7 +304,6 @@ void teleopIntoDS1(struct u_struct *t)
 }
 
 void writeUpdate(struct param_pass* data_in) {
-
 	pthread_mutex_lock(&data1Mutex);
 
 	memcpy(&data1, data_in, sizeof(struct param_pass));
@@ -376,17 +371,61 @@ int checkLocalUpdates()
 // Give the latest updated DS1 to the caller.
 // Precondition: d1 is a pointer to allocated memory
 // Postcondition: memory location of d1 contains latest DS1 Data from network/toolkit.
-struct param_pass * getRcvdParams(struct param_pass* d1)
+bool getRcvdParams(struct param_pass* d1)
 {
+	static unsigned long int lastUpdated;
+	static bool everUpdated = false;
+
+	bool wasUpdated = false;
+	if (RunLevel::get().isPedalDown()) {
+		//printf("checking\n");
+	}
 	///TODO: Check performance of trylock / default priority inversion scheme
     if (pthread_mutex_trylock(&data1Mutex)!=0)   //Use trylock since this function is called form rt-thread. return immediately with old values if unable to lock
-        return d1;
-    //pthread_mutex_lock(&data1Mutex); //Priority inversion enabled. Should force completion of other parts and enter into this section.
-    memcpy(d1, &data1, sizeof(struct param_pass));
+        return false;
+
+    if (isUpdated || lastUpdated == 0)
+	{
+		lastUpdated = gTime;
+	}
+#ifdef USE_NEW_RUNLEVEL
+	else if (everUpdated && ((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && RunLevel::getPedal() && !hasTrajectory())
+#else
+	else if (everUpdated && ((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
+#endif
+	{
+		// if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
+		log_msg("Master connection timeout.  surgeon_mode -> up.\n");
+		data1.surgeon_mode = SURGEON_DISENGAGED;
+		RunLevel::setPedalUp();
+		resetMasterMode();
+		lastUpdated = gTime;
+		isUpdated = TRUE;
+	}
+
+    if (isUpdated) {
+		//pthread_mutex_lock(&data1Mutex); //Priority inversion enabled. Should force completion of other parts and enter into this section.
+		memcpy(d1, &data1, sizeof(struct param_pass));
+
+		everUpdated = true;
+
+    }
+
+    wasUpdated = isUpdated;
 
     isUpdated = 0;
     pthread_mutex_unlock(&data1Mutex);
-    return d1;
+    return wasUpdated;
+}
+
+bool peekRcvdParams(struct param_pass* d1) {
+	bool wasUpdated;
+	pthread_mutex_lock(&data1Mutex);
+	memcpy(d1, &data1, sizeof(struct param_pass));
+
+	wasUpdated = isUpdated;
+	pthread_mutex_unlock(&data1Mutex);
+	return wasUpdated;
 }
 
 // Reset writable copy of DS1
@@ -401,6 +440,10 @@ void updateMasterRelativeOrigin(struct device *device0)
     pthread_mutex_lock(&data1Mutex);
     for (int i=0;i<NUM_MECH;i++)
     {
+    	for (int j=0;j<MAX_DOF_PER_MECH;j++) {
+    		int joint_ind = device0->mech[i].joint[j].type;
+    		data1.jpos_d[joint_ind] = device0->mech[i].joint[j].jpos_d;
+    	}
         data1.xd[i].x = device0->mech[i].pos_d.x;
         data1.xd[i].y = device0->mech[i].pos_d.y;
         data1.xd[i].z = device0->mech[i].pos_d.z;
@@ -418,8 +461,8 @@ void updateMasterRelativeOrigin(struct device *device0)
         tmpmx.getRotation(Q_ori[armidx]);
 
     }
-    pthread_mutex_unlock(&data1Mutex);
     isUpdated = TRUE;
+    pthread_mutex_unlock(&data1Mutex);
 
     return;
 }

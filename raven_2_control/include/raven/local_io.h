@@ -29,7 +29,9 @@ void writeUpdate(struct param_pass*);
 int checkLocalUpdates(void);
 
 // Return current parameter-update set
-struct param_pass * getRcvdParams(struct param_pass*);
+bool getRcvdParams(struct param_pass*);
+
+bool peekRcvdParams(struct param_pass*);
 
 void updateMasterRelativeOrigin(struct device *device0);
 
