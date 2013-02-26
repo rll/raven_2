@@ -127,65 +127,65 @@ void teleopIntoDS1(struct u_struct *t)
 	float since_last_call = ((float)(now-last_call)) / 1000.;
 	last_call = now;
 
-	if (false) {
-
-		raven_2_msgs::RavenCommand cmd;
-		cmd.header.stamp = ros::Time::now();
-		cmd.header.frame_id = "/0_link";
-
-		cmd.pedal_down = t->surgeon_mode;
-
-		btVector3 p_raw, p;
-		btQuaternion rot_raw, rot;
-		btMatrix3x3 rot_mx_temp;
-		int mechnum, teleopArmId, armidx, armserial;
-		for (mechnum=0;mechnum < NUM_MECH;mechnum++) {
-			armserial = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_SERIAL : GOLD_ARM_SERIAL;
-			teleopArmId    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_TELEOP_ID : GOLD_ARM_TELEOP_ID;
-			armidx    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_ID : GOLD_ARM_ID;
-
-			if (armidx != GREEN_ARM_ID) {
-				continue;
-			}
-
-			cmd.arm_names.push_back(armNameFromId(armidx));
-
-			raven_2_msgs::ArmCommand armCmd;
-
-			// apply mapping to teleop data
-			p_raw[0] = t->delx[teleopArmId];
-			p_raw[1] = t->dely[teleopArmId];
-			p_raw[2] = t->delz[teleopArmId];
-
-			//set local quaternion from teleop quaternion data
-			rot_raw.setX( t->Qx[teleopArmId] );
-			rot_raw.setY( t->Qy[teleopArmId] );
-			rot_raw.setZ( t->Qz[teleopArmId] );
-			rot_raw.setW( t->Qw[teleopArmId] );
-
-			p = p_raw;
-			rot = rot_raw;
-			fromITP(p, rot, armserial);
-
-			armCmd.active = true;
-			armCmd.tool_command.pose_option = raven_2_msgs::ToolCommand::POSE_POSITION_RELATIVE;
-			armCmd.tool_command.pose.position.x = p.x() / MICRON_PER_M;
-			armCmd.tool_command.pose.position.y = p.y() / MICRON_PER_M;
-			armCmd.tool_command.pose.position.z = p.z() / MICRON_PER_M;
-			armCmd.tool_command.pose.orientation.x = rot.getX();
-			armCmd.tool_command.pose.orientation.y = rot.getY();
-			armCmd.tool_command.pose.orientation.z = rot.getZ();
-			armCmd.tool_command.pose.orientation.w = rot.getW();
-
-			armCmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_INCREMENT_SIGN;
-			armCmd.tool_command.grasp = t->grasp[teleopArmId];
-
-			cmd.arms.push_back(armCmd);
-		}
-
-		cmd_callback(cmd);
-		return;
-	}
+//	if (false) {
+//
+//		raven_2_msgs::RavenCommand cmd;
+//		cmd.header.stamp = ros::Time::now();
+//		cmd.header.frame_id = "/0_link";
+//
+//		cmd.pedal_down = t->surgeon_mode;
+//
+//		btVector3 p_raw, p;
+//		btQuaternion rot_raw, rot;
+//		btMatrix3x3 rot_mx_temp;
+//		int mechnum, teleopArmId, armidx, armserial;
+//		for (mechnum=0;mechnum < NUM_MECH;mechnum++) {
+//			armserial = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_SERIAL : GOLD_ARM_SERIAL;
+//			teleopArmId    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_TELEOP_ID : GOLD_ARM_TELEOP_ID;
+//			armidx    = USBBoards.boards[mechnum]==GREEN_ARM_SERIAL ? GREEN_ARM_ID : GOLD_ARM_ID;
+//
+//			if (armidx != GREEN_ARM_ID) {
+//				continue;
+//			}
+//
+//			cmd.arm_names.push_back(armNameFromId(armidx));
+//
+//			raven_2_msgs::ArmCommand armCmd;
+//
+//			// apply mapping to teleop data
+//			p_raw[0] = t->delx[teleopArmId];
+//			p_raw[1] = t->dely[teleopArmId];
+//			p_raw[2] = t->delz[teleopArmId];
+//
+//			//set local quaternion from teleop quaternion data
+//			rot_raw.setX( t->Qx[teleopArmId] );
+//			rot_raw.setY( t->Qy[teleopArmId] );
+//			rot_raw.setZ( t->Qz[teleopArmId] );
+//			rot_raw.setW( t->Qw[teleopArmId] );
+//
+//			p = p_raw;
+//			rot = rot_raw;
+//			fromITP(p, rot, armserial);
+//
+//			armCmd.active = true;
+//			armCmd.tool_command.pose_option = raven_2_msgs::ToolCommand::POSE_POSITION_RELATIVE;
+//			armCmd.tool_command.pose.position.x = p.x() / MICRON_PER_M;
+//			armCmd.tool_command.pose.position.y = p.y() / MICRON_PER_M;
+//			armCmd.tool_command.pose.position.z = p.z() / MICRON_PER_M;
+//			armCmd.tool_command.pose.orientation.x = rot.getX();
+//			armCmd.tool_command.pose.orientation.y = rot.getY();
+//			armCmd.tool_command.pose.orientation.z = rot.getZ();
+//			armCmd.tool_command.pose.orientation.w = rot.getW();
+//
+//			armCmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_INCREMENT_SIGN;
+//			armCmd.tool_command.grasp = t->grasp[teleopArmId];
+//
+//			cmd.arms.push_back(armCmd);
+//		}
+//
+//		cmd_callback(cmd);
+//		return;
+//	}
 
 	if (!checkMasterMode("network"))
 	{
@@ -294,10 +294,15 @@ void teleopIntoDS1(struct u_struct *t)
 //           data1.xd[1].x, data1.xd[1].y, data1.xd[1].z);
 
     data1.surgeon_mode = t->surgeon_mode;
-    FOREACH_ARM_ID(armId) {
-    	RunLevel::setArmActive(armId,true);
+#ifdef USE_NEW_DEVICE
+        FOREACH_ARM_ID(armId) {
+#else
+	for (std::vector<int>::iterator itr=USBBoards.boards.begin();itr!=USBBoards.boards.end();itr++) {
+		int armId = *itr;
+#endif
+		RunLevel::setArmActive(armId,t->surgeon_mode);
     }
-    //RunLevel::setPedal(t->surgeon_mode);
+
     isUpdated = TRUE;
     pthread_mutex_unlock(&data1Mutex);
 }
@@ -349,10 +354,17 @@ int checkLocalUpdates()
         // if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
         log_msg("Master connection timeout.  surgeon_mode -> up.\n");
         data1.surgeon_mode = SURGEON_DISENGAGED;
+        /*
+#ifdef USE_NEW_DEVICE
         FOREACH_ARM_ID(armId) {
+#else
+        for (std::vector<int>::iterator itr=USBBoards.boards.begin();itr!=USBBoards.boards.end();itr++) {
+        	int armId = *itr;
+#endif
         	RunLevel::setArmActive(armId,true);
         }
-        //RunLevel::setPedal(false);
+        */
+        RunLevel::setPedalUp();
         resetMasterMode();
         lastUpdated = gTime;
         isUpdated = TRUE;

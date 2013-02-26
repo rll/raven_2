@@ -16,6 +16,9 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/tss.hpp>
 
+#include "USB_init.h"
+extern USBStruct USBBoards;
+
 //std::atomic<unsigned int> RunLevel::LOOP_NUMBER(0);
 
 #define USE_RUNLEVEL_MUTEX
@@ -185,15 +188,13 @@ RunLevel::eStop() {
 	boost::recursive_mutex::scoped_lock _l(runlevelMutex);
 	SOFTWARE_ESTOP = true;
 }
-/*
+
 void
-RunLevel::setPedal(bool down) {
-#ifdef USE_RUNLEVEL_MUTEX
+RunLevel::setPedalUp() {
 	boost::recursive_mutex::scoped_lock _l(runlevelMutex);
-#endif
-	RunLevel::PEDAL = down;
+	ARMS_ACTIVE.clear();
 }
-*/
+
 bool
 RunLevel::getPedal() {
 	bool pedal = false;
@@ -212,7 +213,12 @@ void
 RunLevel::setArmActive(int armId,bool active) {
 	boost::recursive_mutex::scoped_lock _l(runlevelMutex);
 	if (armId == Arm::ALL_ARMS) {
-		FOREACH_ARM_ID(armId) {
+#ifdef USE_NEW_DEVICE
+        FOREACH_ARM_ID(armId) {
+#else
+		for (std::vector<int>::iterator itr=USBBoards.boards.begin();itr!=USBBoards.boards.end();itr++) {
+			int armId = *itr;
+#endif
 			RunLevel::ARMS_ACTIVE[armId] = active;
 		}
 	} else {

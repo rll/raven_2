@@ -8,6 +8,8 @@
 #include <raven/state/device.h>
 #include "log.h"
 
+#include <raven/util/timing.h>
+
 #include "defines.h"
 
 #include <boost/foreach.hpp>
@@ -73,7 +75,7 @@ Device::currentTimestamp() {
 	return t;
 }
 
-Device::Device(DeviceType type) : Updateable(), type_(type), timestamp_(0) {
+Device::Device(DeviceType type) : Updateable(false,false), type_(type), timestamp_(0) {
 
 }
 
@@ -163,16 +165,96 @@ Device::internalFinishUpdate(bool updateTimestamp) {
 	ros::Time start = ros::Time::now();
 	BOOST_FOREACH(ArmPtr arm,arms_) {
 		if (DEBUG_OUTPUT_TIMING) {
-			printf("Device@%p::internalFinishUpdate() arm %i %p %p\n",this,arm->id(),arm->controlMotorFilter().get(),arm->stateMotorFilter().get());
+			//printf("Device@%p::internalFinishUpdate() arm %i %p %p\n",this,arm->id(),arm->controlMotorFilter().get(),arm->stateMotorFilter().get());
 		}
 		ros::Time arm1 = ros::Time::now();
 		ros::Time smf1 = arm1;
 		arm->stateMotorFilter()->applyUpdate();
 		ros::Time smf2 = ros::Time::now();
 
+		if (DEBUG_OUTPUT_TIMING) {
+			if ((smf2-smf1) > TempTiming::mf_au) {
+				if (arm->isGold()) {
+					TempTiming::s_nmf_iau_gold = TempTiming::nmf_iau;
+					TempTiming::s_mf_iau_gold = TempTiming::mf_iau;
+
+					TempTiming::s_mf_mu_gold = TempTiming::mf_mu;
+					TempTiming::s_mf_mu_avg_gold = TempTiming::mf_mu_avg;
+
+					TempTiming::s_mf_au_gold = TempTiming::mf_au;
+				} else {
+					TempTiming::s_nmf_iau_green = TempTiming::nmf_iau;
+					TempTiming::s_mf_iau_green = TempTiming::mf_iau;
+
+					TempTiming::s_mf_mu_green = TempTiming::mf_mu;
+					TempTiming::s_mf_mu_avg_green = TempTiming::mf_mu_avg;
+
+					TempTiming::s_mf_au_green = TempTiming::mf_au;
+				}
+			} else {
+				if (arm->isGold()) {
+					TempTiming::s_nmf_iau_gold = ros::Duration(0);
+					TempTiming::s_mf_iau_gold = ros::Duration(0);
+
+					TempTiming::s_mf_mu_gold = ros::Duration(0);
+					TempTiming::s_mf_mu_avg_gold = ros::Duration(0);
+
+					TempTiming::s_mf_au_gold = ros::Duration(0);
+				} else {
+					TempTiming::s_nmf_iau_green = ros::Duration(0);
+					TempTiming::s_mf_iau_green = ros::Duration(0);
+
+					TempTiming::s_mf_mu_green = ros::Duration(0);
+					TempTiming::s_mf_mu_avg_green = ros::Duration(0);
+
+					TempTiming::s_mf_au_green = ros::Duration(0);
+				}
+			}
+		}
+
 		ros::Time cmf1 = smf2;
 		arm->controlMotorFilter()->applyUpdate();
 		ros::Time cmf2 = ros::Time::now();
+
+		if (DEBUG_OUTPUT_TIMING) {
+			if ((cmf2-cmf1) > TempTiming::mf_au) {
+				if (arm->isGold()) {
+					TempTiming::c_nmf_iau_gold = TempTiming::nmf_iau;
+					TempTiming::c_mf_iau_gold = TempTiming::mf_iau;
+
+					TempTiming::c_mf_mu_gold = TempTiming::mf_mu;
+					TempTiming::c_mf_mu_avg_gold = TempTiming::mf_mu_avg;
+
+					TempTiming::c_mf_au_gold = TempTiming::mf_au;
+				} else {
+					TempTiming::c_nmf_iau_green = TempTiming::nmf_iau;
+					TempTiming::c_mf_iau_green = TempTiming::mf_iau;
+
+					TempTiming::c_mf_mu_green = TempTiming::mf_mu;
+					TempTiming::c_mf_mu_avg_green = TempTiming::mf_mu_avg;
+
+					TempTiming::c_mf_au_green = TempTiming::mf_au;
+				}
+			} else {
+				if (arm->isGold()) {
+					TempTiming::c_nmf_iau_gold = ros::Duration(0);
+					TempTiming::c_mf_iau_gold = ros::Duration(0);
+
+					TempTiming::c_mf_mu_gold = ros::Duration(0);
+					TempTiming::c_mf_mu_avg_gold = ros::Duration(0);
+
+					TempTiming::c_mf_au_gold = ros::Duration(0);
+				} else {
+					TempTiming::c_nmf_iau_green = ros::Duration(0);
+					TempTiming::c_mf_iau_green = ros::Duration(0);
+
+					TempTiming::c_mf_mu_green = ros::Duration(0);
+					TempTiming::c_mf_mu_avg_green = ros::Duration(0);
+
+					TempTiming::c_mf_au_green = ros::Duration(0);
+				}
+			}
+		}
 
 		ros::Time hue1 = cmf2;
 		arm->holdUpdateEnd();
@@ -185,15 +267,27 @@ Device::internalFinishUpdate(bool updateTimestamp) {
 		}
 
 		if (DEBUG_OUTPUT_TIMING) {
-			printf("Arm %i:\t%8lli\n",arm->id(),(long long int)(arm2-arm1).toNSec());
-			printf(" smf:\t%8lli\n",(long long int)(smf2-smf1).toNSec());
-			printf(" cmf:\t%8lli\n",(long long int)(cmf2-cmf1).toNSec());
-			printf(" hue:\t%8lli\n",(long long int)(hue2-hue1).toNSec());
+//			printf("Arm %i:\t%8lli\n",arm->id(),(long long int)(arm2-arm1).toNSec());
+//			printf(" smf:\t%8lli\n",(long long int)(smf2-smf1).toNSec());
+//			printf(" cmf:\t%8lli\n",(long long int)(cmf2-cmf1).toNSec());
+//			printf(" hue:\t%8lli\n",(long long int)(hue2-hue1).toNSec());
+			if (arm->isGold()) {
+				TempTiming::arm_gold = arm2-arm1;
+				TempTiming::arm_smf_gold = smf2-smf1;
+				TempTiming::arm_cmf_gold = cmf2-cmf1;
+				TempTiming::arm_hue_gold = hue2-hue1;
+			} else {
+				TempTiming::arm_green = arm2-arm1;
+				TempTiming::arm_smf_green = smf2-smf1;
+				TempTiming::arm_cmf_green = cmf2-cmf1;
+				TempTiming::arm_hue_green = hue2-hue1;
+			}
 		}
 	}
 	ros::Time end = ros::Time::now();
 	if (DEBUG_OUTPUT_TIMING) {
-		printf("Total:\t%8lli\n",(long long int)(end-start).toNSec());
+		//printf("Device@%p::internalFinishUpdate(): %8lli\n",this,(long long int)(end-start).toNSec());
+		TempTiming::dev_ifu = end-start;
 	}
 }
 
@@ -216,11 +310,6 @@ Device::history(int numSteps) {
 	}
 		deviceHistoryMutex.unlock();
 	return hist;
-}
-
-bool
-Device::processNotification(Updateable* sender) {
-	return true;
 }
 
 void

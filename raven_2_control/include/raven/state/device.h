@@ -22,7 +22,7 @@
 
 #define DEVICE_HISTORY_SIZE 10
 
-#define USE_NEW_DEVICE
+//#define USE_NEW_DEVICE
 
 //class Device;
 //typedef boost::shared_ptr<Device> DevicePtr;
@@ -152,8 +152,6 @@ public:
 
 	virtual ~Device();
 
-protected:
-	virtual bool processNotification(Updateable* sender);
 };
 
 

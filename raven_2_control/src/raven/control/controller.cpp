@@ -220,7 +220,11 @@ Controller::setControlOutput(Arm::IdType armId,DevicePtr dev) {
 
 void
 Controller::registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller) {
-	TRACER_ENTER_SCOPE("Controller::registerController(%i,%s,%s)",armId,type.c_str(),typeid(*controller).name());
+	if (controller) {
+		TRACER_ENTER_SCOPE("Controller::registerController(%i,%s,%s)",armId,type.c_str(),typeid(*controller).name());
+	} else {
+		TRACER_ENTER_SCOPE("Controller::registerController(%i,%s,null)",armId,type.c_str());
+	}
 	boost::mutex::scoped_lock(controllerMutex);
 	if (type.empty()) {
 		if (controller) {

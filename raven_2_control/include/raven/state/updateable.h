@@ -15,6 +15,7 @@
 #include <boost/utility.hpp>
 #include <boost/foreach.hpp>
 #include <stdio.h>
+#include <stdexcept>
 
 #include "log.h"
 
@@ -23,21 +24,29 @@ class Updateable;
 typedef boost::shared_ptr<Updateable> UpdateablePtr;
 typedef boost::weak_ptr<Updateable> UpdateableWeakPtr;
 typedef std::vector<UpdateableWeakPtr> UpdateableList;
-//typedef std::list<UpdateableWeakPtr> UpdateableList;
 
 class Updateable {
 public:
-	Updateable() : immediateUpdate_(true), timestamp_(0), /*notifyList_(),*/ holdUpdates_(false), heldUpdateTimestamp_(0) {}
-	Updateable(const Updateable& other) : immediateUpdate_(other.immediateUpdate_), timestamp_(other.timestamp_),
-			holdUpdates_(other.holdUpdates_), heldUpdateTimestamp_(other.heldUpdateTimestamp_) {}
+	Updateable(bool useInternalUpdate,bool useProcessNotification) : timestamp_(0),
+			useInternalUpdate_(useInternalUpdate), useProcessNotification_(useProcessNotification),
+			immediateUpdate_(true), holdUpdates_(false), heldUpdateTimestamp_(0) {}
+	Updateable(const Updateable& other) : timestamp_(other.timestamp_),
+			useInternalUpdate_(other.useInternalUpdate_), useProcessNotification_(other.useProcessNotification_),
+			immediateUpdate_(other.immediateUpdate_), holdUpdates_(other.holdUpdates_), heldUpdateTimestamp_(other.heldUpdateTimestamp_) {
+		//TODO: if holding updates, throw exception?
+	}
 
 	inline UpdateablePtr parent() const { return parent_; }
 
 	virtual ros::Time timestamp() const { return timestamp_; }
 	inline ros::Time getUpdateableTimestamp() const { return timestamp_; }
 
-	virtual bool update() {
+	inline bool update() {
 		TRACER_ENTER_SCOPE_OF(this,"update()");
+		bool ret = true;
+		if (ROS_UNLIKELY(useInternalUpdate_)) {
+			ret = internalUpdate();
+		}
 		if (heldUpdateTimestamp_ != ros::Time(0)) {
 			TRACER_PRINT("held update timestamp");
 			setUpdateableTimestamp(heldUpdateTimestamp_);
@@ -45,10 +54,10 @@ public:
 		if (parent_) {
 			parent_->notify(this);
 		}
-		return true;
+		return ret;
 	}
 
-	virtual void updateTimestamp(ros::Time t = ros::Time::now()) {
+	/*virtual*/ inline void updateTimestamp(ros::Time t = ros::Time::now()) {
 		timestamp_ = t;
 		if (isImmediateUpdate()) {
 			update();
@@ -78,16 +87,21 @@ public:
 		return changed;
 	}
 protected:
-	bool immediateUpdate_;
 	ros::Time timestamp_;
 	UpdateablePtr parent_;
+	bool useInternalUpdate_;
+	bool useProcessNotification_;
+	bool immediateUpdate_;
 
 	bool holdUpdates_;
 	ros::Time heldUpdateTimestamp_;
-
 	inline void setUpdateableTimestamp(ros::Time stamp) { timestamp_ = stamp; }
 
-	virtual void notify(Updateable* sender) {
+	virtual bool internalUpdate() {
+		throw std::logic_error("Updateable::internalUpdate() not overridden!");
+	}
+
+	/*virtual*/ inline void notify(Updateable* sender) {
 		TRACER_ENTER_SCOPE_OF(this,"notify() from %s@%p",typeid(*sender).name(),sender);
 		if (sender->getUpdateableTimestamp() <= getUpdateableTimestamp()) {
 			return;
@@ -97,7 +111,10 @@ protected:
 			heldUpdateTimestamp_ = sender->getUpdateableTimestamp();
 			return;
 		} else {
-			bool doUpdate = processNotification(sender);
+			bool doUpdate = true;
+			if (ROS_UNLIKELY(useProcessNotification_)) {
+				doUpdate = processNotification(sender);
+			}
 			if (doUpdate) {
 				setUpdateableTimestamp(sender->getUpdateableTimestamp());
 				update();
@@ -105,7 +122,9 @@ protected:
 		}
 	}
 
-	virtual bool processNotification(Updateable* sender) = 0;
+	virtual bool processNotification(Updateable* sender) {
+		throw std::logic_error("Updateable::processNotification() not overridden!");
+	};
 };
 
 #endif /* UPDATEABLE_H_ */

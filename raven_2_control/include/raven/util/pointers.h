@@ -14,7 +14,7 @@
 #define POINTER_TYPES(Type) class Type; \
 	typedef boost::shared_ptr<Type> Type##Ptr; \
 	typedef boost::shared_ptr<const Type> Type##ConstPtr; \
-	typedef boost::weak_ptr<Type> Type##WeakPtr; \
+	/*typedef boost::weak_ptr<Type> Type##WeakPtr;*/ \
 	template<class U> \
 	inline Type##Ptr cast(boost::shared_ptr<U> const & r) { return boost::dynamic_pointer_cast<Type,U>(r); } \
 	template<class U> \

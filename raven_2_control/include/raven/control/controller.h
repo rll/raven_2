@@ -25,6 +25,15 @@
 
 #define CONTROL_OUTPUT_HISTORY_SIZE 50
 
+#ifdef USE_NEW_DEVICE
+//#define USE_NEW_CONTROLLER
+
+#ifdef USE_NEW_CONTROLLER
+#define TEST_NEW_CONTROLLER
+#endif
+
+#endif
+
 POINTER_TYPES(ControllerState)
 
 class ControllerState {

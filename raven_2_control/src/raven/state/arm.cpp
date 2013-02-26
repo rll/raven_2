@@ -16,7 +16,7 @@
 const Arm::IdType Arm::ALL_ARMS = -1;
 
 static int numA = 0;
-Arm::Arm(int id, Type type, const std::string& name, ToolType toolType) : Updateable(), id_(id), type_(type), name_(name), enabled_(true), toolType_(toolType),
+Arm::Arm(int id, Type type, const std::string& name, ToolType toolType) : Updateable(true,true), id_(id), type_(type), name_(name), enabled_(true), toolType_(toolType),
 	basePose_(btTransform::getIdentity()), cableCoupler_(), kinematicSolver_(new KinematicSolver(this)) {
 	//printf("+A  %i %p\n",++numA,this);
 }
@@ -205,8 +205,8 @@ Arm::updateMotorsFromJoints() {
 }
 
 bool
-Arm::update() {
-	TRACER_ENTER_SCOPE("Arm[%s]@%p::update()",name_.c_str(),this);
+Arm::internalUpdate() {
+	TRACER_ENTER_SCOPE("Arm[%s]@%p::internalUpdate()",name_.c_str(),this);
 	ros::Time latestMotorUpdate(0);
 	for (MotorList::iterator itr=motors_.begin();itr!=motors_.end();itr++) {
 		if ((*itr)->getUpdateableTimestamp() > latestMotorUpdate) {
@@ -236,7 +236,7 @@ Arm::update() {
 		}
 	}
 
-	return Updateable::update();
+	return true;//Updateable::update();
 }
 
 

@@ -57,6 +57,12 @@ inline std::string armNameFromId(int arm_id) {
 	std::stringstream ss; ss << "UNKNOWN:" << arm_id; return ss.str();
 }
 
+inline int armIdFromName(const std::string& name) {
+	if (name == "L") { return GOLD_ARM_ID; }
+	if (name == "R") { return GREEN_ARM_ID; }
+	return -1;
+}
+
 inline std::string armNameFromSerial(int arm_serial) { return armNameFromId(armIdFromSerial(arm_serial)); }
 inline std::string armNameFromMechType(int mech_type) { return armNameFromId(armIdFromMechType(mech_type)); }
 

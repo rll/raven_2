@@ -148,14 +148,18 @@ int USBInit(struct device *device0)
             okboards++;
             log_msg("  Green Arm on board #%d.",boardid);
             device0->mech[i].type = GREEN_ARM;
+#ifdef USE_NEW_DEVICE
             DeviceInitializer::addArm(boardid,armNameFromSerial(boardid),Arm::Type::GREEN,Arm::ToolType::GRASPER_10MM);
+#endif
         }
         else if (boardid == GOLD_ARM_SERIAL)
         {
             okboards++;
             log_msg("  Gold Arm on board #%d.",boardid);
             device0->mech[i].type = GOLD_ARM;
+#ifdef USE_NEW_DEVICE
             DeviceInitializer::addArm(boardid,armNameFromSerial(boardid),Arm::Type::GOLD,Arm::ToolType::GRASPER_10MM);
+#endif
         }
         else
         {

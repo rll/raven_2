@@ -11,13 +11,15 @@
 #include <raven/state/dof.h>
 #include <raven/state/device.h>
 
+#include <raven/util/timing.h>
+
 #include <iostream>
 
 #include <boost/algorithm/string.hpp>
 #include <string>
 
 
-Joint::Joint(IdType id,Type type) : Updateable(), id_(id), type_(type), hasMainMotor_(false), state_(Joint::State::NOT_READY), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
+Joint::Joint(IdType id,Type type) : Updateable(false,false), id_(id), type_(type), hasMainMotor_(false), state_(Joint::State::NOT_READY), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
 	toolJoint_ = id_==IdType::ROTATION_ || id_==IdType::WRIST_ || id_ == IdType::FINGER1_ || id_ == IdType::FINGER2_ || id_ == IdType::YAW_ || id_ == IdType::GRASP_;
 }
 
@@ -70,7 +72,7 @@ void Joint::setVelocity(float vel) {
 
 
 Motor::Motor(IdType id, Type type, TransmissionType transType, CableType cableType) :
-		Updateable(), id_(id), name_(id.str()), type_(type), transmissionType_(transType), cableType_(cableType), hasMainJoint_(false),
+		Updateable(false,false), id_(id), name_(id.str()), type_(type), transmissionType_(transType), cableType_(cableType), hasMainJoint_(false),
 		position_(0), velocity_(0), torque_(0), gravitationalTorqueEstimate_(0), dacCommand_(0), encoderValue_(0), encoderOffset_(0),
 		encoderCountsPerRev_(0), dacMax_(0), transmissionRatio_(0), tauPerAmp_(0), dacCountsPerAmp_(0) {
 }
@@ -90,9 +92,6 @@ void
 Motor::cloneInto(MotorPtr& other) const {
 	//TRACER_VERBOSE_ENTER_SCOPE("Motor[%s]@%p::cloneInto()",id_.str(),this);
 	if (!other) {
-		if (Device::DEBUG_OUTPUT_TIMING) {
-			printf("Creating new motor\n");
-		}
 		MotorPtr newMotor = clone();
 		other.swap(newMotor);
 		return;
@@ -252,8 +251,10 @@ void MotorFilter::applyUpdate() {
 	}
 	ros::Time t1 = ros::Time::now();
 	internalApplyUpdate();
+	ros::Time t1a = ros::Time::now();
 	if (Device::DEBUG_OUTPUT_TIMING) {
-		printf("MF::internalApplyUpdate() %lli\n",(long long int)(ros::Time::now()-t1).toNSec());
+		//printf("MF::internalApplyUpdate() %lli\n",(long long int)(t1a-t1).toNSec());
+		TempTiming::mf_iau = t1a - t1;
 	}
 	ros::Duration d;
 	ros::Time ttt1 = ros::Time::now();
@@ -269,8 +270,11 @@ void MotorFilter::applyUpdate() {
 	motorsForUpdateReady_ = false;
 	ros::Time t2 = ros::Time::now();
 	if (Device::DEBUG_OUTPUT_TIMING) {
-		printf("MF::motor update total: %lli, avg: %lli\n",(long long int)d.toNSec(),(long long int)dAvg.toNSec());
-		printf("MF::applyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+		//printf("MF::motor update total: %lli, avg: %lli\n",(long long int)d.toNSec(),(long long int)dAvg.toNSec());
+		TempTiming::mf_mu = d;
+		TempTiming::mf_mu_avg = dAvg;
+		//printf("MF::applyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+		TempTiming::mf_au = t2-t1;
 	}
 }
 
@@ -280,35 +284,29 @@ void MotorFilter::cloneInto(MotorFilterPtr& other, const MotorList& newMotors) c
 }
 
 
-NullMotorFilter::NullMotorFilter(const MotorList& motors) : MotorFilter(motors) {
-
-}
-
-NullMotorFilter::~NullMotorFilter() {
-
-}
-
 void
-NullMotorFilter::internalApplyUpdate() {
+MotorFilter::internalApplyUpdate() {
 	ros::Time t1 = ros::Time::now();
 	TRACER_ENTER_SCOPE("NullMotorFilter::internalApplyUpdate");
 	if (Device::DEBUG_OUTPUT_TIMING) {
-		printf("NullMotorFilter::internalApplyUpdate()\n");
+		//printf("NullMotorFilter::internalApplyUpdate()\n");
 	}
 	UpdateablePtr parent;
 	for (size_t i=0;i<motorsForUpdate_.size();i++) {
 		parent = motors_[i]->parent();
 		motorsForUpdate_[i]->cloneInto(motors_[i]);
-		motors_[i]->setUpdateableParent(parent);;
+		motors_[i]->setUpdateableParent(parent);
 	}
 	ros::Time t2 = ros::Time::now();
 	if (Device::DEBUG_OUTPUT_TIMING) {
-		printf("NMF::internalApplyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+		//printf("NMF::internalApplyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+		TempTiming::nmf_iau = t2-t1;
 	}
 }
 void
-NullMotorFilter::internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {
-	if (!boost::dynamic_pointer_cast<NullMotorFilter>(other)) {
+MotorFilter::internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {
+	//if (!boost::dynamic_pointer_cast<NullMotorFilter>(other)) {
+	if (!other || typeid(other.get()) != typeid(this)) {
 		MotorFilterPtr newMotorFilter = clone(newMotors);
 		other.swap(newMotorFilter);
 		return;
@@ -317,9 +315,9 @@ NullMotorFilter::internalCloneInto(MotorFilterPtr& other, const MotorList& newMo
 }
 
 MotorFilterPtr
-NullMotorFilter::clone(const MotorList& newMotors) const {
+MotorFilter::clone(const MotorList& newMotors) const {
 
-	return MotorFilterPtr(new NullMotorFilter(newMotors));
+	return MotorFilterPtr(new MotorFilter(newMotors));
 }
 
 CableCoupler::CableCoupler(const Eigen::MatrixXf& forwardMatrix,const Eigen::MatrixXf& backwardMatrix) :

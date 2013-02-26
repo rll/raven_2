@@ -33,6 +33,9 @@ TIMING_STRUCT_FIELD(cn_apply_ctrl)
 TIMING_STRUCT_FIELD(cn_ctrl_finish)
 TIMING_STRUCT_FIELD(cn_set_output)
 
+int TimingInfo::NUM_OVER_TIME = 0;
+float TimingInfo::PCT_OVER_TIME = 0;
+
 #undef TIMING_STRUCT_FIELD
 #define TIMING_STRUCT_FIELD(name) TIMING_STRUCT_FIELD_SOURCE(USBTimingInfo,name)
 #undef TIMING_STRUCT_SETUP
@@ -53,3 +56,44 @@ TIMING_STRUCT_FIELD(process_packet)
 TIMING_STRUCT_SETUP(ControlTiming)
 
 TIMING_STRUCT_FIELD(overall)
+
+ros::Duration TempTiming::arm_gold;
+ros::Duration TempTiming::arm_smf_gold;
+ros::Duration TempTiming::arm_cmf_gold;
+ros::Duration TempTiming::arm_hue_gold;
+ros::Duration TempTiming::arm_green;
+ros::Duration TempTiming::arm_smf_green;
+ros::Duration TempTiming::arm_cmf_green;
+ros::Duration TempTiming::arm_hue_green;
+
+ros::Duration TempTiming::dev_ifu;
+
+ros::Duration TempTiming::nmf_iau;
+ros::Duration TempTiming::mf_iau;
+ros::Duration TempTiming::mf_mu;
+ros::Duration TempTiming::mf_mu_avg;
+ros::Duration TempTiming::mf_au;
+
+ros::Duration TempTiming::s_nmf_iau_gold;
+ros::Duration TempTiming::s_mf_iau_gold;
+ros::Duration TempTiming::s_mf_mu_gold;
+ros::Duration TempTiming::s_mf_mu_avg_gold;
+ros::Duration TempTiming::s_mf_au_gold;
+
+ros::Duration TempTiming::c_nmf_iau_gold;
+ros::Duration TempTiming::c_mf_iau_gold;
+ros::Duration TempTiming::c_mf_mu_gold;
+ros::Duration TempTiming::c_mf_mu_avg_gold;
+ros::Duration TempTiming::c_mf_au_gold;
+
+ros::Duration TempTiming::s_nmf_iau_green;
+ros::Duration TempTiming::s_mf_iau_green;
+ros::Duration TempTiming::s_mf_mu_green;
+ros::Duration TempTiming::s_mf_mu_avg_green;
+ros::Duration TempTiming::s_mf_au_green;
+
+ros::Duration TempTiming::c_nmf_iau_green;
+ros::Duration TempTiming::c_mf_iau_green;
+ros::Duration TempTiming::c_mf_mu_green;
+ros::Duration TempTiming::c_mf_mu_avg_green;
+ros::Duration TempTiming::c_mf_au_green;

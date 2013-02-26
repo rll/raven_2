@@ -143,6 +143,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 				break;
 			}
 		}
+#ifdef USE_NEW_DEVICE
 		DevicePtr dev = Device::currentNoCloneMutable();
 		FOREACH_ARM_IN_DEVICE(arm,dev) {
 			if (arm->isGold()) {
@@ -150,6 +151,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 				break;
 			}
 		}
+#endif
     }
 
 

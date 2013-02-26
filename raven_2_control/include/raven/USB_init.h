@@ -60,4 +60,6 @@ int usb_write(int id, void *buffer, size_t len);
 
 int usb_reset_encoders(int boardid);
 
+int write_zeros_to_board(int boardid);
+
 #endif

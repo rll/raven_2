@@ -48,7 +48,7 @@ public:
 
 	static void eStop();
 
-	//static void setPedal(bool down);
+	static void setPedalUp();
 	static void setArmActive(int armId,bool active=true);
 
 	bool isEstop() const;

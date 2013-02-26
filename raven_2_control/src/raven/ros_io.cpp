@@ -267,7 +267,11 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 
 	//RunLevel::setPedal(cmd.pedal_down);
 	for (size_t i=0;i<cmd.arms.size();i++) {
+#ifdef USE_NEW_DEVICE
 		Arm::IdType armId = Device::getArmIdFromName(cmd.arm_names[i]);
+#else
+		int armId = armIdFromName(cmd.arm_names[i]);
+#endif
 		RunLevel::setArmActive(armId,cmd.arms[i].active);
 	}
 

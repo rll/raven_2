@@ -24,12 +24,18 @@ struct CloningWrapper {
 	}
 	CloningWrapper(const CloningWrapper& other) {
 		TRACER_VERBOSE_ENTER_SCOPE("CloningWrapper<%s> copy constructor",typeid(T).name());
-		other.value->cloneInto(value);
+		if (other.value) {
+			other.value->cloneInto(value);
+		}
 	}
 
 	CloningWrapper& operator=(const CloningWrapper& other) {
 		TRACER_VERBOSE_ENTER_SCOPE("CloningWrapper<%s> assignment",typeid(T).name());
-		other.value->cloneInto(value);
+		if (other.value) {
+			other.value->cloneInto(value);
+		} else {
+			value.reset();
+		}
 		return *this;
 	}
 

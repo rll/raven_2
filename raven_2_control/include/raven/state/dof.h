@@ -102,9 +102,6 @@ public:
 
 	static Eigen::VectorXf positionVector(const JointList& joints);
 	static Eigen::VectorXf velocityVector(const JointList& joints);
-protected:
-	virtual bool processNotification(Updateable* sender) { return true; }
-	//virtual UpdateablePtr internalClone() const;
 };
 
 class JointCoupler {
@@ -220,9 +217,6 @@ public:
 	static Eigen::VectorXf positionVector(const MotorList& motors);
 	static Eigen::VectorXf velocityVector(const MotorList& motors);
 	static Eigen::VectorXf torqueVector(const MotorList& motors);
-protected:
-	virtual bool processNotification(Updateable* sender) { return true; }
-	//virtual UpdateablePtr internalClone() const;
 };
 
 POINTER_TYPES(MotorFilter)
@@ -233,8 +227,8 @@ protected:
 	bool motorsForUpdateReady_;
 	MotorList motorsForUpdate_;
 
-	virtual void internalApplyUpdate() = 0;
-	virtual void internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {}
+	virtual void internalApplyUpdate();
+	virtual void internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const;
 
 public:
 	MotorFilter(const MotorList& motors);
@@ -250,14 +244,16 @@ public:
 
 	void applyUpdate();
 
-	virtual void reset() = 0;
+	virtual void reset() {}
 
-	virtual std::string str() const = 0;
+	virtual std::string str() const { return "NullMotorFilter"; };
 
-	virtual MotorFilterPtr clone(const MotorList& newMotors) const = 0;
+	virtual MotorFilterPtr clone(const MotorList& newMotors) const;
 	void cloneInto(MotorFilterPtr& other, const MotorList& newMotors) const;
 };
 
+typedef MotorFilter NullMotorFilter;
+/*
 class NullMotorFilter : public MotorFilter {
 protected:
 	virtual void internalApplyUpdate();
@@ -272,6 +268,7 @@ public:
 
 	virtual MotorFilterPtr clone(const MotorList& newMotors) const;
 };
+*/
 
 POINTER_TYPES(CableCoupler)
 

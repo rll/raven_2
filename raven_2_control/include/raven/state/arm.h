@@ -167,10 +167,9 @@ public:
 
 	btTransform pose() const;
 
-	virtual bool update();
-
 	virtual ~Arm();
 protected:
+	virtual bool internalUpdate();
 	virtual bool processNotification(Updateable* sender);
 };
 

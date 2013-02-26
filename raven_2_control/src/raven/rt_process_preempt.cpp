@@ -47,8 +47,6 @@
 
 using namespace std;
 
-//#define TEST_NEW_CTRL
-
 // Defines
 #define POOLSIZE (200*1024*1024) // 200 MB   Size of mlocked memory pool
 
@@ -80,6 +78,8 @@ pthread_t console_thread;
 
 //Global Variables from globals.c
 extern struct DOF_type DOF_types[];
+
+extern USBStruct USBBoards;
 
 extern bool omni_to_ros;
 
@@ -157,6 +157,111 @@ static void *rt_process(void* )
 
     log_msg("Starting RT Process...");
 
+//#define TEST_USB_READ
+#ifdef TEST_USB_READ
+    {
+    	log_warn("Testing USB board reading");
+
+    	std::vector<int> intervals;
+    	intervals.push_back(250 * 1000);
+    	intervals.push_back(500 * 1000);
+    	intervals.push_back(750 * 1000);
+    	intervals.push_back(1000 * 1000);
+    	intervals.push_back(1250 * 1000);
+    	intervals.push_back(1500 * 1000);
+    	intervals.push_back(1750 * 1000);
+    	intervals.push_back(2000 * 1000);
+
+    	std::vector<int64_t> avgs(intervals.size());
+    	std::vector<int64_t> mins(intervals.size());
+    	std::vector<int64_t> maxs(intervals.size());
+
+    	for (size_t intervalIdx=0;intervalIdx<intervals.size();intervalIdx++) {
+    		unsigned char buffer[512];
+    		struct timespec testBegin;
+    		struct timespec testEnd;
+    		struct timespec singleTestBegin;
+    		struct timespec singleTestEnd;
+
+    		//int interval = 1500 * 1000;
+    		int interval = intervals[intervalIdx];
+
+    		int boardId = USBBoards.boards[0];
+    		std::cout << "Testing board " << boardId << " with interval " << interval << std::endl;
+    		double cumulativeTime_s = 0;
+    		int64_t cumulativeTime_ns = 0;
+    		int64_t minTime_ns = 10 * (int64_t)NSEC_PER_SEC;
+    		int64_t maxTime_ns = 0;
+    		int numTests = 500;
+
+    		std::vector<int64_t> times(numTests,0);
+
+    		clock_gettime(CLOCK_REALTIME,&testBegin);
+    		struct timespec sleepUntil = singleTestBegin;
+    		sleepUntil.tv_sec += 1;
+    		clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
+    		clock_gettime(CLOCK_REALTIME,&testBegin);
+    		for (int i = 0;i<numTests;i++) {
+    			clock_gettime(CLOCK_REALTIME,&singleTestBegin);
+    			usb_read(boardId,buffer,27);
+    			clock_gettime(CLOCK_REALTIME,&singleTestEnd);
+    			int64_t t1 = ((int64_t)singleTestBegin.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestBegin.tv_nsec;
+    			int64_t t2 = ((int64_t)singleTestEnd.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestEnd.tv_nsec;
+    			double d_s = ((double)t2-t1) / NSEC_PER_SEC;
+    			cumulativeTime_s += d_s;
+
+    			int64_t d = (t2-t1);
+    			cumulativeTime_ns += d;
+
+    			times[i] = d;
+
+    			if (d < minTime_ns) {
+    				minTime_ns = d;
+    			}
+    			if (d > maxTime_ns) {
+    				maxTime_ns = d;
+    			}
+
+    			write_zeros_to_board(boardId);
+
+    			//std::cout << i << std::endl;
+    			if (interval) {
+    				struct timespec sleepUntil = singleTestBegin;
+    				sleepUntil.tv_nsec += interval;
+    				clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
+    			}
+    		}
+    		clock_gettime(CLOCK_REALTIME,&testEnd);
+
+    		double avg_s = cumulativeTime_s / numTests;
+    		int64_t avg_ns = (int64_t) (((double)cumulativeTime_ns) / numTests);
+
+    		int64_t t1 = ((int64_t)testBegin.tv_sec) * NSEC_PER_SEC + (int64_t)testBegin.tv_nsec;
+    		int64_t t2 = ((int64_t)testEnd.tv_sec) * NSEC_PER_SEC + (int64_t)testEnd.tv_nsec;
+    		double totalTime_s = ((double)t2-t1) / NSEC_PER_SEC;
+    		int64_t totalTime_ns = t2-t1;
+
+    		avgs[intervalIdx] = avg_ns;
+    		mins[intervalIdx] = minTime_ns;
+    		maxs[intervalIdx] = maxTime_ns;
+
+    		for (int i = 0;i<numTests;i++) {
+    			printf("%8lli\n",(long long int)times[i]);
+    		}
+
+    		std::cout << "Total time: " << totalTime_s << std::endl;
+    		std::cout << "Average: " << avg_s << " (" << avg_ns << " ns)" << std::endl;
+    		std::cout << "Min: " << minTime_ns << " max: " << maxTime_ns << std::endl;
+    		//printf("%5.3f: %8lli / %8lli / %8lli\n",((double)interval)/NSEC_PER_SEC,(long long int)avg_ns,(long long int)minTime_ns,(long long int)maxTime_ns);
+    	}
+
+    	for (size_t i=0;i<intervals.size();i++) {
+    		printf("%8i: %8lli / %8lli / %8lli\n",intervals[i],(long long int)avgs[i],(long long int)mins[i],(long long int)maxs[i]);
+    	}
+    	//ros::shutdown();
+    }
+#endif
+
     // Initializations (run here and again in init.cpp)
 #ifdef USE_NEW_DEVICE
     DeviceInitializer initr;
@@ -164,15 +269,16 @@ static void *rt_process(void* )
 #endif
     initDOFs(&device0);
 
+#ifdef USE_NEW_CONTROLLER
     log_msg("Creating controllers");
-#ifdef TEST_NEW_CTRL
+#ifdef TEST_NEW_CONTROLLER
     ControllerPtr pid(new MotorPositionPID());
 	ControllerPtr ee(new EndEffectorController());
 #endif
 
 	log_msg("Registering controllers");
 
-#ifdef TEST_NEW_CTRL
+#ifdef TEST_NEW_CONTROLLER
     Controller::registerController("motor/position",pid);
     Controller::registerController("end_effector/pose",ee);
     Controller::registerController("end_effector/grasp+pose",ee);
@@ -182,8 +288,9 @@ static void *rt_process(void* )
 
     log_msg("Setting controller");
 
-#ifdef TEST_NEW_CTRL
+#ifdef TEST_NEW_CONTROLLER
     Controller::setController("end_effector/pose");
+#endif
 #endif
 
     /*{
@@ -234,9 +341,13 @@ static void *rt_process(void* )
         LoopNumber::incrementMain();
         int loopNumber = LoopNumber::get();
 
+        struct timespec start;
+        struct timespec end;
+        clock_gettime(CLOCK_REALTIME,&start);
+
         if (RunLevel::hasHomed()) {
         	LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
-        		printf("****** Newly homed! [%i]\n",loopNumber);
+        		//printf("****** Newly homed! [%i]\n",loopNumber);
         		TRACER_ON();
         	}
         }
@@ -244,20 +355,66 @@ static void *rt_process(void* )
         TimingInfo t_info;
         t_info.mark_overall_start();
 
+#if defined USE_NEW_DEVICE && false
         LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
         	Device::DEBUG_OUTPUT_TIMING = true;
         }
-        if (RunLevel::hasHomed() && LoopNumber::onlyEvery("output device finish update timing",4,5000)) {
+        if (!RunLevel::hasHomed() && LoopNumber::onlyEvery("output usb device finish update timing",300,1000)) {
         	printf("Outputting usb timing [%i]\n",loopNumber);
         	Device::DEBUG_OUTPUT_TIMING = true;
         }
+        if (RunLevel::hasHomed() && LoopNumber::onlyEvery("output usb after homing device finish update timing",4,5000)) {
+        	printf("Outputting usb timing [%i]\n",loopNumber);
+        	Device::DEBUG_OUTPUT_TIMING = true;
+        }
+#endif
 
         t_info.mark_usb_read_start();
         //Get and Process USB Packets
         getUSBPackets(&device0); //disable usb for parport test
         t_info.mark_usb_read_end();
 
+#ifdef USE_NEW_DEVICE
+        if (Device::DEBUG_OUTPUT_TIMING) {
+        	printf("arm_gold:\t\t\t%7lli\n",(long long int)TempTiming::arm_gold.toNSec());
+        	printf("\tarm_smf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_smf_gold.toNSec());
+        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_gold.toNSec());
+        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_gold.toNSec());
+        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_gold.toNSec());
+        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_gold.toNSec());
+        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_gold.toNSec());
+
+        	printf("\tarm_cmf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_gold.toNSec());
+        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_gold.toNSec());
+        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_gold.toNSec());
+        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_gold.toNSec());
+        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_gold.toNSec());
+        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_gold.toNSec());
+
+        	printf("\tarm_hue_gold:\t\t%7lli\n",(long long int)TempTiming::arm_hue_gold.toNSec());
+
+        	printf("arm_green:\t\t\t%7lli\n",(long long int)TempTiming::arm_green.toNSec());
+        	printf("\tarm_smf_green:\t\t%7lli\n",(long long int)TempTiming::arm_smf_green.toNSec());
+        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_green.toNSec());
+        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_green.toNSec());
+        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_green.toNSec());
+        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_green.toNSec());
+        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_green.toNSec());
+
+        	printf("\tarm_cmf_green:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_green.toNSec());
+        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_green.toNSec());
+        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_green.toNSec());
+        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_green.toNSec());
+        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_green.toNSec());
+        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_green.toNSec());
+
+        	printf("\tarm_hue_green:\t\t%7lli\n",(long long int)TempTiming::arm_hue_green.toNSec());
+
+        	printf("dev_ifu:\t\t\t%7lli\n",(long long int)TempTiming::dev_ifu.toNSec());
+        }
+
         Device::DEBUG_OUTPUT_TIMING = false;
+#endif
 
 
         t_info.mark_state_machine_start();
@@ -287,6 +444,7 @@ static void *rt_process(void* )
         	controlRaven(&device0, &currParams);
         } else {
         	controlRaven(&device0, &currParams);
+#ifdef USE_NEW_CONTROLLER
         	/*
         	bool scope_tracer_on = false;
         	if (RunLevel::newlyHomed()) {
@@ -299,15 +457,53 @@ static void *rt_process(void* )
         	TRACER_ON_IN_SCOPE_IF(scope_tracer_on);
         	*/
         	if (RunLevel::newlyHomed() || LoopNumber::onlyEvery("output device finish update timing",4,5000)) {
-        		printf("Outputting controller timing [%i]\n",loopNumber);
         		Device::DEBUG_OUTPUT_TIMING = true;
+        		if (Device::DEBUG_OUTPUT_TIMING) printf("Outputting controller timing [%i]\n",loopNumber);
+
         	}
         	int ctrl_ret = Controller::executeInProcessControl();
+        	if (Device::DEBUG_OUTPUT_TIMING) {
+        		printf("arm_gold:\t\t\t%7lli\n",(long long int)TempTiming::arm_gold.toNSec());
+        		printf("\tarm_smf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_smf_gold.toNSec());
+        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_gold.toNSec());
+        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_gold.toNSec());
+        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_gold.toNSec());
+        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_gold.toNSec());
+        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_gold.toNSec());
+
+        		printf("\tarm_cmf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_gold.toNSec());
+        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_gold.toNSec());
+        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_gold.toNSec());
+        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_gold.toNSec());
+        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_gold.toNSec());
+        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_gold.toNSec());
+
+        		printf("\tarm_hue_gold:\t\t%7lli\n",(long long int)TempTiming::arm_hue_gold.toNSec());
+
+        		printf("arm_green:\t\t\t%7lli\n",(long long int)TempTiming::arm_green.toNSec());
+        		printf("\tarm_smf_green:\t\t%7lli\n",(long long int)TempTiming::arm_smf_green.toNSec());
+        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_green.toNSec());
+        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_green.toNSec());
+        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_green.toNSec());
+        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_green.toNSec());
+        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_green.toNSec());
+
+        		printf("\tarm_cmf_green:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_green.toNSec());
+        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_green.toNSec());
+        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_green.toNSec());
+        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_green.toNSec());
+        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_green.toNSec());
+        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_green.toNSec());
+
+        		printf("\tarm_hue_green:\t\t%7lli\n",(long long int)TempTiming::arm_hue_green.toNSec());
+
+        		printf("dev_ifu:\t\t\t%7lli\n",(long long int)TempTiming::dev_ifu.toNSec());
+        	}
         	Device::DEBUG_OUTPUT_TIMING = false;
         	LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
         		printf("HAS HOMED %i\n",LoopNumber::get());
         	}
-#ifdef TEST_NEW_CTRL
+#ifdef TEST_NEW_CONTROLLER
         	OldControlInputPtr ptr = ControlInput::oldControlInputUpdateBegin();
         	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
         		ptr->armById(arm->id()).pose() = arm->pose();
@@ -339,6 +535,7 @@ static void *rt_process(void* )
         	}
         	ss << std::endl;
         	log_msg_throttle(0.25,"%s",ss.str().c_str());
+#endif
 #endif
         }
         //////////////// END SURGICAL ROBOT CODE ///////////////////////////
@@ -375,8 +572,20 @@ static void *rt_process(void* )
 
         t_info.mark_overall_end();
 
+        clock_gettime(CLOCK_REALTIME,&end);
+
+        int64_t start_ns = start.tv_sec * (int64_t)1000000000 + start.tv_nsec;
+        int64_t end_ns = end.tv_sec * (int64_t)1000000000 + end.tv_nsec;
+
+        if ((end_ns-start_ns) > 1000000) {
+        	TimingInfo::NUM_OVER_TIME += 1;
+        }
+        TimingInfo::PCT_OVER_TIME = ((float)TimingInfo::NUM_OVER_TIME) / loopNumber;
+
         TimingInfo::mark_loop_end();
         TRACER_OFF();
+
+
 
         /*
         bool printTiming =

@@ -277,12 +277,12 @@ void outputRobotState(){
 	RunLevel rl = RunLevel::get();
 	cout << "Runlevel: " << RunLevel::get().str() << endl;
 	cout << "Main loop number: " << LoopNumber::getMain() << endl;
-	cout << "Console loop number: " << LoopNumber::get() << endl;
+	//cout << "Console loop number: " << LoopNumber::get() << endl;
 
 
-	cout << "Pedal: " << RunLevel::getPedal() << " " << device0.surgeon_mode << endl;
-	cout << "inited " << RunLevel::isInitialized() << " " << initialized << endl;
-	cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
+	//cout << "Pedal: " << RunLevel::getPedal() << " " << device0.surgeon_mode << endl;
+	//cout << "inited " << RunLevel::isInitialized() << " " << initialized << endl;
+	//cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
 
 	cout << "Master mode: " << getMasterModeString() << endl;
 
@@ -760,6 +760,7 @@ void outputTiming() {
 
 	cout << endl;
 
+#ifdef USE_NEW_CONTROLLER
 	cout << TIMING_STATS(TimingInfo,cn_overall) << endl;
 	cout << TIMING_STATS(TimingInfo,cn_get_input) << endl;
 	cout << TIMING_STATS(TimingInfo,cn_set_input) << endl;
@@ -773,15 +774,19 @@ void outputTiming() {
 	cout << TIMING_STATS(TimingInfo,cn_set_output) << endl;
 
 	cout << endl;
+#endif
 
 	cout << TIMING_STATS(USBTimingInfo,get_packet) << endl;
 	cout << TIMING_STATS(USBTimingInfo,process_packet) << endl;
 
 	cout << endl;
 
+#ifdef USE_NEW_CONTROLLER
 	cout << TIMING_STATS(ControlTiming,overall) << endl;
+#endif
 
 	cout << TIMING_STATS(TimingInfo,overall) << endl;
+	cout << "Over time: " << TimingInfo::PCT_OVER_TIME << " (" << TimingInfo::NUM_OVER_TIME << "/" << LoopNumber::getMain() << ")" << endl;
 
 	cout << endl;
 
