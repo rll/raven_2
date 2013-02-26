@@ -20,6 +20,8 @@
 
 static ros::Time theUpdateTime(0);
 
+bool Device::DEBUG_OUTPUT_TIMING = false;
+
 boost::recursive_mutex deviceInstanceMutex;
 DevicePtr Device::INSTANCE;
 
@@ -71,13 +73,12 @@ Device::currentTimestamp() {
 	return t;
 }
 
-static int numD = 0;
 Device::Device(DeviceType type) : Updateable(), type_(type), timestamp_(0) {
-	//printf("+D  %i %p\n",++numD,this);
+
 }
 
 Device::~Device() {
-	//printf("-D  %i %p\n",--numD,this);
+
 }
 
 DevicePtr
@@ -121,33 +122,6 @@ Device::init(DevicePtr dev) {
 	}
 }
 
-/*
-void
-Device::beginCurrentUpdate(ros::Time updateTime) {
-	//deviceInstanceMutex.lock(); //pthread_mutex_lock(&deviceInstanceMutex);
-	if (updateTime.isZero()) {
-		theUpdateTime = Device::INSTANCE->timestamp();
-	} else {
-		//save to history
-		Device::HISTORY.push_front(CloningWrapper<Device>(Device::INSTANCE));
-	}
-	theUpdateTime = updateTime;
-	BOOST_FOREACH(ArmPtr arm,Device::INSTANCE->arms_) {
-		arm->holdUpdateBegin();
-	}
-}
-
-void
-Device::finishCurrentUpdate() {
-	BOOST_FOREACH(ArmPtr arm,Device::INSTANCE->arms_) {
-		arm->motorFilter()->applyUpdate();
-		arm->holdUpdateEnd();
-	}
-	Device::INSTANCE->timestamp_ = theUpdateTime;
-	theUpdateTime = ros::Time(0);
-	//deviceInstanceMutex.unlock(); //pthread_mutex_unlock(&deviceInstanceMutex);
-}
-*/
 DevicePtr
 Device::beginCurrentUpdate(ros::Time updateTime) {
 	TRACER_ENTER_SCOPE("Device::beginCurrentUpdate()");
@@ -186,13 +160,40 @@ Device::beginUpdate() {
 void
 Device::internalFinishUpdate(bool updateTimestamp) {
 	TRACER_ENTER_SCOPE("Device@%p::internalFinishUpdate(%i)",this,updateTimestamp);
+	ros::Time start = ros::Time::now();
 	BOOST_FOREACH(ArmPtr arm,arms_) {
+		if (DEBUG_OUTPUT_TIMING) {
+			printf("Device@%p::internalFinishUpdate() arm %i %p %p\n",this,arm->id(),arm->controlMotorFilter().get(),arm->stateMotorFilter().get());
+		}
+		ros::Time arm1 = ros::Time::now();
+		ros::Time smf1 = arm1;
 		arm->stateMotorFilter()->applyUpdate();
+		ros::Time smf2 = ros::Time::now();
+
+		ros::Time cmf1 = smf2;
 		arm->controlMotorFilter()->applyUpdate();
+		ros::Time cmf2 = ros::Time::now();
+
+		ros::Time hue1 = cmf2;
 		arm->holdUpdateEnd();
+		ros::Time hue2 = ros::Time::now();
+
+		ros::Time arm2 = hue2;
+
 		if (updateTimestamp && arm->timestamp() > timestamp_) {
 			timestamp_ = arm->timestamp();
 		}
+
+		if (DEBUG_OUTPUT_TIMING) {
+			printf("Arm %i:\t%8lli\n",arm->id(),(long long int)(arm2-arm1).toNSec());
+			printf(" smf:\t%8lli\n",(long long int)(smf2-smf1).toNSec());
+			printf(" cmf:\t%8lli\n",(long long int)(cmf2-cmf1).toNSec());
+			printf(" hue:\t%8lli\n",(long long int)(hue2-hue1).toNSec());
+		}
+	}
+	ros::Time end = ros::Time::now();
+	if (DEBUG_OUTPUT_TIMING) {
+		printf("Total:\t%8lli\n",(long long int)(end-start).toNSec());
 	}
 }
 
@@ -239,214 +240,7 @@ Device::addArm(ArmPtr arm) {
 	NUM_MOTORS[arm->id()] = arm->motors().size();
 }
 
-size_t
-Device::numArms() {
-	return ARM_IDS.size();
-}
 
-Arm::IdList
-Device::armIds() {
-	return ARM_IDS;
-}
-
-Arm::IdList&
-Device::sortArmIds(Arm::IdList& armIds) {
-	Arm::IdSet idSet = Arm::idSet(armIds);
-	armIds = Device::sortArmIds(idSet);
-	return armIds;
-}
-
-Arm::IdList
-Device::sortArmIds(const Arm::IdSet& armIdSet) {
-	Arm::IdList allIds = allArmIds();
-	Arm::IdList sorted;
-	for (size_t i=0;i<allIds.size();i++) {
-		Arm::IdType id = allIds.at(i);
-		if (armIdSet.count(id)) {
-			sorted.push_back(id);
-		}
-	}
-	return sorted;
-}
-
-Arm::Type
-Device::getArmTypeFromId(Arm::IdType id) {
-	std::map<Arm::IdType,Arm::Type>::const_iterator itr = ARM_TYPES.find(id);
-	if (itr == ARM_TYPES.end()) {
-		std::stringstream ss;
-		ss << "Arm type for id " << id << " not found!";
-		throw std::runtime_error(ss.str());
-	}
-	return itr->second;
-}
-
-ArmList
-Device::arms() {
-	return arms_;
-}
-
-ConstArmList
-Device::arms() const {
-	return constList(arms_);
-}
-
-ArmPtr
-Device::arm(size_t i) {
-	return arms_[i];
-}
-
-ArmConstPtr
-Device::arm(size_t i) const {
-	return ArmConstPtr(arms_[i]);
-}
-
-ArmPtr
-Device::getArmById(Arm::IdType id) {
-	ArmList::const_iterator itr;
-	for (itr=arms_.begin();itr!=arms_.end();itr++) {
-		if ((*itr)->id() == id) {
-			return *itr;
-		}
-	}
-	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
-		if ((*itr)->id() == id) {
-			return *itr;
-		}
-	}
-	return ArmPtr();
-}
-
-ArmConstPtr
-Device::getArmById(Arm::IdType id) const {
-	return ArmConstPtr(const_cast<Device*>(this)->getArmById(id));
-}
-
-ArmList
-Device::getArmsById(const Arm::IdList& ids,bool includeDisabled) {
-	ArmList arms;
-	bool includeAll = std::find(ids.begin(),ids.end(),Arm::ALL_ARMS) != ids.end();
-	ArmList::const_iterator itr;
-	for (itr=arms_.begin();itr!=arms_.end();itr++) {
-		if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
-			arms.push_back(*itr);
-		}
-	}
-	if (includeDisabled) {
-		for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
-			if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
-				arms.push_back(*itr);
-			}
-		}
-	}
-	return arms;
-}
-
-ConstArmList
-Device::getArmsById(const Arm::IdList& ids,bool includeDisabled) const {
-	return constList(const_cast<Device*>(this)->getArmsById(ids,includeDisabled));
-}
-
-ArmPtr
-Device::getArmByName(const std::string& name) {
-	ArmList::const_iterator itr;
-	for (itr=arms_.begin();itr!=arms_.end();itr++) {
-		if ((*itr)->name() == name) {
-			return *itr;
-		}
-	}
-	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
-		if ((*itr)->name() == name) {
-			return *itr;
-		}
-	}
-	return ArmPtr();
-}
-
-ArmConstPtr
-Device::getArmByName(const std::string& name) const {
-	return ArmConstPtr(const_cast<Device*>(this)->getArmByName(name));
-}
-
-Arm::IdType
-Device::getArmIdFromName(const std::string& name) {
-	std::map<Arm::IdType,std::string>::const_iterator itr;
-	for (itr=ARM_NAMES.begin();itr!=ARM_NAMES.end();itr++) {
-		if (itr->second == name) {
-			return itr->first;
-		}
-	}
-	std::stringstream ss;
-	ss << "Arm id for name " << name << " not found!";
-	throw std::runtime_error(ss.str());
-}
-
-std::string
-Device::getArmNameFromId(Arm::IdType id) {
-	std::map<Arm::IdType,std::string>::const_iterator itr = ARM_NAMES.find(id);
-	if (itr == ARM_NAMES.end()) {
-		std::stringstream ss;
-		ss << "Arm name for id " << id << " not found!";
-		throw std::runtime_error(ss.str());
-	}
-	return itr->second;
-}
-
-size_t
-Device::numDisabledArms() {
-	return DISABLED_ARM_IDS.size();
-}
-
-Arm::IdList
-Device::disabledArmIds() {
-	return DISABLED_ARM_IDS;
-}
-
-ArmList
-Device::disabledArms() {
-	return disabledArms_;
-}
-
-ConstArmList
-Device::disabledArms() const {
-	return constList(const_cast<Device*>(this)->disabledArms_);
-}
-
-size_t
-Device::numAllArms() {
-	return numArms() + numDisabledArms();
-}
-
-Arm::IdList
-Device::allArmIds() {
-	Arm::IdList armIds = ARM_IDS;
-	armIds.insert(armIds.end(),DISABLED_ARM_IDS.begin(),DISABLED_ARM_IDS.end());
-	return armIds;
-}
-
-
-ArmList
-Device::allArms() {
-	ArmList arms = arms_;
-	arms.insert(arms.end(),disabledArms_.begin(),disabledArms_.end());
-	return arms;
-}
-
-ConstArmList
-Device::allArms() const {
-	return constList(const_cast<Device*>(this)->allArms());
-}
-
-size_t
-Device::numJoints() {
-	return TOTAL_NUM_JOINTS;
-}
-size_t
-Device::numJointsOnArm(size_t i) {
-	return NUM_JOINTS[ARM_IDS[i]];
-}
-size_t Device::numJointsOnArmById(Arm::IdType id) {
-	return NUM_JOINTS[id];
-}
 
 JointPtr
 Device::getJointByOldType(int type) {
@@ -461,96 +255,4 @@ Device::getJointByOldType(int type) {
 JointConstPtr
 Device::getJointByOldType(int type) const {
 	return JointConstPtr(const_cast<Device*>(this)->getJointByOldType(type));
-}
-
-Eigen::VectorXf
-Device::jointPositionVector() const {
-	size_t numEl = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		numEl += arm->joints().size();
-	}
-	Eigen::VectorXf v(numEl);
-	size_t ind = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		size_t numElInArm = arm->joints().size();
-		v.segment(ind,numElInArm) = arm->jointPositionVector();
-		ind += numElInArm;
-	}
-	return v;
-}
-
-Eigen::VectorXf
-Device::jointVelocityVector() const {
-	size_t numEl = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		numEl += arm->joints().size();
-	}
-	Eigen::VectorXf v(numEl);
-	size_t ind = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		size_t numElInArm = arm->joints().size();
-		v.segment(ind,numElInArm) = arm->jointVelocityVector();
-		ind += numElInArm;
-	}
-	return v;
-}
-
-size_t
-Device::numMotors() {
-	return TOTAL_NUM_MOTORS;
-}
-size_t
-Device::numMotorsOnArm(size_t i) {
-	return NUM_MOTORS[ARM_IDS[i]];
-}
-size_t Device::numMotorsOnArmById(Arm::IdType id) {
-	return NUM_MOTORS[id];
-}
-
-Eigen::VectorXf
-Device::motorPositionVector() const {
-	size_t numEl = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		numEl += arm->motors().size();
-	}
-	Eigen::VectorXf v(numEl);
-	size_t ind = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		size_t numElInArm = arm->motors().size();
-		v.segment(ind,numElInArm) = arm->motorPositionVector();
-		ind += numElInArm;
-	}
-	return v;
-}
-
-Eigen::VectorXf
-Device::motorVelocityVector() const {
-	size_t numEl = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		numEl += arm->motors().size();
-	}
-	Eigen::VectorXf v(numEl);
-	size_t ind = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		size_t numElInArm = arm->motors().size();
-		v.segment(ind,numElInArm) = arm->motorVelocityVector();
-		ind += numElInArm;
-	}
-	return v;
-}
-
-Eigen::VectorXf
-Device::motorTorqueVector() const {
-	size_t numEl = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		numEl += arm->motors().size();
-	}
-	Eigen::VectorXf v(numEl);
-	size_t ind = 0;
-	BOOST_FOREACH(ArmPtr arm,arms_) {
-		size_t numElInArm = arm->motors().size();
-		v.segment(ind,numElInArm) = arm->motorTorqueVector();
-		ind += numElInArm;
-	}
-	return v;
 }

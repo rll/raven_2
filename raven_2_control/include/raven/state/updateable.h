@@ -31,10 +31,10 @@ public:
 	Updateable(const Updateable& other) : immediateUpdate_(other.immediateUpdate_), timestamp_(other.timestamp_),
 			holdUpdates_(other.holdUpdates_), heldUpdateTimestamp_(other.heldUpdateTimestamp_) {}
 
-	UpdateablePtr parent() const { return parent_; }
+	inline UpdateablePtr parent() const { return parent_; }
 
 	virtual ros::Time timestamp() const { return timestamp_; }
-	ros::Time getUpdateableTimestamp() const { return timestamp_; }
+	inline ros::Time getUpdateableTimestamp() const { return timestamp_; }
 
 	virtual bool update() {
 		TRACER_ENTER_SCOPE_OF(this,"update()");
@@ -57,18 +57,17 @@ public:
 
 	virtual ~Updateable() {}
 
-	//virtual void addToNotifyList(UpdateablePtr obj) { notifyList_.push_back(UpdateableWeakPtr(obj)); if (notifyList_.size() >= 2) { printf("big\n"); } }
-	void setUpdateableParent(UpdateablePtr obj) { parent_ = obj; }
+	inline void setUpdateableParent(UpdateablePtr obj) { parent_ = obj; }
 
-	bool isImmediateUpdate() const  { return immediateUpdate_; }
-	void setImmediateUpdate(bool immediate) { immediateUpdate_ = immediate; }
+	inline bool isImmediateUpdate() const  { return immediateUpdate_; }
+	inline void setImmediateUpdate(bool immediate) { immediateUpdate_ = immediate; }
 
-	void holdUpdateBegin() {
+	inline void holdUpdateBegin() {
 		TRACER_ENTER_SCOPE_OF(this,"holdUpdateBegin()");
 		holdUpdates_ = true;
 		heldUpdateTimestamp_ = ros::Time(0);
 	}
-	bool holdUpdateEnd() {
+	inline bool holdUpdateEnd() {
 		TRACER_ENTER_SCOPE_OF(this,"holdUpdateEnd()");
 		bool changed = heldUpdateTimestamp_ != ros::Time(0);
 		if (changed) {
@@ -86,7 +85,7 @@ protected:
 	bool holdUpdates_;
 	ros::Time heldUpdateTimestamp_;
 
-	void setUpdateableTimestamp(ros::Time stamp) { timestamp_ = stamp; }
+	inline void setUpdateableTimestamp(ros::Time stamp) { timestamp_ = stamp; }
 
 	virtual void notify(Updateable* sender) {
 		TRACER_ENTER_SCOPE_OF(this,"notify() from %s@%p",typeid(*sender).name(),sender);

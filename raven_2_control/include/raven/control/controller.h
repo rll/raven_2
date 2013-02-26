@@ -23,6 +23,8 @@
 #include <map>
 #include <utility>
 
+#define CONTROL_OUTPUT_HISTORY_SIZE 50
+
 POINTER_TYPES(ControllerState)
 
 class ControllerState {
@@ -54,15 +56,17 @@ private:
 
 	boost::circular_buffer<ControllerStatePtr> history_;
 	void saveState(ControllerStatePtr state);
+
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device)=0;
+
+	std::vector<ros::NodeHandle> parameterNodeHandles_;
 
 	ControlInputPtr input_;
 	bool reset_;
 
 	boost::shared_ptr<ros::Rate> rate_;
 public:
-
-	static void registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller);
+	static void registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller=ControllerPtr());
 	static bool setController(Arm::IdType armId, const std::string& type);
 	static ControllerMap getControllers();
 
@@ -136,12 +140,11 @@ protected:
 
 	bool getResetState() { bool ret = reset_; reset_ = false; return ret; }
 
+	std::vector<ros::NodeHandle> getParameterNodeHandles();
+
 	template<typename T>
 	T getParameter(const std::string& paramName,T defaultValue=T()) {
-		std::vector<ros::NodeHandle> nh_list;
-		nh_list.push_back(ros::NodeHandle(name()));
-		nh_list.push_back(ros::NodeHandle(type()));
-		nh_list.push_back(ros::NodeHandle(""));
+		std::vector<ros::NodeHandle> nh_list = getParameterNodeHandles();
 		T value = defaultValue;
 		std::vector<ros::NodeHandle>::iterator nh;
 		for (nh=nh_list.begin();nh!=nh_list.end();nh++) {
@@ -157,19 +160,13 @@ protected:
 
 	template<typename T>
 	std::vector<T> getParameterVector(const std::string& paramName) {
-		std::vector<ros::NodeHandle> nh_list;
-		nh_list.push_back(ros::NodeHandle(name()));
-		nh_list.push_back(ros::NodeHandle(type()));
-		nh_list.push_back(ros::NodeHandle(""));
+		std::vector<ros::NodeHandle> nh_list = getParameterNodeHandles();
 		std::vector<T> values;
 		std::vector<ros::NodeHandle>::iterator nh;
 		for (nh=nh_list.begin();nh!=nh_list.end();nh++) {
-			//printf("checking %s\n",nh->getNamespace().c_str());
 			if (nh->hasParam(paramName)) {
-				//printf("has param\n");
 				XmlRpc::XmlRpcValue val;
 				nh->getParam(paramName,val);
-				//printf("value: %s %i\n",val.toXml().c_str(),val.size());
 				for (int i=0;i<val.size();i++) {
 					values.push_back((T)val[i]);
 				}

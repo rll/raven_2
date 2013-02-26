@@ -174,5 +174,110 @@ protected:
 	virtual bool processNotification(Updateable* sender);
 };
 
+/*************************** INLINE METHODS **************************/
+
+#include <boost/algorithm/string.hpp>
+#include <string>
+
+inline Arm::IdType Arm::id() const { return id_; }
+inline std::string Arm::idString() const {
+	#define ARM_ID_STRING_CHAR_BUFFER_SIZE 25
+	char buf[ARM_ID_STRING_CHAR_BUFFER_SIZE];
+	snprintf(buf,ARM_ID_STRING_CHAR_BUFFER_SIZE,"%i",id_);
+	return std::string(buf);
+}
+
+inline Arm::Type Arm::type() const { return type_; }
+inline bool Arm::isGold() const { return type_ == Type::GOLD; }
+inline bool Arm::isGreen() const { return type_ == Type::GREEN; }
+
+inline std::string
+Arm::typeString() const {
+	return type_.str();
+}
+inline std::string
+Arm::typeStringUpper() const {
+	return boost::to_upper_copy(typeString());
+}
+inline std::string
+Arm::typeStringLower() const {
+	return boost::to_lower_copy(typeString());
+}
+
+inline std::string Arm::name() const { return name_; }
+inline std::string Arm::nameUpper() const { return boost::to_upper_copy(name_); }
+inline std::string Arm::nameLower() const { return boost::to_lower_copy(name_); }
+
+inline bool Arm::enabled() const { return enabled_; }
+
+inline Arm::ToolType Arm::toolType() const { return toolType_; }
+
+inline btTransform Arm::basePose() const { return basePose_; }
+
+inline JointList Arm::joints() { return joints_; }
+inline ConstJointList Arm::joints() const { return constList(joints_); }
+
+inline JointPtr Arm::joint(size_t i) { return i>joints_.size() ? JointPtr() : joints_.at(i); }
+inline JointConstPtr Arm::joint(size_t i) const { return i>joints_.size() ? JointConstPtr() : JointConstPtr(joints_.at(i)); }
+
+inline JointPtr
+Arm::getJointById(Joint::IdType id) {
+	size_t ind = id.value();
+	if (ind < joints_.size() && joints_[ind]->id() == id) {
+		return joints_[ind];
+	}
+	std::vector<JointPtr>::const_iterator itr;
+	for (itr=joints_.begin();itr!=joints_.end();itr++) {
+		if ((*itr)->id() == id) {
+			return *itr;
+		}
+	}
+	return JointPtr();
+}
+
+inline JointConstPtr
+Arm::getJointById(Joint::IdType id) const {
+	return JointConstPtr(const_cast<Arm*>(this)->getJointById(id));
+}
+
+inline Eigen::VectorXf
+Arm::jointPositionVector() const {
+	return Joint::positionVector(joints_);
+}
+inline Eigen::VectorXf
+Arm::jointVelocityVector() const {
+	return Joint::velocityVector(joints_);
+}
+
+inline void Arm::addJointCoupler(JointCouplerPtr coupler) { jointCouplers_.push_back(coupler); }
+
+inline MotorList Arm::motors() { return motors_; }
+inline ConstMotorList Arm::motors() const { return constList(motors_); }
+
+inline MotorPtr Arm::motor(size_t i) {
+	return i>motors_.size() ? MotorPtr() : motors_.at(i);
+}
+inline MotorConstPtr Arm::motor(size_t i) const {
+	return MotorConstPtr(const_cast<Arm*>(this)->motor(i));
+}
+
+inline Eigen::VectorXf
+Arm::motorPositionVector() const {
+	return Motor::positionVector(motors_);
+}
+inline Eigen::VectorXf
+Arm::motorVelocityVector() const {
+	return Motor::velocityVector(motors_);
+}
+inline Eigen::VectorXf
+Arm::motorTorqueVector() const {
+	return Motor::torqueVector(motors_);
+}
+
+inline btTransform
+Arm::pose() const {
+	TRACER_ENTER_SCOPE();
+	return kinematicSolver_->forwardPose();
+}
 
 #endif /* ARM_H_ */

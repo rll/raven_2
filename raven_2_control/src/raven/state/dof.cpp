@@ -9,6 +9,7 @@
 
 
 #include <raven/state/dof.h>
+#include <raven/state/device.h>
 
 #include <iostream>
 
@@ -16,7 +17,6 @@
 #include <string>
 
 
-static int numJ = 0;
 Joint::Joint(IdType id,Type type) : Updateable(), id_(id), type_(type), hasMainMotor_(false), state_(Joint::State::NOT_READY), position_(0), velocity_(0), minPosition_(0), maxPosition_(0), homePosition_(0), speedLimit_(0) {
 	toolJoint_ = id_==IdType::ROTATION_ || id_==IdType::WRIST_ || id_ == IdType::FINGER1_ || id_ == IdType::FINGER2_ || id_ == IdType::YAW_ || id_ == IdType::GRASP_;
 }
@@ -45,30 +45,6 @@ Joint::cloneInto(JointPtr& other) const {
 	*other = *this;
 }
 
-Joint::IdType Joint::id() const { return id_; }
-bool Joint::isToolJoint() const { return toolJoint_; }
-std::string Joint::idString() const { return id_.str(); }
-std::string Joint::idStringUpper() const { return boost::to_upper_copy(idString()); }
-std::string Joint::idStringLower() const { return boost::to_lower_copy(idString()); }
-
-Joint::Type Joint::type() const { return type_; }
-
-bool Joint::hasMainMotor() const { return hasMainMotor_; }
-Motor::IdType Joint::mainMotor() const { if (!hasMainMotor_) { throw std::runtime_error("No main motor!"); } else { return mainMotor_; } }
-
-Joint::State Joint::state() const { return state_; }
-
-void Joint::setState(State state ) { state_ = state; updateTimestamp(); }
-
-float Joint::position() const { return position_; }
-float Joint::velocity() const { return velocity_; }
-
-float Joint::minPosition() const { return minPosition_; }
-float Joint::maxPosition() const { return maxPosition_; }
-
-float Joint::homePosition() const { return homePosition_; }
-float Joint::speedLimit() const { return speedLimit_; }
-
 std::string
 Joint::str() const {
 	std::stringstream ss;
@@ -93,16 +69,13 @@ void Joint::setVelocity(float vel) {
 }
 
 
-static int numM = 0;
 Motor::Motor(IdType id, Type type, TransmissionType transType, CableType cableType) :
 		Updateable(), id_(id), name_(id.str()), type_(type), transmissionType_(transType), cableType_(cableType), hasMainJoint_(false),
 		position_(0), velocity_(0), torque_(0), gravitationalTorqueEstimate_(0), dacCommand_(0), encoderValue_(0), encoderOffset_(0),
 		encoderCountsPerRev_(0), dacMax_(0), transmissionRatio_(0), tauPerAmp_(0), dacCountsPerAmp_(0) {
-	//printf("+M  %i %p\n",++numM,this);
 }
 
 Motor::~Motor() {
-	//printf("-M  %i %p\n",--numM,this);
 }
 
 MotorPtr
@@ -117,6 +90,9 @@ void
 Motor::cloneInto(MotorPtr& other) const {
 	//TRACER_VERBOSE_ENTER_SCOPE("Motor[%s]@%p::cloneInto()",id_.str(),this);
 	if (!other) {
+		if (Device::DEBUG_OUTPUT_TIMING) {
+			printf("Creating new motor\n");
+		}
 		MotorPtr newMotor = clone();
 		other.swap(newMotor);
 		return;
@@ -124,33 +100,6 @@ Motor::cloneInto(MotorPtr& other) const {
 	//TRACER_VERBOSE_PRINT("Motor clone is %p",other.get());
 	*other = *this;
 }
-
-Motor::IdType Motor::id() const { return id_; }
-std::string Motor::name() const { return name_; }
-
-Motor::Type Motor::type() const { return type_; }
-Motor::TransmissionType Motor::transmissionType() const { return transmissionType_; }
-CableType Motor::cableType() const { return cableType_; }
-
-bool Motor::hasMainJoint() const { return hasMainJoint_; }
-Joint::IdType Motor::mainJoint() const { if (!hasMainJoint_) { throw std::runtime_error("No main joint!"); } else { return mainJoint_; } }
-
-float Motor::position() const { return position_; }
-float Motor::velocity() const { return velocity_; }
-float Motor::torque() const { return torque_; }
-float Motor::gravitationalTorqueEstimate() const { return gravitationalTorqueEstimate_; }
-short int Motor::dacCommand() const { return dacCommand_; }
-int Motor::encoderValue() const { return encoderValue_; }
-int Motor::encoderOffset() const { return encoderOffset_; }
-
-int Motor::encoderCountsPerRev() const { return encoderCountsPerRev_; }
-int Motor::dacMax() const { return dacMax_; }
-
-float Motor::transmissionRatio() const { return transmissionRatio_; }
-float Motor::tauPerAmp() const { return tauPerAmp_; }
-float Motor::dacCountsPerAmp() const { return dacCountsPerAmp_; }
-
-
 
 void
 Motor::setPosition(float pos) {
@@ -213,14 +162,6 @@ Motor::setTorque(float torque) {
 	updateTimestamp();
 }
 
-float
-Motor::torqueMax() const {
-	const float TFmotor     = 1 / tauPerAmp_;    // Determine the motor TF  = 1/(tau per amp)
-	const float TFamplifier =     dacCountsPerAmp_;    // Determine the amplifier TF = (DAC_per_amp)
-
-	return ((float)dacMax_) / (TFmotor * TFamplifier);
-}
-
 void Motor::setGravitationalTorqueEstimate(float gte) {
 	gravitationalTorqueEstimate_ = gte;
 	updateTimestamp();
@@ -251,52 +192,7 @@ Motor::setEncoderOffset(int offset) {
 	updateTimestamp();
 }
 
-Eigen::VectorXf
-Joint::positionVector(const JointList& joints) {
-	Eigen::VectorXf v;
-	v.resize(joints.size());
-	for (size_t i=0;i<joints.size();i++) {
-		v[i] = joints.at(i)->position();
-	}
-	return v;
-}
-Eigen::VectorXf
-Joint::velocityVector(const JointList& joints) {
-	Eigen::VectorXf v;
-	v.resize(joints.size());
-	for (size_t i=0;i<joints.size();i++) {
-		v[i] = joints.at(i)->velocity();
-	}
-	return v;
-}
 
-Eigen::VectorXf
-Motor::positionVector(const MotorList& motors) {
-	Eigen::VectorXf v;
-	v.resize(motors.size());
-	for (size_t i=0;i<motors.size();i++) {
-		v[i] = motors.at(i)->position();
-	}
-	return v;
-}
-Eigen::VectorXf
-Motor::velocityVector(const MotorList& motors) {
-	Eigen::VectorXf v;
-	v.resize(motors.size());
-	for (size_t i=0;i<motors.size();i++) {
-		v[i] = motors.at(i)->velocity();
-	}
-	return v;
-}
-Eigen::VectorXf
-Motor::torqueVector(const MotorList& motors) {
-	Eigen::VectorXf v;
-	v.resize(motors.size());
-	for (size_t i=0;i<motors.size();i++) {
-		v[i] = motors.at(i)->torque();
-	}
-	return v;
-}
 
 std::string
 Motor::str() const {
@@ -354,11 +250,28 @@ void MotorFilter::applyUpdate() {
 	if (!motorsForUpdateReady_) {
 		return;
 	}
+	ros::Time t1 = ros::Time::now();
 	internalApplyUpdate();
-	for (size_t i=0;i<motors_.size();i++) {
-		motors_[i]->update();
+	if (Device::DEBUG_OUTPUT_TIMING) {
+		printf("MF::internalApplyUpdate() %lli\n",(long long int)(ros::Time::now()-t1).toNSec());
 	}
+	ros::Duration d;
+	ros::Time ttt1 = ros::Time::now();
+	for (size_t i=0;i<motors_.size();i++) {
+		ros::Time tt1 = ros::Time::now();
+		motors_[i]->update();
+		ros::Time tt2 = ros::Time::now();
+		d += (tt2-tt1);
+	}
+	ros::Time ttt2 = ros::Time::now();
+	ros::Duration dAvg(d.toSec()/motors_.size());
+	d = (ttt2-ttt1);
 	motorsForUpdateReady_ = false;
+	ros::Time t2 = ros::Time::now();
+	if (Device::DEBUG_OUTPUT_TIMING) {
+		printf("MF::motor update total: %lli, avg: %lli\n",(long long int)d.toNSec(),(long long int)dAvg.toNSec());
+		printf("MF::applyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+	}
 }
 
 void MotorFilter::cloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {
@@ -367,35 +280,61 @@ void MotorFilter::cloneInto(MotorFilterPtr& other, const MotorList& newMotors) c
 }
 
 
-static int numNF = 0;
 NullMotorFilter::NullMotorFilter(const MotorList& motors) : MotorFilter(motors) {
-	//printf("+NF %i %p\n",++numNF,this);
+
 }
 
 NullMotorFilter::~NullMotorFilter() {
-	//printf("-NF %i %p\n",--numNF,this);
+
+}
+
+void
+NullMotorFilter::internalApplyUpdate() {
+	ros::Time t1 = ros::Time::now();
+	TRACER_ENTER_SCOPE("NullMotorFilter::internalApplyUpdate");
+	if (Device::DEBUG_OUTPUT_TIMING) {
+		printf("NullMotorFilter::internalApplyUpdate()\n");
+	}
+	UpdateablePtr parent;
+	for (size_t i=0;i<motorsForUpdate_.size();i++) {
+		parent = motors_[i]->parent();
+		motorsForUpdate_[i]->cloneInto(motors_[i]);
+		motors_[i]->setUpdateableParent(parent);;
+	}
+	ros::Time t2 = ros::Time::now();
+	if (Device::DEBUG_OUTPUT_TIMING) {
+		printf("NMF::internalApplyUpdate(): %lli\n",(long long int)(t2-t1).toNSec());
+	}
+}
+void
+NullMotorFilter::internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {
+	if (!boost::dynamic_pointer_cast<NullMotorFilter>(other)) {
+		MotorFilterPtr newMotorFilter = clone(newMotors);
+		other.swap(newMotorFilter);
+		return;
+	}
+	*other = *this;
 }
 
 MotorFilterPtr
 NullMotorFilter::clone(const MotorList& newMotors) const {
-	//printf("+NF %i %p\n",++numNF,this);
+
 	return MotorFilterPtr(new NullMotorFilter(newMotors));
 }
 
-static int numCC = 0;
 CableCoupler::CableCoupler(const Eigen::MatrixXf& forwardMatrix,const Eigen::MatrixXf& backwardMatrix) :
 		forwardMatrix_(forwardMatrix), forwardMask_(forwardMatrix.rows(),true), backwardMatrix_(backwardMatrix),backwardMask_(backwardMatrix.rows(),true) {
-	//printf("+CC %i %p\n",++numCC,this);
+
 }
 
 CableCoupler::~CableCoupler() {
-	//printf("-CC %i %p\n",--numCC,this);
+
 }
 
 
 CableCouplerPtr
 CableCoupler::clone() const {
-	//printf("+CC %i %p\n",++numCC,this);
+
 	CableCouplerPtr newPtr(new CableCoupler(*this));
 	return newPtr;
 }

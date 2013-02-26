@@ -171,7 +171,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 		updateMasterRelativeOrigin(device0);
 		if (robot_ready(device0))
 		{
-			log_msg("Homing finished, switching to cartesian space control");
+			log_msg("Homing finished [%i], switching to cartesian space control",LoopNumber::get());
 			saveOffsets(*device0);
 			//currParams->robotControlMode = cartesian_space_control;
 			setRobotControlMode(cartesian_space_control);

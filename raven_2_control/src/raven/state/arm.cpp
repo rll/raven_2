@@ -104,9 +104,6 @@ Arm::cloneInto(ArmPtr& other) const {
 	init(other);
 }
 
-#include <boost/algorithm/string.hpp>
-#include <string>
-
 void
 Arm::init(ArmPtr arm) {
 	TRACER_VERBOSE_ENTER_SCOPE("Arm[%s]@%p::init()",arm->name_.c_str(),arm.get());
@@ -242,66 +239,7 @@ Arm::update() {
 	return Updateable::update();
 }
 
-Arm::IdType Arm::id() const { return id_; }
-std::string Arm::idString() const {
-#define ARM_ID_STRING_CHAR_BUFFER_SIZE 25
-	char buf[ARM_ID_STRING_CHAR_BUFFER_SIZE];
-	snprintf(buf,ARM_ID_STRING_CHAR_BUFFER_SIZE,"%i",id_);
-	return std::string(buf);
-}
 
-Arm::Type Arm::type() const { return type_; }
-bool Arm::isGold() const { return type_ == Type::GOLD; }
-bool Arm::isGreen() const { return type_ == Type::GREEN; }
-
-std::string
-Arm::typeString() const {
-	return type_.str();
-}
-std::string
-Arm::typeStringUpper() const {
-	return boost::to_upper_copy(typeString());
-}
-std::string
-Arm::typeStringLower() const {
-	return boost::to_lower_copy(typeString());
-}
-
-std::string Arm::name() const { return name_; }
-std::string Arm::nameUpper() const { return boost::to_upper_copy(name_); }
-std::string Arm::nameLower() const { return boost::to_lower_copy(name_); }
-
-bool Arm::enabled() const { return enabled_; }
-
-Arm::ToolType Arm::toolType() const { return toolType_; }
-
-btTransform Arm::basePose() const { return basePose_; }
-
-JointList Arm::joints() { return joints_; }
-ConstJointList Arm::joints() const { return constList(joints_); }
-
-JointPtr Arm::joint(size_t i) { return i>joints_.size() ? JointPtr() : joints_.at(i); }
-JointConstPtr Arm::joint(size_t i) const { return i>joints_.size() ? JointConstPtr() : JointConstPtr(joints_.at(i)); }
-
-JointPtr
-Arm::getJointById(Joint::IdType id) {
-	size_t ind = id.value();
-	if (ind < joints_.size() && joints_[ind]->id() == id) {
-		return joints_[ind];
-	}
-	std::vector<JointPtr>::const_iterator itr;
-	for (itr=joints_.begin();itr!=joints_.end();itr++) {
-		if ((*itr)->id() == id) {
-			return *itr;
-		}
-	}
-	return JointPtr();
-}
-
-JointConstPtr
-Arm::getJointById(Joint::IdType id) const {
-	return JointConstPtr(const_cast<Arm*>(this)->getJointById(id));
-}
 
 JointPtr
 Arm::getJointByOldType(int type) {
@@ -352,39 +290,7 @@ Arm::getMotorByOldType(int type) const {
 }
 
 
-Eigen::VectorXf
-Arm::jointPositionVector() const {
-	return Joint::positionVector(joints_);
-}
-Eigen::VectorXf
-Arm::jointVelocityVector() const {
-	return Joint::velocityVector(joints_);
-}
 
-void Arm::addJointCoupler(JointCouplerPtr coupler) { jointCouplers_.push_back(coupler); }
-
-MotorList Arm::motors() { return motors_; }
-ConstMotorList Arm::motors() const { return constList(motors_); }
-
-MotorPtr Arm::motor(size_t i) {
-	return i>motors_.size() ? MotorPtr() : motors_.at(i);
-}
-MotorConstPtr Arm::motor(size_t i) const {
-	return MotorConstPtr(const_cast<Arm*>(this)->motor(i));
-}
-
-Eigen::VectorXf
-Arm::motorPositionVector() const {
-	return Motor::positionVector(motors_);
-}
-Eigen::VectorXf
-Arm::motorVelocityVector() const {
-	return Motor::velocityVector(motors_);
-}
-Eigen::VectorXf
-Arm::motorTorqueVector() const {
-	return Motor::torqueVector(motors_);
-}
 
 MotorFilterPtr Arm::stateMotorFilter() {
 	TRACER_VERBOSE_PRINT("Arm[%s]@%p state motor filter",name_.c_str(),this);
@@ -428,10 +334,4 @@ Arm::setcontrolMotorFilter(MotorFilterPtr filter) {
 			controlMotorFilter_ = filter->clone(motors_);
 		}
 	}
-}
-
-btTransform
-Arm::pose() const {
-	TRACER_ENTER_SCOPE();
-	return kinematicSolver_->forwardPose();
 }

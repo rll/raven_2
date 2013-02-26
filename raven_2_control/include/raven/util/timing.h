@@ -21,9 +21,18 @@
 #include <sstream>
 #include <memory>
 
+#include <raven/state/runlevel.h>
+
+#define TIMING_FIELD_STRING_WIDTH 14
+
+#define TIMING_STATS(StructName,name) StructName::name##_stats()
+
 #define FIELD_TO_STREAM(name,type) STRINGIFY(type) ": " << std::setw(7) << name##_##type.toNSec() << std::setw(0) << " (" << std::setw(7) << name##_##type##_all.toNSec() << std::setw(0) << ")"
 
 #define TIMING_STRUCT_SETUP_HEADER(StructName) \
+	private: \
+	static bool RESET; \
+	public: \
 	typedef boost::circular_buffer<StructName> History; \
 	/*typedef std::auto_ptr<StructName> Ptr;*/ \
 	static void clear(StructName& s) { \
@@ -32,7 +41,6 @@
 	} \
 	static int NUM_LOOPS; \
 	static int NUM_LOOPS_ALL; \
-	static bool RESET; \
 	static void reset() { RESET = true; } \
 	static void mark_loop_end() { \
 		if (RESET) { \
@@ -48,8 +56,24 @@
 	private:\
 	ros::Duration name##_; \
 	public:\
-	ros::Duration name() const { \
+	inline ros::Duration name() const { \
 		return name##_; \
+	} \
+	inline static std::string name##_str() { \
+		return STRINGIFY(name); \
+	} \
+	inline static std::string name##_str_padded() { \
+		std::string nm_str = STRINGIFY(name); \
+		if (nm_str.size() > TIMING_FIELD_STRING_WIDTH) { \
+			size_t first_half_width = TIMING_FIELD_STRING_WIDTH-TIMING_FIELD_STRING_WIDTH/2; \
+			size_t second_half_width = TIMING_FIELD_STRING_WIDTH - first_half_width; \
+			nm_str = nm_str.substr(0,first_half_width) + nm_str.substr(nm_str.size()-second_half_width); \
+		} else { \
+			while (nm_str.size() < TIMING_FIELD_STRING_WIDTH) { \
+				nm_str += " "; \
+			} \
+		} \
+		return nm_str; \
 	} \
 	ros::Time name##_start; \
 	ros::Time name##_end; \
@@ -59,29 +83,29 @@
 	static ros::Duration name##_min_all; \
 	static ros::Duration name##_max_all; \
 	static ros::Duration name##_avg_all; \
-	void mark_##name##_start() { \
+	inline void mark_##name##_start() { \
 		name##_start = ros::Time::now(); \
 	}\
-	void mark_##name##_intermediate() { \
+	inline void mark_##name##_intermediate() { \
 		name##_end = ros::Time::now(); \
 		ros::Duration d = name##_end - name##_start; \
 		name##_ = name##_ + d; \
 	}\
-	void mark_##name##_intermediate_final() { \
+	inline void mark_##name##_intermediate_final() { \
 		set_##name##_stats(name##_); \
 	}\
-	void mark_##name##_end() { \
+	inline void mark_##name##_end() { \
 		name##_end = ros::Time::now(); \
 		ros::Duration d = name##_end - name##_start; \
 		name##_ = name##_ + d; \
 		set_##name##_stats(d); \
 	}\
-	void set_##name(ros::Duration d) { \
+	inline void set_##name(ros::Duration d) { \
 		name##_ = d; \
 		set_##name##_stats(d); \
 	} \
 	private: \
-	void set_##name##_stats(ros::Duration d) { \
+	inline void set_##name##_stats(ros::Duration d) { \
 		name##_avg = ros::Duration((d.toSec() + NUM_LOOPS * name##_avg.toSec()) / (NUM_LOOPS+1)); \
 		name##_avg_all = ros::Duration((d.toSec() + NUM_LOOPS_ALL * name##_avg_all.toSec()) / (NUM_LOOPS_ALL+1)); \
 		if (d > name##_max || NUM_LOOPS == 0) { \
@@ -98,9 +122,9 @@
 		} \
 	} \
 	public: \
-	static std::string name##_stats() { \
+	inline static std::string name##_stats() { \
 		std::stringstream ss; \
-		ss << std::left << std::setw(10) << STRINGIFY(name) << std::right << std::setw(0) << "\t"; \
+		ss << std::left << std::setw(TIMING_FIELD_STRING_WIDTH) << name##_str_padded() << std::right << std::setw(0) << "\t"; \
 		ss << FIELD_TO_STREAM(name,avg); \
 		ss << " "; \
 		ss << FIELD_TO_STREAM(name,min); \
@@ -150,6 +174,16 @@ struct TimingInfo {
 	TIMING_STRUCT_FIELD(control)
 	TIMING_STRUCT_FIELD(usb_write)
 	TIMING_STRUCT_FIELD(ros)
+
+	TIMING_STRUCT_FIELD(cn_overall)
+	TIMING_STRUCT_FIELD(cn_get_input)
+	TIMING_STRUCT_FIELD(cn_set_input)
+	TIMING_STRUCT_FIELD(cn_copy_device)
+	TIMING_STRUCT_FIELD(cn_ctrl_overall)
+	TIMING_STRUCT_FIELD(cn_ctrl_begin)
+	TIMING_STRUCT_FIELD(cn_apply_ctrl)
+	TIMING_STRUCT_FIELD(cn_ctrl_finish)
+	TIMING_STRUCT_FIELD(cn_set_output)
 };
 
 struct USBTimingInfo {

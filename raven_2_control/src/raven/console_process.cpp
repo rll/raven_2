@@ -750,19 +750,38 @@ void outputRobotState(){
 }
 
 void outputTiming() {
-	cout << TimingInfo::usb_read_stats() << endl;
-	cout << TimingInfo::state_machine_stats() << endl;
-	cout << TimingInfo::update_state_stats() << endl;
-	cout << TimingInfo::control_stats() << endl;
-	cout << TimingInfo::usb_write_stats() << endl;
-	cout << TimingInfo::ros_stats() << endl;
 
-	cout << TimingInfo::overall_stats() << endl;
+	cout << TIMING_STATS(TimingInfo,usb_read) << endl;
+	cout << TIMING_STATS(TimingInfo,state_machine) << endl;
+	cout << TIMING_STATS(TimingInfo,update_state) << endl;
+	cout << TIMING_STATS(TimingInfo,control) << endl;
+	cout << TIMING_STATS(TimingInfo,usb_write) << endl;
+	cout << TIMING_STATS(TimingInfo,ros) << endl;
 
-	cout << USBTimingInfo::get_packet_stats() << endl;
-	cout << USBTimingInfo::process_packet_stats() << endl;
+	cout << endl;
 
-	cout << ControlTiming::overall_stats() << endl;
+	cout << TIMING_STATS(TimingInfo,cn_overall) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_get_input) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_set_input) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_copy_device) << endl;
+
+	cout << TIMING_STATS(TimingInfo,cn_ctrl_begin) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_apply_ctrl) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_ctrl_finish) << endl;
+	cout << TIMING_STATS(TimingInfo,cn_ctrl_overall) << endl;
+
+	cout << TIMING_STATS(TimingInfo,cn_set_output) << endl;
+
+	cout << endl;
+
+	cout << TIMING_STATS(USBTimingInfo,get_packet) << endl;
+	cout << TIMING_STATS(USBTimingInfo,process_packet) << endl;
+
+	cout << endl;
+
+	cout << TIMING_STATS(ControlTiming,overall) << endl;
+
+	cout << TIMING_STATS(TimingInfo,overall) << endl;
 
 	cout << endl;
 

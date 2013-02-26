@@ -52,6 +52,7 @@ private:
 
 	void addArm(ArmPtr arm);
 public:
+	static bool DEBUG_OUTPUT_TIMING;
 
 	DeviceType type_;
 	ros::Time timestamp_;
@@ -155,5 +156,309 @@ protected:
 	virtual bool processNotification(Updateable* sender);
 };
 
+
+/*************************** INLINE METHODS **************************/
+
+inline size_t
+Device::numArms() {
+	return ARM_IDS.size();
+}
+
+inline Arm::IdList
+Device::armIds() {
+	return ARM_IDS;
+}
+
+inline Arm::IdList&
+Device::sortArmIds(Arm::IdList& armIds) {
+	Arm::IdSet idSet = Arm::idSet(armIds);
+	armIds = Device::sortArmIds(idSet);
+	return armIds;
+}
+
+inline Arm::IdList
+Device::sortArmIds(const Arm::IdSet& armIdSet) {
+	Arm::IdList allIds = allArmIds();
+	Arm::IdList sorted;
+	for (size_t i=0;i<allIds.size();i++) {
+		Arm::IdType id = allIds.at(i);
+		if (armIdSet.count(id)) {
+			sorted.push_back(id);
+		}
+	}
+	return sorted;
+}
+
+inline Arm::Type
+Device::getArmTypeFromId(Arm::IdType id) {
+	std::map<Arm::IdType,Arm::Type>::const_iterator itr = ARM_TYPES.find(id);
+	if (itr == ARM_TYPES.end()) {
+		std::stringstream ss;
+		ss << "Arm type for id " << id << " not found!";
+		throw std::runtime_error(ss.str());
+	}
+	return itr->second;
+}
+
+inline ArmList
+Device::arms() {
+	return arms_;
+}
+
+inline ConstArmList
+Device::arms() const {
+	return constList(arms_);
+}
+
+inline ArmPtr
+Device::arm(size_t i) {
+	return arms_[i];
+}
+
+inline ArmConstPtr
+Device::arm(size_t i) const {
+	return ArmConstPtr(arms_[i]);
+}
+
+inline ArmPtr
+Device::getArmById(Arm::IdType id) {
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if ((*itr)->id() == id) {
+			return *itr;
+		}
+	}
+	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+		if ((*itr)->id() == id) {
+			return *itr;
+		}
+	}
+	return ArmPtr();
+}
+
+inline ArmConstPtr
+Device::getArmById(Arm::IdType id) const {
+	return ArmConstPtr(const_cast<Device*>(this)->getArmById(id));
+}
+
+inline ArmList
+Device::getArmsById(const Arm::IdList& ids,bool includeDisabled) {
+	ArmList arms;
+	bool includeAll = std::find(ids.begin(),ids.end(),Arm::ALL_ARMS) != ids.end();
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
+			arms.push_back(*itr);
+		}
+	}
+	if (includeDisabled) {
+		for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+			if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
+				arms.push_back(*itr);
+			}
+		}
+	}
+	return arms;
+}
+
+inline ConstArmList
+Device::getArmsById(const Arm::IdList& ids,bool includeDisabled) const {
+	return constList(const_cast<Device*>(this)->getArmsById(ids,includeDisabled));
+}
+
+inline ArmPtr
+Device::getArmByName(const std::string& name) {
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if ((*itr)->name() == name) {
+			return *itr;
+		}
+	}
+	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+		if ((*itr)->name() == name) {
+			return *itr;
+		}
+	}
+	return ArmPtr();
+}
+
+inline ArmConstPtr
+Device::getArmByName(const std::string& name) const {
+	return ArmConstPtr(const_cast<Device*>(this)->getArmByName(name));
+}
+
+inline Arm::IdType
+Device::getArmIdFromName(const std::string& name) {
+	std::map<Arm::IdType,std::string>::const_iterator itr;
+	for (itr=ARM_NAMES.begin();itr!=ARM_NAMES.end();itr++) {
+		if (itr->second == name) {
+			return itr->first;
+		}
+	}
+	std::stringstream ss;
+	ss << "Arm id for name " << name << " not found!";
+	throw std::runtime_error(ss.str());
+}
+
+inline std::string
+Device::getArmNameFromId(Arm::IdType id) {
+	std::map<Arm::IdType,std::string>::const_iterator itr = ARM_NAMES.find(id);
+	if (itr == ARM_NAMES.end()) {
+		std::stringstream ss;
+		ss << "Arm name for id " << id << " not found!";
+		throw std::runtime_error(ss.str());
+	}
+	return itr->second;
+}
+
+inline size_t
+Device::numDisabledArms() {
+	return DISABLED_ARM_IDS.size();
+}
+
+inline Arm::IdList
+Device::disabledArmIds() {
+	return DISABLED_ARM_IDS;
+}
+
+inline ArmList
+Device::disabledArms() {
+	return disabledArms_;
+}
+
+inline ConstArmList
+Device::disabledArms() const {
+	return constList(const_cast<Device*>(this)->disabledArms_);
+}
+
+inline size_t
+Device::numAllArms() {
+	return numArms() + numDisabledArms();
+}
+
+inline Arm::IdList
+Device::allArmIds() {
+	Arm::IdList armIds = ARM_IDS;
+	armIds.insert(armIds.end(),DISABLED_ARM_IDS.begin(),DISABLED_ARM_IDS.end());
+	return armIds;
+}
+
+
+inline ArmList
+Device::allArms() {
+	ArmList arms = arms_;
+	arms.insert(arms.end(),disabledArms_.begin(),disabledArms_.end());
+	return arms;
+}
+
+inline ConstArmList
+Device::allArms() const {
+	return constList(const_cast<Device*>(this)->allArms());
+}
+
+inline size_t
+Device::numJoints() {
+	return TOTAL_NUM_JOINTS;
+}
+inline size_t
+Device::numJointsOnArm(size_t i) {
+	return NUM_JOINTS[ARM_IDS[i]];
+}
+inline size_t
+Device::numJointsOnArmById(Arm::IdType id) {
+	return NUM_JOINTS[id];
+}
+
+inline Eigen::VectorXf
+Device::jointPositionVector() const {
+	size_t numEl = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		numEl += arm->joints().size();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		size_t numElInArm = arm->joints().size();
+		v.segment(ind,numElInArm) = arm->jointPositionVector();
+		ind += numElInArm;
+	}
+	return v;
+}
+
+inline Eigen::VectorXf
+Device::jointVelocityVector() const {
+	size_t numEl = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		numEl += arm->joints().size();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		size_t numElInArm = arm->joints().size();
+		v.segment(ind,numElInArm) = arm->jointVelocityVector();
+		ind += numElInArm;
+	}
+	return v;
+}
+
+inline size_t
+Device::numMotors() {
+	return TOTAL_NUM_MOTORS;
+}
+inline size_t
+Device::numMotorsOnArm(size_t i) {
+	return NUM_MOTORS[ARM_IDS[i]];
+}
+inline size_t Device::numMotorsOnArmById(Arm::IdType id) {
+	return NUM_MOTORS[id];
+}
+
+inline Eigen::VectorXf
+Device::motorPositionVector() const {
+	size_t numEl = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		numEl += arm->motors().size();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		size_t numElInArm = arm->motors().size();
+		v.segment(ind,numElInArm) = arm->motorPositionVector();
+		ind += numElInArm;
+	}
+	return v;
+}
+
+inline Eigen::VectorXf
+Device::motorVelocityVector() const {
+	size_t numEl = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		numEl += arm->motors().size();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		size_t numElInArm = arm->motors().size();
+		v.segment(ind,numElInArm) = arm->motorVelocityVector();
+		ind += numElInArm;
+	}
+	return v;
+}
+
+inline Eigen::VectorXf
+Device::motorTorqueVector() const {
+	size_t numEl = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		numEl += arm->motors().size();
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	BOOST_FOREACH(ArmPtr arm,arms_) {
+		size_t numElInArm = arm->motors().size();
+		v.segment(ind,numElInArm) = arm->motorTorqueVector();
+		ind += numElInArm;
+	}
+	return v;
+}
 
 #endif /* DEVICE_H_ */

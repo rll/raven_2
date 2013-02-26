@@ -10,11 +10,16 @@
 #include <raven/control/controllers/motor_position_pid.h>
 #include <raven/control/input/motor_input.h>
 
+#include <raven/util/timing.h>
+
 #include <set>
+#include <stdexcept>
 
 #include "log.h"
 
 #include <boost/thread/mutex.hpp>
+
+using namespace std;
 
 boost::mutex controllerMutex;
 boost::mutex controlOutputMutex;
@@ -26,14 +31,23 @@ std::map<Arm::IdType,DevicePtr> Controller::CONTROL_OUTPUT;
 ControllerPtr Controller::HOLD_POSITION_CONTROLLER;
 ControllerPtr Controller::getHoldPositionController() {
 	if (!HOLD_POSITION_CONTROLLER) {
-		HOLD_POSITION_CONTROLLER.reset(new MotorPositionPID());
+		throw std::runtime_error("Hold position controller not initialized!");
 	}
 	return HOLD_POSITION_CONTROLLER;
 }
 
 
-#define CONTROL_OUTPUT_HISTORY_SIZE 50
 std::map<std::pair<Arm::IdType,std::string>,History<Device>::Type> Controller::CONTROL_OUTPUT_HISTORY;
+
+std::vector<ros::NodeHandle>
+Controller::getParameterNodeHandles() {
+	if (parameterNodeHandles_.empty()) {
+		parameterNodeHandles_.push_back(ros::NodeHandle(name()));
+		parameterNodeHandles_.push_back(ros::NodeHandle(type()));
+		parameterNodeHandles_.push_back(ros::NodeHandle(""));
+	}
+	return parameterNodeHandles_;
+}
 
 ControllerMap
 Controller::getControllers() {
@@ -45,25 +59,6 @@ Controller::getControllers() {
 	}
 	return controllers;
 }
-
-/*
-ControllerPtr
-Controller::getController() {
-	boost::mutex::scoped_lock(controllerMutex);
-	ControllerPtr c;
-	c = CONTROLLERS[CURRENT_CONTROLLER];
-	return c;
-}
-
-ControllerPtr
-Controller::getControllerAndType(std::string& type) {
-	boost::mutex::scoped_lock(controllerMutex);
-	ControllerPtr c;
-	type = CURRENT_CONTROLLER;
-	c = CONTROLLERS[CURRENT_CONTROLLER];
-	return c;
-}
-*/
 
 int
 Controller::internalExecuteControl(std::pair<Arm::IdType,std::string> type, ControllerPtr controller) {
@@ -88,6 +83,8 @@ int
 Controller::executeInProcessControl() {
 	static DevicePtr holdPosDev;
 	TRACER_ENTER_SCOPE("Controller::executeInProcessControl()");
+	TimingInfo t_info;
+
 	Arm::IdList holdPosIds; // = Device::disabledArmIds();
 	std::string type;
 	ControllerMap controllers = getControllers();
@@ -109,24 +106,70 @@ Controller::executeInProcessControl() {
 		}
 	}
 	if (!holdPosIds.empty()) {
+		t_info.mark_cn_overall_start();
+
+		t_info.mark_cn_get_input_start();
 		TRACER_VERBOSE_PRINT("Controlling %u held arms",holdPosIds.size());
 		MotorPositionInputPtr holdPosInput(new MotorPositionInput(holdPosIds));
+
 		TRACER_VERBOSE_PRINT("Copying input from device");
 		holdPosInput->setFrom(Device::currentNoClone());
+		t_info.mark_cn_get_input_end();
+
+		t_info.mark_cn_set_input_start();
 		TRACER_VERBOSE_PRINT("Setting input in controller");
 		getHoldPositionController()->setInput(holdPosInput);
+		t_info.mark_cn_set_input_end();
+
+		t_info.mark_cn_copy_device_start();
 		TRACER_VERBOSE_PRINT("Copying current device");
 		Device::current(holdPosDev);
+		t_info.mark_cn_copy_device_end();
+
+		t_info.mark_cn_ctrl_overall_start();
+		t_info.mark_cn_ctrl_begin_start();
 		TRACER_VERBOSE_PRINT("Beginning control");
 		holdPosDev->beginUpdate();
+		t_info.mark_cn_ctrl_begin_end();
+
+		t_info.mark_cn_apply_ctrl_start();
 		TRACER_VERBOSE_PRINT("Applying control");
 		int ret = getHoldPositionController()->applyControl(holdPosDev);
+		t_info.mark_cn_apply_ctrl_end();
+
+		t_info.mark_cn_ctrl_finish_start();
 		TRACER_VERBOSE_PRINT("Finishing control");
 		holdPosDev->finishUpdate();
+		t_info.mark_cn_ctrl_finish_end();
+		t_info.mark_cn_ctrl_overall_end();
+
+		t_info.mark_cn_set_output_start();
 		Arm::IdList::iterator armItr;
 		for (armItr = holdPosIds.begin();armItr != holdPosIds.end(); armItr++) {
 			TRACER_VERBOSE_PRINT("Setting control output for arm %s",Device::getArmNameFromId(*armItr).c_str());
 			setControlOutput(*armItr,holdPosDev);
+		}
+		t_info.mark_cn_set_output_end();
+
+		t_info.mark_cn_overall_end();
+
+		if (t_info.cn_overall().toNSec() > 100000000) {
+			printf("Ctrl HUGE! [%i]\n",LoopNumber::getMain());
+
+			cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
+			cout << TimingInfo::cn_set_input_str_padded() << ":\t" << t_info.cn_set_input().toNSec() << endl;
+			cout << TimingInfo::cn_copy_device_str_padded() << ":\t" << t_info.cn_copy_device().toNSec() << endl;
+
+			cout << TimingInfo::cn_ctrl_begin_str_padded() << ":\t" << t_info.cn_ctrl_begin().toNSec() << endl;
+			cout << TimingInfo::cn_apply_ctrl_str_padded() << ":\t" << t_info.cn_apply_ctrl().toNSec() << endl;
+			cout << TimingInfo::cn_ctrl_finish_str_padded() << ":\t" << t_info.cn_ctrl_finish().toNSec() << endl;
+			cout << TimingInfo::cn_ctrl_overall_str_padded() << ":\t" << t_info.cn_ctrl_overall().toNSec() << endl;
+
+			cout << TimingInfo::cn_set_output_str_padded() << ":\t" << t_info.cn_set_output().toNSec() << endl;
+
+			cout << TimingInfo::cn_overall_str_padded() << ":\t" << t_info.cn_overall().toNSec() << endl;
+
+			cout << endl;
 		}
 	}
 	return 0;
@@ -179,7 +222,19 @@ void
 Controller::registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller) {
 	TRACER_ENTER_SCOPE("Controller::registerController(%i,%s,%s)",armId,type.c_str(),typeid(*controller).name());
 	boost::mutex::scoped_lock(controllerMutex);
-	log_msg("Registering %s controller for arm id %i: %s",type.c_str(),armId,typeid(*controller).name());
+	if (type.empty()) {
+		if (controller) {
+			HOLD_POSITION_CONTROLLER = controller;
+		} else if (!HOLD_POSITION_CONTROLLER) {
+			HOLD_POSITION_CONTROLLER.reset(new MotorPositionPID());
+		}
+		return;
+	}
+	if (controller) {
+		log_msg("Registering %s controller for arm id %i: %s",type.c_str(),armId,typeid(*controller).name());
+	} else {
+		log_msg("Unregistering %s controller for arm id %i",type.c_str(),armId);
+	}
 	std::pair<Arm::IdType,std::string> pair_type(armId,type);
 	CONTROLLERS[pair_type] = controller;
 	CONTROL_OUTPUT_HISTORY[pair_type] = History<Device>::Type(CONTROL_OUTPUT_HISTORY_SIZE,0,CloningWrapper<Device>());
@@ -187,7 +242,8 @@ Controller::registerController(Arm::IdType armId, const std::string& type,Contro
 
 bool
 Controller::setController(Arm::IdType armId, const std::string& type) {
-	if (RunLevel::get().isPedalDown() && RunLevel::get().isInit()) {
+	RunLevel rl = RunLevel::get();
+	if (rl.isPedalDown() || rl.isInit()) {
 		return false;
 	}
 	boost::mutex::scoped_lock(controllerMutex);
@@ -196,9 +252,6 @@ Controller::setController(Arm::IdType armId, const std::string& type) {
 		CURRENT_CONTROLLERS[armId] = type;
 		if (!type.empty()) {
 			HOLD_POSITION_CONTROLLER->resetState();
-//			FOREACH_ARM_ID(armId) {
-//				getHoldPositionController(armId)->resetState();
-//			}
 		}
 
 		return true;
@@ -211,7 +264,6 @@ Controller::setController(Arm::IdType armId, const std::string& type) {
 	} else if (itr->second != type){
 		itr->second = type;
 		HOLD_POSITION_CONTROLLER->resetState();
-//		getHoldPositionController(armId)->resetState();
 	}
 	return true;
 }

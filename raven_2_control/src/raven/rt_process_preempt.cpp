@@ -164,23 +164,26 @@ static void *rt_process(void* )
 #endif
     initDOFs(&device0);
 
+    log_msg("Creating controllers");
 #ifdef TEST_NEW_CTRL
-    {
-    	log_msg("Creating controllers");
+    ControllerPtr pid(new MotorPositionPID());
+	ControllerPtr ee(new EndEffectorController());
+#endif
 
-    	ControllerPtr pid(new MotorPositionPID());
-		ControllerPtr ee(new EndEffectorController());
+	log_msg("Registering controllers");
 
-    	log_msg("Registering controllers");
+#ifdef TEST_NEW_CTRL
+    Controller::registerController("motor/position",pid);
+    Controller::registerController("end_effector/pose",ee);
+    Controller::registerController("end_effector/grasp+pose",ee);
+#endif
 
-    	Controller::registerController("motor/position",pid);
-		Controller::registerController("end_effector/pose",ee);
-		Controller::registerController("end_effector/grasp+pose",ee);
+    Controller::registerController(Arm::ALL_ARMS,""); //init hold position controller if none exists
 
-    	log_msg("Setting controller");
-    	//Controller::setController("motor/position");
-		Controller::setController("end_effector/pose");
-    }
+    log_msg("Setting controller");
+
+#ifdef TEST_NEW_CTRL
+    Controller::setController("end_effector/pose");
 #endif
 
     /*{
@@ -241,10 +244,20 @@ static void *rt_process(void* )
         TimingInfo t_info;
         t_info.mark_overall_start();
 
+        LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
+        	Device::DEBUG_OUTPUT_TIMING = true;
+        }
+        if (RunLevel::hasHomed() && LoopNumber::onlyEvery("output device finish update timing",4,5000)) {
+        	printf("Outputting usb timing [%i]\n",loopNumber);
+        	Device::DEBUG_OUTPUT_TIMING = true;
+        }
+
         t_info.mark_usb_read_start();
         //Get and Process USB Packets
         getUSBPackets(&device0); //disable usb for parport test
         t_info.mark_usb_read_end();
+
+        Device::DEBUG_OUTPUT_TIMING = false;
 
 
         t_info.mark_state_machine_start();
@@ -274,6 +287,7 @@ static void *rt_process(void* )
         	controlRaven(&device0, &currParams);
         } else {
         	controlRaven(&device0, &currParams);
+        	/*
         	bool scope_tracer_on = false;
         	if (RunLevel::newlyHomed()) {
         		printf("***Newly homed! [%i]\n",loopNumber);
@@ -283,7 +297,16 @@ static void *rt_process(void* )
         		//scope_tracer_on = true;
         	}
         	TRACER_ON_IN_SCOPE_IF(scope_tracer_on);
+        	*/
+        	if (RunLevel::newlyHomed() || LoopNumber::onlyEvery("output device finish update timing",4,5000)) {
+        		printf("Outputting controller timing [%i]\n",loopNumber);
+        		Device::DEBUG_OUTPUT_TIMING = true;
+        	}
         	int ctrl_ret = Controller::executeInProcessControl();
+        	Device::DEBUG_OUTPUT_TIMING = false;
+        	LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
+        		printf("HAS HOMED %i\n",LoopNumber::get());
+        	}
 #ifdef TEST_NEW_CTRL
         	OldControlInputPtr ptr = ControlInput::oldControlInputUpdateBegin();
         	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
@@ -354,6 +377,77 @@ static void *rt_process(void* )
 
         TimingInfo::mark_loop_end();
         TRACER_OFF();
+
+        /*
+        bool printTiming =
+        		LoopNumber::only("rt_proc print timing",2)
+        		|| RunLevel::newlyHomed()
+        		|| (TimingInfo::cn_overall_max_all > ros::Duration(0.001) && LoopNumber::once("ctrl max'd"))
+        		|| t_info.cn_overall() > ros::Duration(0.001);
+
+        if (printTiming) {
+        	cout << "TIMING FOR LOOP " << LoopNumber::get() << endl;
+
+        	cout << TimingInfo::usb_read_str_padded() << ":\t" << t_info.usb_read().toNSec() << endl;
+        	cout << TimingInfo::state_machine_str_padded() << ":\t" << t_info.state_machine().toNSec() << endl;
+        	cout << TimingInfo::update_state_str_padded() << ":\t" << t_info.update_state().toNSec() << endl;
+        	cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
+
+        	cout << endl;
+
+        	cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
+        	cout << TimingInfo::cn_set_input_str_padded() << ":\t" << t_info.cn_set_input().toNSec() << endl;
+			cout << TimingInfo::cn_copy_device_str_padded() << ":\t" << t_info.cn_copy_device().toNSec() << endl;
+
+			cout << TimingInfo::cn_ctrl_begin_str_padded() << ":\t" << t_info.cn_ctrl_begin().toNSec() << endl;
+			cout << TimingInfo::cn_apply_ctrl_str_padded() << ":\t" << t_info.cn_apply_ctrl().toNSec() << endl;
+			cout << TimingInfo::cn_ctrl_finish_str_padded() << ":\t" << t_info.cn_ctrl_finish().toNSec() << endl;
+			cout << TimingInfo::cn_ctrl_overall_str_padded() << ":\t" << t_info.cn_ctrl_overall().toNSec() << endl;
+
+			cout << TimingInfo::cn_set_output_str_padded() << ":\t" << t_info.cn_set_output().toNSec() << endl;
+
+			cout << TimingInfo::cn_overall_str_padded() << ":\t" << t_info.cn_overall().toNSec() << endl;
+
+			cout << endl;
+
+        	cout << TimingInfo::control_str_padded() << ":\t" << t_info.control().toNSec() << endl;
+
+			cout << TimingInfo::usb_write_str_padded() << ":\t" << t_info.usb_write().toNSec() << endl;
+			cout << TimingInfo::ros_str_padded() << ":\t" << t_info.ros().toNSec() << endl;
+
+			cout << endl;
+
+			cout << TimingInfo::overall_str_padded() << ":\t" << t_info.overall().toNSec() << endl;
+
+			cout << endl;
+
+//			cout << TIMING_STATS(TimingInfo,cn_get_input) << endl;
+//			cout << TIMING_STATS(TimingInfo,cn_set_input) << endl;
+//			cout << TIMING_STATS(TimingInfo,cn_copy_device) << endl;
+//
+//			cout << TIMING_STATS(TimingInfo,cn_ctrl_begin) << endl;
+//			cout << TIMING_STATS(TimingInfo,cn_apply_ctrl) << endl;
+//			cout << TIMING_STATS(TimingInfo,cn_ctrl_finish) << endl;
+//			cout << TIMING_STATS(TimingInfo,cn_ctrl_overall) << endl;
+//
+//			cout << TIMING_STATS(TimingInfo,cn_set_output) << endl;
+//
+//			cout << TIMING_STATS(TimingInfo,cn_overall) << endl;
+//
+//			cout << endl;
+//
+//			cout << TIMING_STATS(USBTimingInfo,get_packet) << endl;
+//			cout << TIMING_STATS(USBTimingInfo,process_packet) << endl;
+//
+//			cout << endl;
+//
+//			cout << TIMING_STATS(ControlTiming,overall) << endl;
+//
+//			cout << TIMING_STATS(TimingInfo,overall) << endl;
+//
+//			cout << endl;
+        }
+        */
 
         /*
         static bool test_done = false;

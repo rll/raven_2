@@ -55,7 +55,7 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
     u_08 curr_rl;
     u_08 curr_sl;
     RunLevel::get().getNumbers<u_08>(curr_rl,curr_sl);
-    RunLevel::updateRunlevel(rlDesired);
+    //RunLevel::updateRunlevel(rlDesired);
     if (curr_rl == rlDesired) {
 #else
 	if ( *rl == rlDesired) {
@@ -65,13 +65,10 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
         rlDelayCounter++;
         return;
     }
-#ifdef USE_NEW_RUNLEVEL
-	//RunLevel::updateRunlevel(rlDesired);
-#endif
 
     rlDelayCounter = 0;
 #ifdef USE_NEW_RUNLEVEL
-    //RunLevel::updateRunlevel(rlDesired);
+    RunLevel::updateRunlevel(rlDesired);
 #else
     *rl = rlDesired;            // Update Run Level
     device0->runlevel = *rl;    // Log runlevels in DS0.
