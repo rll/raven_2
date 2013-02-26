@@ -101,11 +101,14 @@ int initLocalioData(void)
 // - Recieve userspace data  - //
 //---------------------------- //
 //int recieveUserspace(unsigned int fifo)
-int recieveUserspace(void *u,int size)
-{
-    if (size==sizeof(struct u_struct))
-    {
-    	if (checkMasterMode(MasterMode::NETWORK)) {
+int recieveUserspace(void *u,int size) {
+    if (size==sizeof(struct u_struct)) {
+#ifdef MASTER_MODE_STRING
+    	if (checkMasterMode("network"))
+#else
+    	if (checkMasterMode(MasterMode::NETWORK))
+#endif
+    	{
     		isUpdated = TRUE;
     		teleopIntoDS1((struct u_struct*)u);
     	}

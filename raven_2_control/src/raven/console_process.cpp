@@ -63,10 +63,10 @@ void *console_process(void *)
     	MasterMode masterMode;
     	std::set<MasterMode> masterModeConflicts;
     	getMasterModeConflicts(masterMode,masterModeConflicts);
-    	if (!masterModeConflicts.empty() || (masterModeWasNone && masterMode != MasterMode::NONE)) {
+    	if (!masterModeConflicts.empty() || (masterModeWasNone && !masterModeIsNone(masterMode))) {
     		print_msg = 1;
     	}
-    	masterModeWasNone = (masterMode == MasterMode::NONE);
+    	masterModeWasNone = masterModeIsNone(masterMode);
 
     	t_controlmode controlMode;
 		std::set<t_controlmode> controlModeConflicts;
@@ -82,12 +82,12 @@ void *console_process(void *)
         		std::stringstream ss;
 				ss << "Master mode conflicts from";
 				for (std::set<MasterMode>::iterator itr=masterModeConflicts.begin();itr!=masterModeConflicts.end();itr++) {
-					ss << " " << itr->str();
+					ss << " " << masterModeToString(*itr);
 				}
-				ss << ", current mode is " << masterMode.str();
+				ss << ", current mode is " << masterModeToString(masterMode);
 				log_warn(ss.str().c_str());
-        	} else if (masterMode != MasterMode::NONE) {
-        		log_msg("In master mode %s",masterMode.str());
+        	} else if (!masterModeIsNone(masterMode)) {
+        		log_msg("In master mode %s",masterModeToString(masterMode).c_str());
         	}
 
         	if (!controlModeConflicts.empty()) {
@@ -102,7 +102,7 @@ void *console_process(void *)
 
             log_msg("[[\t'C'  : toggle console messages ]]");
 
-            if (masterMode != MasterMode::NONE || !masterModeConflicts.empty()) {
+            if (!masterModeIsNone(masterMode) || !masterModeConflicts.empty()) {
 			log_msg("[[\t'U'  : unlock master mode      ]]");
             }
 
@@ -194,10 +194,10 @@ void *console_process(void *)
             case 'U':
             {
             	print_msg=1;
-            	log_msg("Unlocking master masterMode");
+            	log_msg("Unlocking master mode");
             	bool resetResult = resetMasterMode();
             	if (!resetResult) {
-            		log_err("Could not unlock master masterMode!");
+            		log_err("Could not unlock master mode!");
             	}
             	break;
             }
@@ -261,7 +261,7 @@ void outputRobotState(){
 	cout << "Pedal: " << RunLevel::getPedal() << " " << device0.surgeon_mode << endl;
 	cout << "inited " << RunLevel::isInitialized() << " " << initialized << endl;
 	cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
-    cout << "Master mode: " << getMasterMode().str() << endl;
+    cout << "Master mode: " << getMasterModeString() << endl;
     cout << "Controller: " << controlModeToString(getControlMode()) << endl;
     mechanism* _mech = NULL;
     int mechnum=0;

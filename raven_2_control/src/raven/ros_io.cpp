@@ -138,6 +138,7 @@ inline geometry_msgs::Pose toRos(position pos,orientation ori,btMatrix3x3 transf
 	p.y = ((float)pos.y) / MICRON_PER_M;
 	p.z = ((float)pos.z) / MICRON_PER_M;
 	geometry_msgs::Quaternion q;
+	rot.normalize();
 	q.x = rot.x();
 	q.y = rot.y();
 	q.z = rot.z();
@@ -181,13 +182,21 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd);
 void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params);
 
 void cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
+#ifdef MASTER_MODE_STRING
+	if (!checkMasterMode(RAVEN_COMMAND_TOPIC)) { return; }
+#else
 	if (!checkMasterMode(MasterMode::ROS_RAVEN_CMD)) { return; }
+#endif
 	processRavenCmd(cmd);
 }
 
 void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId) {
 	printf("cmd pose callback\n");
+#ifdef MASTER_MODE_STRING
+	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
+#else
 	if (!checkMasterMode(MasterMode::ROS_POSE)) { return; }
+#endif
 
 	raven_2_msgs::RavenCommand cmd;
 	cmd.header = pose->header;
@@ -429,7 +438,11 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_msg) {
 	log_msg("trajectory callback!\n");
+#ifdef MASTER_MODE_STRING
+	if (!checkMasterMode(RAVEN_COMMAND_TRAJECTORY_TOPIC)) { return; }
+#else
 	if (!checkMasterMode(MasterMode::ROS_TRAJECTORY)) { return; }
+#endif
 	if (!checkControlMode(trajectory_control)) { return; }
 
 	t_controlmode controlmode = (t_controlmode)traj_msg.controller;
@@ -566,7 +579,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	raven_state.pedal_down = device0->surgeon_mode;
 #endif
 
-	raven_state.master = getMasterMode().str();
+	raven_state.master = getMasterModeString();
 
 	//t_controlmode controlMode = (t_controlmode)currParams.robotControlMode;
 	t_controlmode controlMode = getControlMode();

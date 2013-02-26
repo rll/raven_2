@@ -13,6 +13,8 @@
 
 #include <raven/state/runlevel.h>
 
+#include <boost/thread/mutex.hpp>
+
 extern struct robot_device device0;
 
 #define STRINGIFY(s) STRINGIFY_HELPER(s)
@@ -20,56 +22,93 @@ extern struct robot_device device0;
 
 /*********************** MASTER MODE *********************************/
 
+#ifdef MASTER_MODE_STRING
+MasterMode masterMode = "";
+#else
 MasterMode masterMode = MasterMode::NONE;
+#endif
 std::set<MasterMode> masterModeConflictSet;
-pthread_mutexattr_t masterModeMutexAttr;
-pthread_mutex_t masterModeMutex;
+boost::mutex masterModeMutex;
+
+std::string masterModeToString(const MasterMode& mode) {
+#ifdef MASTER_MODE_STRING
+	if (masterMode.empty()) {
+		return "NONE";
+	}
+	return mode;
+#else
+	return masterMode.str();
+#endif
+}
+
+std::string getMasterModeString() {
+	return masterModeToString(getMasterMode());
+}
 
 MasterMode getMasterMode() {
 	return masterMode;
 }
 
-bool checkMasterMode(MasterMode mode) {
-	if (mode == MasterMode::NONE) {
+bool masterModeIsNone(const MasterMode& mode) {
+#ifdef MASTER_MODE_STRING
+	return mode.empty();
+#else
+	return mode == MasterMode::NONE;
+#endif
+}
+
+bool checkMasterMode(const MasterMode& mode) {
+#ifdef MASTER_MODE_STRING
+	if (mode.empty())
+#else
+	if (mode == MasterMode::NONE)
+#endif
+	{
 		return false;
 #ifdef USE_NEW_RUNLEVEL
 	} else if (!RunLevel::hasHomed()) {
 #else
 	} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
 #endif
-		printf("hasn't homed\n");
+		//printf("hasn't homed\n");
 		return false;
 	}
 	bool succeeded = false;
-	pthread_mutex_lock(&masterModeMutex);
-	if (masterMode == mode || masterMode == MasterMode::NONE) {
+	boost::mutex::scoped_lock _lock(masterModeMutex);
+#ifdef MASTER_MODE_STRING
+	if (masterMode == mode || masterMode.empty())
+#else
+	if (masterMode == mode || masterMode == MasterMode::NONE)
+#endif
+	{
 		masterMode = mode;
 		succeeded = true;
 	} else {
 		masterModeConflictSet.insert(mode);
 	}
-	pthread_mutex_unlock(&masterModeMutex);
 	return succeeded;
 }
 
 bool getMasterModeConflicts(MasterMode& mode, std::set<MasterMode>& conflicts) {
 	bool conflicted;
-	pthread_mutex_lock(&masterModeMutex);
+	boost::mutex::scoped_lock _lock(masterModeMutex);
 	mode = masterMode;
 	conflicted = !masterModeConflictSet.empty();
 	conflicts.insert(masterModeConflictSet.begin(),masterModeConflictSet.end());
 	masterModeConflictSet.clear();
-	pthread_mutex_unlock(&masterModeMutex);
 	return conflicted;
 }
 
 bool resetMasterMode() {
 	bool succeeded = false;
-	pthread_mutex_lock(&masterModeMutex);
+	boost::mutex::scoped_lock _lock(masterModeMutex);
+#ifdef MASTER_MODE_STRING
+	masterMode = "";
+#else
 	masterMode = MasterMode::NONE;
+#endif
 	masterModeConflictSet.clear();
 	succeeded = true;
-	pthread_mutex_unlock(&masterModeMutex);
 	return succeeded;
 }
 
@@ -77,8 +116,7 @@ bool resetMasterMode() {
 
 t_controlmode controlMode = no_control;
 std::set<t_controlmode> controlModeConflictSet;
-pthread_mutexattr_t controlModeMutexAttr;
-pthread_mutex_t controlModeMutex;
+boost::mutex controlModeMutex;
 
 t_controlmode getControlMode() {
 	return controlMode;
@@ -113,7 +151,7 @@ bool checkControlMode(t_controlmode mode) {
 		return false;
 	}
 	bool succeeded = false;
-	pthread_mutex_lock(&controlModeMutex);
+	boost::mutex::scoped_lock _lock(controlModeMutex);
 	//change controllers ok if runlevel is pedal up
 	if (controlMode == mode || controlMode == no_control
 			|| (!RunLevel::get().isPedalDown() && !RunLevel::get().isInit())) {
@@ -122,29 +160,26 @@ bool checkControlMode(t_controlmode mode) {
 	} else {
 		controlModeConflictSet.insert(mode);
 	}
-	pthread_mutex_unlock(&controlModeMutex);
 	return succeeded;
 }
 
 bool getControlModeConflicts(t_controlmode& mode, std::set<t_controlmode>& conflicts) {
 	bool conflicted;
-	pthread_mutex_lock(&controlModeMutex);
+	boost::mutex::scoped_lock _lock(controlModeMutex);
 	mode = controlMode;
 	conflicted = !controlModeConflictSet.empty();
 	conflicts.insert(controlModeConflictSet.begin(),controlModeConflictSet.end());
 	controlModeConflictSet.clear();
-	pthread_mutex_unlock(&controlModeMutex);
 	return conflicted;
 }
 
 bool setControlMode(t_controlmode new_mode) {
 	t_controlmode old_mode;
-	pthread_mutex_lock(&controlModeMutex);
+	boost::mutex::scoped_lock _lock(controlModeMutex);
 	old_mode = controlMode;
 	controlMode = new_mode;
 	if (old_mode != new_mode) {
 		controlModeConflictSet.clear();
 	}
-	pthread_mutex_unlock(&controlModeMutex);
 	return new_mode != old_mode;
 }
