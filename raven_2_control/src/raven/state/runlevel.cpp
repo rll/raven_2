@@ -8,6 +8,7 @@
 #include <raven/state/runlevel.h>
 
 #include "log.h"
+#include <ros/ros.h>
 
 #include <boost/thread/recursive_mutex.hpp>
 
@@ -40,7 +41,7 @@ void RunLevel::updateRunlevel(runlevel_t level) {
 			SOFTWARE_ESTOP = false;
 		}
 	} else if (INSTANCE->value_ != level) {
-		if (INSTANCE->value_ == 1 && level == 2) {
+		if (ROS_UNLIKELY(!HAS_HOMED) && level >= 2) {
 			HAS_HOMED = true;
 		}
 		*INSTANCE = RunLevel(level,0);
@@ -51,7 +52,7 @@ void RunLevel::updateRunlevel(runlevel_t level) {
 		}
 	}
 #ifdef USE_RUNLEVEL_MUTEX
-		runlevelMutex.unlock();
+	runlevelMutex.unlock();
 #endif
 }
 
@@ -170,7 +171,15 @@ void RunLevel::setSublevel(runlevel_t sublevel) {
 
 bool
 RunLevel::hasHomed() {
-	return HAS_HOMED;
+	bool ret;
+#ifdef USE_RUNLEVEL_MUTEX
+	runlevelMutex.lock();
+#endif
+	ret = HAS_HOMED;
+#ifdef USE_RUNLEVEL_MUTEX
+	runlevelMutex.unlock();
+#endif
+	return ret;
 }
 
 bool

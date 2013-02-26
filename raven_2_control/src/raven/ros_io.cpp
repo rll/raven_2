@@ -197,11 +197,15 @@ void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId)
 	cmd.controller = raven_2_msgs::Constants::CONTROLLER_CARTESIAN_SPACE;
 	raven_2_msgs::ArmCommand arm_cmd;
 	arm_cmd.active = true;
-	arm_cmd.tool_command.relative = false;
-	arm_cmd.tool_command.tool_pose = pose->pose;
-	arm_cmd.tool_command.set_grasp = false;
+	arm_cmd.tool_command.pose_option = raven_2_msgs::ToolCommand::POSE_ABSOLUTE;
+	arm_cmd.tool_command.pose = pose->pose;
+
+	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_OFF;
+
 	arm_cmd.tool_command.grasp = 0;
-	cmd.arms[armId] = arm_cmd;
+	cmd.arm_names.push_back(armNameFromId(armId));
+	cmd.arms.push_back(arm_cmd);
+	//cmd.arms[armId] = arm_cmd;
 	processRavenCmd(cmd);
 }
 
@@ -264,7 +268,20 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 	for (int mech_ind=0;mech_ind<NUM_MECH;mech_ind++) {
 		int arm_serial = USBBoards.boards[mech_ind];
 		int arm_id = armIdFromSerial(arm_serial);
-		if (!cmd.arms[arm_id].active) { continue; }
+
+		raven_2_msgs::ArmCommand armCmd;
+		bool found = false;
+		for (int i=0;i<cmd.arm_names.size();i++) {
+			if (cmd.arm_names.at(i) == armNameFromId(arm_id)) {
+				armCmd = cmd.arms.at(i);
+				found = true;
+				break;
+			}
+		}
+		if (!found || !armCmd.active) {
+			continue;
+		}
+
 		if (_localio_counter % PRINT_EVERY == 0 || true) {
 			if (arm_id == 0) {
 				//printf("*********active %d!-----------------------------------\n",i);
@@ -274,7 +291,7 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 		}
 
 		tf::Transform tool_pose_raw;
-		tf::poseMsgToTF(cmd.arms[arm_id].tool_command.tool_pose,tool_pose_raw);
+		tf::poseMsgToTF(armCmd.tool_command.pose,tool_pose_raw);
 
 		tf::StampedTransform to0link;
 		try {
@@ -297,10 +314,13 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 		btVector3 p = tool_pose.getOrigin();
 
-		if (cmd.arms[arm_id].tool_command.relative) {
-			master_raw_position[arm_id] += p;
-		} else {
-			master_raw_position[arm_id] = p;
+		uint8_t pose_option = armCmd.tool_command.pose_option;
+		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
+				master_raw_position[arm_id] += p;
+			} else {
+				master_raw_position[arm_id] = p;
+			}
 		}
 
 		btQuaternion rot = tool_pose.getRotation();
@@ -309,34 +329,57 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 		btMatrix3x3 rot_mx_temp(rot);
 
-		if (cmd.arms[arm_id].tool_command.relative) {
-			params.xd[mech_ind].x += p.x() * MICRON_PER_M;
-			params.xd[mech_ind].y += p.y() * MICRON_PER_M;
-			params.xd[mech_ind].z += p.z() * MICRON_PER_M;
+		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
+				params.xd[mech_ind].x += p.x() * MICRON_PER_M;
+				params.xd[mech_ind].y += p.y() * MICRON_PER_M;
+				params.xd[mech_ind].z += p.z() * MICRON_PER_M;
 
-			master_position[arm_id] += p;
+				master_position[arm_id] += p;
+			} else {
+				params.xd[mech_ind].x = p.x() * MICRON_PER_M;
+				params.xd[mech_ind].y = p.y() * MICRON_PER_M;
+				params.xd[mech_ind].z = p.z() * MICRON_PER_M;
+
+				master_position[arm_id] = p;
+
+			}
 		} else {
-			params.xd[mech_ind].x = p.x() * MICRON_PER_M;
-			params.xd[mech_ind].y = p.y() * MICRON_PER_M;
-			params.xd[mech_ind].z = p.z() * MICRON_PER_M;
-
-			master_position[arm_id] = p;
 
 		}
-		rot_mx_temp = rot_mx_temp * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
-		master_orientation[arm_id] = rot_mx_temp;
 
-		if (cmd.arms[arm_id].tool_command.set_grasp) {
+		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
+				ROS_ERROR_THROTTLE(0.1,"Relative orientation not implemented!");
+			} else {
+				rot_mx_temp = rot_mx_temp * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
+				master_orientation[arm_id] = rot_mx_temp;
+			}
+		}
+
+		const int graspmax = (M_PI/2 * 1000);
+		const int graspmin = (-20.0 * 1000.0 DEG2RAD);
+		if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_SET) {
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				params.rd[mech_ind].grasp = saturate(1000*armCmd.tool_command.grasp,graspmin,graspmax);
+			} else {
+				params.rd[mech_ind].grasp = saturate(-1000*armCmd.tool_command.grasp,-graspmax,-graspmin);
+			}
+		} else if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_INCREMENT) {
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + 1000*armCmd.tool_command.grasp,graspmin,graspmax);
+			} else {
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - 1000*armCmd.tool_command.grasp,-graspmax,-graspmin);
+			}
+		} else if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_INCREMENT_SIGN) {
 			float grasp_scale_factor = 500 * since_last_call.toSec();
 			if (grasp_scale_factor < 1) {
 				grasp_scale_factor = 1;
 			}
-			const int graspmax = (M_PI/2 * 1000);
-			const int graspmin = (-20.0 * 1000.0 DEG2RAD);
 			if (arm_serial == GOLD_ARM_SERIAL) {
-				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + grasp_scale_factor*cmd.arms[arm_id].tool_command.grasp,graspmin,graspmax);
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + grasp_scale_factor*armCmd.tool_command.grasp,graspmin,graspmax);
 			} else {
-				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - grasp_scale_factor*cmd.arms[arm_id].tool_command.grasp,-graspmax,-graspmin);
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - grasp_scale_factor*armCmd.tool_command.grasp,-graspmax,-graspmin);
 			}
 		}
 
@@ -350,10 +393,10 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 				}
 			}
 
-			for (size_t i=0;i<cmd.arms[arm_id].joint_types.size();i++) {
-				if (cmd.arms[arm_id].joint_types[i] == raven_2_msgs::Constants::JOINT_TYPE_INSERTION
-						&& cmd.arms[arm_id].joint_commands[i].command_type == raven_2_msgs::JointCommand::COMMAND_TYPE_VELOCITY) {
-					float ins_amt = since_last_call.toSec() * insertion_scale * cmd.arms[arm_id].joint_commands[i].value;
+			for (size_t i=0;i<armCmd.joint_types.size();i++) {
+				if (armCmd.joint_types[i] == raven_2_msgs::Constants::JOINT_TYPE_INSERTION
+						&& armCmd.joint_commands[i].command_type == raven_2_msgs::JointCommand::COMMAND_TYPE_VELOCITY) {
+					float ins_amt = since_last_call.toSec() * insertion_scale * armCmd.joint_commands[i].value;
 					btTransform ins_tf = actual_world_to_ik_world(arm_id)
 											* Tw2b
 											* Zs(THS_TO_IK(arm_id,device0ptr->mech[mechId].joint[SHOULDER].jpos))
@@ -425,6 +468,7 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 		cmd.header.frame_id = traj_msg.header.frame_id;
 		cmd.controller = controlmode;
 		cmd.pedal_down = true;
+		cmd.arm_names = traj_msg.commands[i].arm_names;
 		cmd.arms = traj_msg.commands[i].arms;
 
 		params.surgeon_mode = cmd.pedal_down;
@@ -515,12 +559,14 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 #ifdef USE_NEW_RUNLEVEL
 	RunLevel rl = RunLevel::get();
 	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
-	raven_state.surgeon_mode = RunLevel::getPedal();
+	raven_state.pedal_down = RunLevel::getPedal();
 #else
 	raven_state.runlevel = runlevel;
 	raven_state.sublevel = sublevel;
-	raven_state.surgeon_mode = device0->surgeon_mode;
+	raven_state.pedal_down = device0->surgeon_mode;
 #endif
+
+	raven_state.master = getMasterMode().str();
 
 	//t_controlmode controlMode = (t_controlmode)currParams.robotControlMode;
 	t_controlmode controlMode = getControlMode();
@@ -547,6 +593,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			ROS_ERROR_STREAM("Unknown mech type"<<_mech->type);
 			continue;
 		}
+		arm_state.name = armNameFromMechType(_mech->type);
 		arm_state.type = arm_type;
 
 		arm_state.base_pose = toRos(_mech->base_pos,_mech->base_ori,transform);
@@ -664,11 +711,13 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	array_state.header = raven_state.header;
 	array_state.runlevel = raven_state.runlevel;
 	array_state.sublevel = raven_state.sublevel;
-	array_state.surgeon_mode = raven_state.surgeon_mode;
+	array_state.pedal_down = raven_state.pedal_down;
+	array_state.master = raven_state.master;
 	array_state.controller = raven_state.controller;
 
 	for (int i=0;i<(int)raven_state.arms.size();i++) {
 		raven_2_msgs::ArmState arm = raven_state.arms[i];
+		array_state.arm_names.push_back(arm.name);
 		array_state.arm_types.push_back(arm.type);
 		array_state.base_poses.push_back(arm.base_pose);
 		array_state.tool_types.push_back(arm.tool_type);
@@ -679,6 +728,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 
 		for (int j=0;j<(int)arm.joints.size();j++) {
 			raven_2_msgs::JointState joint = arm.joints[j];
+			array_state.joint_arm_inds.push_back(i);
 			array_state.joint_types.push_back(joint.type);
 			array_state.joint_states.push_back(joint.state);
 			array_state.joint_encoder_values.push_back(joint.encoder_value);

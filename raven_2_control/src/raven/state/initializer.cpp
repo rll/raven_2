@@ -27,7 +27,7 @@ void DeviceInitializer::addArm(int id, Arm::Type type, Arm::ToolType toolType) {
 	ROS_INFO_STREAM("Adding arm: id " << id << " type:" << type.str() << " toolType:" << toolType.str());
 	ARM_DATA.push_back(ArmData(id,type,toolType));
 }
-void DeviceInitializer::addArm(int id, Arm::Type type, const std::string& name, Arm::ToolType toolType) {
+void DeviceInitializer::addArm(int id, const std::string& name, Arm::Type type, Arm::ToolType toolType) {
 	ROS_INFO_STREAM("Adding arm " << name << " id " << id << " type:" << type.str() << " toolType:" << toolType.str());
 	ARM_DATA.push_back(ArmData(id,type,name,toolType));
 }
@@ -182,6 +182,11 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		gripper2_joint->homePosition_ = GRASP2_HOME_ANGLE;
 
 		std::vector<bool> cableCouplingForwardMask(arm->joints_.size(),true);
+
+		for (size_t m=0;m<arm->joints_.size();m++) {
+			arm->motors_[m]->hasMainJoint_ = true;
+			arm->motors_[m]->mainJoint_ = arm->joints_[m]->type_;
+		}
 
 		JointPtr yaw_joint(new Joint(Joint::Type::YAW_));
 		arm->joints_.push_back(yaw_joint);

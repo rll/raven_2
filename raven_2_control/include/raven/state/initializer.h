@@ -31,7 +31,7 @@ public:
 
 	static std::vector<ArmData> getArms();
 	static void addArm(int id, Arm::Type type, Arm::ToolType toolType);
-	static void addArm(int id, Arm::Type type, const std::string& name, Arm::ToolType toolType);
+	static void addArm(int id, const std::string& name, Arm::Type type, Arm::ToolType toolType);
 
 	virtual void initializeDevice(DevicePtr device);
 	virtual void initializeDeviceInstance();

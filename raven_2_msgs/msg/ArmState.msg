@@ -1,3 +1,4 @@
+string name
 uint8 type
 
 geometry_msgs/Pose base_pose

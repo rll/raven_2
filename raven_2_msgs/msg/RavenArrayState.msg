@@ -1,13 +1,19 @@
 Header header
 uint8 runlevel
 uint8 sublevel
-uint8 surgeon_mode
+bool pedal_down
 
+string master
 uint8 controller #see Constants.msg for values
 
-uint8[] arm_types
+# ****** ARMS ******
+
+string[] arm_names
+uint8[] arm_types #see Constants.msg for values
 
 geometry_msgs/Pose[] base_poses
+
+# ****** TOOLS ******
 
 uint8[] tool_types #see Constants.msg for values
 
@@ -17,6 +23,9 @@ geometry_msgs/Pose[] tool_poses_desired
 float32[] grasps
 float32[] grasps_desired
 
+# ****** JOINTS ******
+
+uint8[] joint_arm_inds
 uint16[] joint_types #see Constants.msg for values
 
 int16[] joint_states # from JointState.msg

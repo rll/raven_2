@@ -12,7 +12,8 @@ from raven_2_trajectory.srv import RecordTrajectory, RecordTrajectoryResponse
 from optparse import OptionParser
 
 SIDE_ACTIVE = [True,True]
-SIDE_NAMES = ['left','right']
+SIDE_NAMES = ['L','R']
+SIDE_NAMES_FRIENDLY = ['left','right']
 
 BASE_FRAME = '/0_link'
 END_EFFECTOR_FRAME_PREFIX = '/instrument_shaft_'
@@ -149,10 +150,10 @@ class HydraTeleop:
 				return
 
 			if paddle.buttons[CalibPaddle.JOYSTICK] and not self.last_msg.paddles[i].buttons[CalibPaddle.JOYSTICK]:
-				print "That's the %s controller!" % SIDE_NAMES[i]
+				print "That's the %s controller!" % SIDE_NAMES_FRIENDLY[i]
 
 			if newly_active[i]:
-				print "%s tool active" % SIDE_NAMES[i]
+				print "%s tool active" % SIDE_NAMES_FRIENDLY[i]
 				# calculate current position of robot
 				try:
 					(trans,rot) = self.listener.lookupTransform(BASE_FRAME, END_EFFECTOR_FRAME_PREFIX + END_EFFECTOR_FRAME_SUFFIX[i], rospy.Time(0))
@@ -171,7 +172,7 @@ class HydraTeleop:
 
 				#print "engaging %s arm"%self.arms[i].lr
 			elif not paddle.buttons[CalibPaddle.BUMPER] and self.last_msg.paddles[i].buttons[CalibPaddle.BUMPER]:
-				print "%s tool inactive" % SIDE_NAMES[i]
+				print "%s tool inactive" % SIDE_NAMES_FRIENDLY[i]
 
 
 			if active[i] and not newly_active[i]:
@@ -200,8 +201,9 @@ class HydraTeleop:
 				#q_t = array(tft.quaternion_from_matrix(T1 * qmat * T2)).flatten().tolist()
 				q_t = array(tft.quaternion_from_matrix(T1 * qmat)).flatten().tolist()
 				
-				#tool_cmd.tool_pose = Pose(Point(dx,dy,dz),Quaternion(xx,yy,zz,ww))
-				tool_cmd.tool_pose = Pose(Point(*p_t),Quaternion(*q_t))
+				#tool_cmd.pose = Pose(Point(dx,dy,dz),Quaternion(xx,yy,zz,ww))
+				tool_cmd.pose_option = ToolCommand.POSE_POSITION_RELATIVE
+				tool_cmd.pose = Pose(Point(*p_t),Quaternion(*q_t))
 				
 				if paddle.buttons[GRIP_OPEN_BUTTON[i]]: grip[i] = 1
 				if paddle.buttons[GRIP_CLOSE_BUTTON[i]]: grip[i] = -1
@@ -222,13 +224,14 @@ class HydraTeleop:
 				
 				#if paddle.buttons[CalibPaddle.START] or paddle.joy[0] or paddle.joy[1]:
 				if paddle.trigger or paddle.joy[0] or paddle.joy[1]:
-					tool_cmd.tool_pose.position = Point(0,0,0)
+					tool_cmd.pose.position = Point(0,0,0)
 
 			arm_cmd.active = active[i] and SIDE_ACTIVE[i]
-			tool_cmd.set_grasp = True
+			tool_cmd.grasp_option = ToolCommand.GRASP_INCREMENT_SIGN
 			tool_cmd.grasp = grip[i]
 			arm_cmd.tool_command = tool_cmd
-			raven_command.arms[i] = arm_cmd
+			raven_command.arm_names.append(SIDE_NAMES[i])
+			raven_command.arms.append(arm_cmd)
 			
 			if self.recorder:
 				try:

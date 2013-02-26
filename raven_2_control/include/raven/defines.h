@@ -46,8 +46,8 @@ inline int armIdFromMechType(int mech_type) {
 }
 
 inline std::string armNameFromId(int arm_id) {
-	if (arm_id == GOLD_ARM_ID) { return "GOLD"; }
-	if (arm_id == GREEN_ARM_ID) { return "GREEN"; }
+	if (arm_id == GOLD_ARM_ID) { return "L"; }
+	if (arm_id == GREEN_ARM_ID) { return "R"; }
 	std::stringstream ss; ss << "UNKNOWN:" << arm_id; return ss.str();
 }
 

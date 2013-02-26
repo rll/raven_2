@@ -126,6 +126,10 @@ private:
 	Type type_;
 	TransmissionType transmissionType_;
 	CableType cableType_;
+
+	bool hasMainJoint_;
+	Joint::Type mainJoint_;
+
 	float position_;
 	float velocity_;
 	float torque_;
@@ -158,6 +162,9 @@ public:
 	Type type() const { return type_; }
 	TransmissionType transmissionType() const { return transmissionType_; }
 	CableType cableType() const { return cableType_; }
+
+	bool hasMainJoint() const { return hasMainJoint_; }
+	Joint::Type mainJoint() const { if (!hasMainJoint_) { throw std::runtime_error("No main joint!"); } else { return mainJoint_; } }
 
 	float position() const { return position_; }
 	float velocity() const { return velocity_; }
