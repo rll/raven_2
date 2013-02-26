@@ -21,31 +21,35 @@
 #include "updateable.h"
 
 POINTER_TYPES(Joint)
-typedef std::vector<JointPtr> JointList;
+//typedef std::vector<JointPtr> JointList;
+//typedef std::vector<JointConstPtr> ConstJointList;
+
+BOOST_ENUM(JointIdType, (SHOULDER_)(ELBOW_)(INSERTION_)(ROTATION_)(WRIST_)(FINGER1_)(FINGER2_)(YAW_)(GRASP_ ));
+BOOST_ENUM(JointType, (ROTATIONAL)(PRISMATIC))
+BOOST_ENUM(JointState, (NOT_READY)(POS_UNKNOWN)(HOMING1)(HOMING2)(READY)(WAIT)(HARD_STOP));
+
+BOOST_ENUM(MotorIdType, (SHOULDER_)(ELBOW_)(INSERTION_)(TOOL1_)(TOOL2_)(TOOL3_)(TOOL4_));
+BOOST_ENUM(MotorType, (LARGE)(SMALL));
+BOOST_ENUM(MotorTransmissionType, (TA)(TB));
+
+BOOST_ENUM(CableType, (LARGE)(SMALL) );
 
 class Joint : public Updateable {
 	friend class DeviceInitializer;
 	friend class CableCoupler;
 public:
-	BOOST_ENUM(Type, (SHOULDER_)(ELBOW_)(INSERTION_)(ROTATION_)(WRIST_)(FINGER1_)(FINGER2_)(YAW_)(GRASP_ ));
+	typedef JointIdType IdType;
+	typedef JointType Type;
 
-	BOOST_ENUM(State, (NOT_READY)(POS_UNKNOWN)(HOMING1)(HOMING2)(READY)(WAIT)(HARD_STOP));
-
-	/*
-	enum JointState{
-	    jstate_not_ready   = 0,
-	    jstate_pos_unknown = 1,
-	    jstate_homing1     = 2,
-	    jstate_homing2     = 3,
-	    jstate_ready       = 4,
-	    jstate_wait        = 5,
-	    jstate_hard_stop   = 6,
-	    jstate_last_type
-	};
-	*/
+	typedef JointState State;
 private:
-	Type type_;
+	IdType id_;
 	bool toolJoint_;
+	Type type_;
+
+	bool hasMainMotor_;
+	MotorIdType mainMotor_;
+
 	State state_;
 
 	float position_;
@@ -60,31 +64,41 @@ private:
 
 	float speedLimit_; // radian / sec
 
-	Joint(Type type);
+	Joint(IdType id,Type type=Type::ROTATIONAL);
 public:
 	JointPtr clone() const;
 	void cloneInto(JointPtr& joint) const;
 	virtual ~Joint();
 
-	Type type() const { return type_; }
-	bool isToolJoint() const { return toolJoint_; }
-	State state() const { return state_; }
+	IdType id() const;
+	std::string idString() const;
+	std::string idStringUpper() const;
+	std::string idStringLower() const;
 
-	void setState(State state ) { state_ = state; updateTimestamp(); }
+	bool isToolJoint() const;
 
-	float position() const { return position_; }
-	float velocity() const { return velocity_; }
+	Type type() const;
 
-	float minPosition() const { return minPosition_; }
-	float maxPosition() const { return maxPosition_; }
+	bool hasMainMotor() const;
+	MotorIdType mainMotor() const;
 
-	float homePosition() const { return homePosition_; }
-	float speedLimit() const { return speedLimit_; }
+	State state() const;
+
+	void setState(State state);
+
+	float position() const;
+	float velocity() const;
+
+	float minPosition() const;
+	float maxPosition() const;
+
+	float homePosition() const;
+	float speedLimit() const;
 
 	std::string str() const;
 
-	void setPosition(float pos) { position_ = pos; updateTimestamp(); }
-	void setVelocity(float vel) { velocity_ = vel; updateTimestamp(); }
+	void setPosition(float pos);
+	void setVelocity(float vel);
 
 	static Eigen::VectorXf positionVector(const JointList& joints);
 	static Eigen::VectorXf velocityVector(const JointList& joints);
@@ -116,23 +130,27 @@ POINTER_TYPES(JointCoupler)
 
 POINTER_TYPES(Motor)
 
-typedef std::vector<MotorPtr > MotorList;
+typedef std::vector<MotorPtr> MotorList;
+typedef std::vector<MotorConstPtr> ConstMotorList;
 
 class Motor : public Updateable {
 	friend class DeviceInitializer;
 	friend class CableCoupler;
 	friend class MotorFilter;
 public:
-	BOOST_ENUM(Type, (LARGE)(SMALL));
-	BOOST_ENUM(TransmissionType, (TA)(TB));
-	BOOST_ENUM(CableType, (LARGE)(SMALL) );
+	typedef MotorIdType IdType;
+	typedef MotorType Type;
+	typedef MotorTransmissionType TransmissionType;
 private:
+	IdType id_;
+	std::string name_;
+
 	Type type_;
 	TransmissionType transmissionType_;
 	CableType cableType_;
 
 	bool hasMainJoint_;
-	Joint::Type mainJoint_;
+	Joint::IdType mainJoint_;
 
 	float position_;
 	float velocity_;
@@ -157,40 +175,43 @@ private:
 
 	float dacCountsPerAmp_;
 
-	Motor(Type type, TransmissionType transType, CableType cableType);
+	Motor(IdType id, Type type, TransmissionType transType, CableType cableType);
 public:
 	MotorPtr clone() const;
 	void cloneInto(MotorPtr& motor) const;
 	virtual ~Motor();
 
-	Type type() const { return type_; }
-	TransmissionType transmissionType() const { return transmissionType_; }
-	CableType cableType() const { return cableType_; }
+	IdType id() const;
+	std::string name() const;
 
-	bool hasMainJoint() const { return hasMainJoint_; }
-	Joint::Type mainJoint() const { if (!hasMainJoint_) { throw std::runtime_error("No main joint!"); } else { return mainJoint_; } }
+	Type type() const;
+	TransmissionType transmissionType() const;
+	CableType cableType() const;
 
-	float position() const { return position_; }
-	float velocity() const { return velocity_; }
-	float torque() const { return torque_; }
-	float gravitationalTorqueEstimate() const { return gravitationalTorqueEstimate_; }
-	short int dacCommand() const { return dacCommand_; }
-	int encoderValue() const { return encoderValue_; }
-	int encoderOffset() const { return encoderOffset_; }
+	bool hasMainJoint() const;
+	Joint::IdType mainJoint() const;
 
-	int encoderCountsPerRev() const { return encoderCountsPerRev_; }
-	int dacMax() const { return dacMax_; }
+	float position() const;
+	float velocity() const;
+	float torque() const;
+	float gravitationalTorqueEstimate() const;
+	short int dacCommand() const;
+	int encoderValue() const;
+	int encoderOffset() const;
+
+	int encoderCountsPerRev() const;
+	int dacMax() const;
 	float torqueMax() const;
 
-	float transmissionRatio() const { return transmissionRatio_; }
-	float tauPerAmp() const { return tauPerAmp_; }
-	float dacCountsPerAmp() const { return dacCountsPerAmp_; }
+	float transmissionRatio() const;
+	float tauPerAmp() const;
+	float dacCountsPerAmp() const;
 
 	void setPosition(float pos);
-	void setVelocity(float vel) { velocity_ = vel; updateTimestamp(); }
+	void setVelocity(float vel);
 	void setTorque(float t);
-	void setGravitationalTorqueEstimate(float gte) { gravitationalTorqueEstimate_ = gte; updateTimestamp(); }
-	void setDacCommand(short int cmd) { dacCommand_ = cmd; updateTimestamp(); }
+	void setGravitationalTorqueEstimate(float gte);
+	void setDacCommand(short int cmd);
 	void setEncoderValue(int val,bool updatePosition); //updates position
 	void setEncoderOffset(int offset); //updates position
 
@@ -216,62 +237,31 @@ protected:
 	virtual void internalCloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {}
 
 public:
-	MotorFilter(const MotorList& motors) : motors_(motors), motorsForUpdateReady_(false), motorsForUpdate_(motors.size()) {}
-	MotorFilter(const MotorFilter& other) : motors_(other.motors_), motorsForUpdateReady_(false), motorsForUpdate_(other.motors_.size()) {}
+	MotorFilter(const MotorList& motors);
+	MotorFilter(const MotorFilter& other);
 	virtual ~MotorFilter() {}
 
-	MotorList motors() const {
-		return motors_;
-	}
+	MotorList motors();
+	ConstMotorList motors() const;
 
-	MotorList getMotorsForUpdate() {
-		MotorList list;
-		getMotorsForUpdate(list);
-		return list;
-	}
+	MotorList getMotorsForUpdate();
 
-	void getMotorsForUpdate(MotorList& list) {
-		static UpdateablePtr NULL_UPDATEABLE_PTR;
-		if (!motorsForUpdateReady_) {
-			for (size_t i=0;i<motorsForUpdate_.size() && i<motors_.size();i++) {
-				motors_[i]->cloneInto(motorsForUpdate_[i]);
-				motorsForUpdate_[i]->setUpdateableParent(NULL_UPDATEABLE_PTR);
-			}
-			for (size_t i=motorsForUpdate_.size();i<motors_.size();i++) {
-				MotorPtr newMotor = motors_[i]->clone();
-				motorsForUpdate_.push_back(newMotor);
-			}
-			motorsForUpdate_.resize(motors_.size());
-		}
-		motorsForUpdateReady_ = true;
-		list = motorsForUpdate_;
-	}
+	void getMotorsForUpdate(MotorList& list);
 
-	void applyUpdate() {
-		if (!motorsForUpdateReady_) {
-			return;
-		}
-		internalApplyUpdate();
-		for (size_t i=0;i<motors_.size();i++) {
-			motors_[i]->update();
-		}
-		motorsForUpdateReady_ = false;
-	}
+	void applyUpdate();
 
 	virtual void reset() = 0;
 
 	virtual std::string str() const = 0;
 
 	virtual MotorFilterPtr clone(const MotorList& newMotors) const = 0;
-	void cloneInto(MotorFilterPtr& other, const MotorList& newMotors) const {
-		internalCloneInto(other,newMotors);
-		other->motorsForUpdateReady_ = false;
-	}
+	void cloneInto(MotorFilterPtr& other, const MotorList& newMotors) const;
 };
 
 class NullMotorFilter : public MotorFilter {
 protected:
 	virtual void internalApplyUpdate() {
+		TRACER_ENTER_SCOPE("NullMotorFilter::internalApplyUpdate");
 		UpdateablePtr parent;
 		for (size_t i=0;i<motorsForUpdate_.size();i++) {
 			parent = motors_[i]->parent();

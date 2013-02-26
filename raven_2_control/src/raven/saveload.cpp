@@ -40,7 +40,7 @@ bool loadOffsets(robot_device& dev) {
 	  if (joint_ind != 3) {
 		if (joint_ind > 3) joint_ind--;
 		Device::beginCurrentUpdate(ros::Time(0));
-		ArmPtr arm = Device::currentNoClone()->getArmById(dev.mech[iMech].type);
+		ArmPtr arm = Device::currentNoCloneMutable()->getArmById(dev.mech[iMech].type);
 		MotorPtr motor = arm->motor(joint_ind);
 		motor->setEncoderOffset(x);
 		Device::finishCurrentUpdate();

@@ -40,7 +40,7 @@ public:
 
 	std::vector<btTransform> values() const;
 
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(EndEffectorPoseInput)
 
@@ -59,7 +59,7 @@ public:
 	virtual void removeInsertion(Arm::IdType id);
 	virtual void clearInsertions();
 
-	virtual void setFrom(DevicePtr dev) { throw std::runtime_error("EndEffectorPoseAndInsertionInput cannot be set from device!"); }
+	virtual void setFrom(DeviceConstPtr dev) { throw std::runtime_error("EndEffectorPoseAndInsertionInput cannot be set from device!"); }
 };
 POINTER_TYPES(EndEffectorPoseAndInsertionInput)
 
@@ -75,7 +75,7 @@ public:
 	btTransform& value() { return data().value(); }
 	const btTransform& value() const { return data().value(); }
 
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmEndEffectorPoseInput)
 
@@ -93,7 +93,7 @@ public:
 
 	virtual void setInsertion(Arm::IdType id,float velocity);
 
-	virtual void setFrom(DevicePtr dev) { throw std::runtime_error("SingleArmEndEffectorPoseAndInsertionInput cannot be set from device!"); }
+	virtual void setFrom(DeviceConstPtr dev) { throw std::runtime_error("SingleArmEndEffectorPoseAndInsertionInput cannot be set from device!"); }
 };
 POINTER_TYPES(SingleArmEndEffectorPoseAndInsertionInput)
 

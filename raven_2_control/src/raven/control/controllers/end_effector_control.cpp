@@ -52,13 +52,13 @@ EndEffectorController::internalApplyControl(DevicePtr device) {
 	if (graspInput) {
 		device->cloneInto(internalDevice);
 		FOREACH_ARM_IN_DEVICE_AND_ID_LIST(arm,internalDevice,graspInput->ids()) {
-			arm->getJointByType(Joint::Type::GRASP_)->setPosition(graspInput->armById(arm->id()).value());
+			arm->getJointById(Joint::IdType::GRASP_)->setPosition(graspInput->armById(arm->id()).value());
 		}
 		devTmp = internalDevice;
 	} else if (oldControlInput) {
 		device->cloneInto(internalDevice);
 		FOREACH_ARM_IN_DEVICE(arm,internalDevice) {
-			arm->getJointByType(Joint::Type::GRASP_)->setPosition(oldControlInput->armById(arm->id()).grasp());
+			arm->getJointById(Joint::IdType::GRASP_)->setPosition(oldControlInput->armById(arm->id()).grasp());
 		}
 		devTmp = internalDevice;
 	} else {

@@ -68,6 +68,7 @@ Controller::getControllerAndType(std::string& type) {
 int
 Controller::internalExecuteControl(std::pair<Arm::IdType,std::string> type, ControllerPtr controller) {
 	static DevicePtr dev;
+	TRACER_ENTER_SCOPE("Controller::internalExecuteControl()");
 	controller->clearInput();
 	ControlInputPtr input = ControlInput::getControlInput(type.first,controller->type());
 	if (input) {
@@ -85,12 +86,13 @@ Controller::internalExecuteControl(std::pair<Arm::IdType,std::string> type, Cont
 
 int
 Controller::executeInProcessControl() {
-	//static MotorPositionInputPtr holdPosInput = createSeparateArmControlInput<MotorPositionInput>();
 	static DevicePtr holdPosDev;
-	Arm::IdList holdPosIds = Device::disabledArmIds();
+	TRACER_ENTER_SCOPE("Controller::executeInProcessControl()");
+	Arm::IdList holdPosIds; // = Device::disabledArmIds();
 	std::string type;
 	ControllerMap controllers = getControllers();
 	if (controllers.find(Arm::ALL_ARMS) != controllers.end()) {
+		log_err_throttle(0.5,"All-arm control not implemented!");
 		//FIXME: all-arm control
 	} else {
 		Arm::IdList armIds = Device::armIds();
@@ -100,21 +102,30 @@ Controller::executeInProcessControl() {
 			if (ctrlItr == controllers.end()) {
 				holdPosIds.push_back(*armItr);
 			} else {
+				TRACER_VERBOSE_PRINT("Controlling arm %i",*armItr);
 				std::pair<Arm::IdType,std::string> pair_type(*armItr,ctrlItr->second.first);
 				int ctrl_ret = internalExecuteControl(pair_type,ctrlItr->second.second);
 			}
 		}
 	}
 	if (!holdPosIds.empty()) {
+		TRACER_VERBOSE_PRINT("Controlling %u held arms",holdPosIds.size());
 		MotorPositionInputPtr holdPosInput(new MotorPositionInput(holdPosIds));
+		TRACER_VERBOSE_PRINT("Copying input from device");
 		holdPosInput->setFrom(Device::currentNoClone());
+		TRACER_VERBOSE_PRINT("Setting input in controller");
 		getHoldPositionController()->setInput(holdPosInput);
+		TRACER_VERBOSE_PRINT("Copying current device");
 		Device::current(holdPosDev);
+		TRACER_VERBOSE_PRINT("Beginning control");
 		holdPosDev->beginUpdate();
+		TRACER_VERBOSE_PRINT("Applying control");
 		int ret = getHoldPositionController()->applyControl(holdPosDev);
+		TRACER_VERBOSE_PRINT("Finishing control");
 		holdPosDev->finishUpdate();
 		Arm::IdList::iterator armItr;
 		for (armItr = holdPosIds.begin();armItr != holdPosIds.end(); armItr++) {
+			TRACER_VERBOSE_PRINT("Setting control output for arm %s",Device::getArmNameFromId(*armItr).c_str());
 			setControlOutput(*armItr,holdPosDev);
 		}
 	}
@@ -166,7 +177,9 @@ Controller::setControlOutput(Arm::IdType armId,DevicePtr dev) {
 
 void
 Controller::registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller) {
+	TRACER_ENTER_SCOPE("Controller::registerController(%i,%s,%s)",armId,type.c_str(),typeid(*controller).name());
 	boost::mutex::scoped_lock(controllerMutex);
+	log_msg("Registering %s controller for arm id %i: %s",type.c_str(),armId,typeid(*controller).name());
 	std::pair<Arm::IdType,std::string> pair_type(armId,type);
 	CONTROLLERS[pair_type] = controller;
 	CONTROL_OUTPUT_HISTORY[pair_type] = History<Device>::Type(CONTROL_OUTPUT_HISTORY_SIZE,0,CloningWrapper<Device>());

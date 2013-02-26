@@ -9,6 +9,7 @@
 #include <boost/foreach.hpp>
 
 #include "defines.h"
+#include "log.h"
 
 #include <algorithm>
 
@@ -24,8 +25,11 @@ Arm::Arm(const Arm& other) : Updateable(other), id_(other.id_), type_(other.type
 	for (MotorList::const_iterator itr=other.motors_.begin();itr!=other.motors_.end();itr++) {
 		motors_.push_back((*itr)->clone());
 	}
-	MotorFilterPtr newMotorFilter = other.motorFilter_->clone(motors_);
-	motorFilter_.swap(newMotorFilter);
+	MotorFilterPtr newStateMotorFilter = other.stateMotorFilter_->clone(motors_);
+	stateMotorFilter_.swap(newStateMotorFilter);
+
+	MotorFilterPtr newControlMotorFilter = other.controlMotorFilter_->clone(motors_);
+	controlMotorFilter_.swap(newControlMotorFilter);
 
 	for (std::vector<JointPtr>::const_iterator itr=other.joints_.begin();itr!=other.joints_.end();itr++) {
 		joints_.push_back((*itr)->clone());
@@ -43,8 +47,9 @@ Arm::~Arm() {
 
 ArmPtr
 Arm::clone() const {
+	//TRACER_VERBOSE_ENTER_SCOPE("Arm[%s]@%p::clone()",name_.c_str(),this);
 	ArmPtr newArm(new Arm(*this));
-	//printf("+A  %i %p CLONING\n",++numA,this);
+	//TRACER_VERBOSE_PRINT("Arm clone is %p",newArm.get());
 
 	init(newArm);
 
@@ -53,11 +58,13 @@ Arm::clone() const {
 
 void
 Arm::cloneInto(ArmPtr& other) const {
+	//TRACER_VERBOSE_ENTER_SCOPE("Arm[%s]@%p::cloneInto()",name_.c_str(),this);
 	if (!other) {
 		ArmPtr newArm = clone();
 		other.swap(newArm);
 		return;
 	}
+	//TRACER_VERBOSE_PRINT("Arm clone is %p",other.get());
 	other->id_ = id_;
 	other->type_ = type_;
 	other->name_ = name_;
@@ -85,7 +92,8 @@ Arm::cloneInto(ArmPtr& other) const {
 	other->motors_.resize(motors_.size());
 
 	//other->motorFilter_ = motorFilter_->clone(other->motors_);
-	motorFilter_->cloneInto(other->motorFilter_,other->motors_);
+	stateMotorFilter_->cloneInto(other->stateMotorFilter_,other->motors_);
+	controlMotorFilter_->cloneInto(other->controlMotorFilter_,other->motors_);
 
 	other->cableCoupler_ = cableCoupler_;
 
@@ -96,15 +104,22 @@ Arm::cloneInto(ArmPtr& other) const {
 	init(other);
 }
 
+#include <boost/algorithm/string.hpp>
+#include <string>
+
 void
 Arm::init(ArmPtr arm) {
+	TRACER_VERBOSE_ENTER_SCOPE("Arm[%s]@%p::init()",arm->name_.c_str(),arm.get());
 	arm->updateJointsFromMotors();
 
 	BOOST_FOREACH(MotorPtr m,arm->motors_) {
 		m->setUpdateableParent(arm);
 	}
-	if (!arm->motorFilter_) {
-		arm->motorFilter_.reset(new NullMotorFilter(arm->motors_));
+	if (!arm->stateMotorFilter_) {
+		arm->stateMotorFilter_.reset(new NullMotorFilter(arm->motors_));
+	}
+	if (!arm->controlMotorFilter_) {
+		arm->controlMotorFilter_.reset(new NullMotorFilter(arm->motors_));
 	}
 
 	BOOST_FOREACH(JointPtr j,arm->joints_) {
@@ -116,6 +131,7 @@ Arm::init(ArmPtr arm) {
 
 bool
 Arm::processNotification(Updateable* sender) {
+	TRACER_ENTER_SCOPE("Arm[%s]@%p::processNotification(%s)",name_.c_str(),this,typeid(*sender).name());
 	MotorList::iterator motorItr;
 	for (motorItr=motors_.begin();motorItr!=motors_.end();motorItr++) {
 		if (motorItr->get() == sender) {
@@ -151,6 +167,7 @@ Arm::holdUpdateEnd() {
 
 void
 Arm::updateJointsFromMotors() {
+	TRACER_ENTER_SCOPE("Arm[%s]@%p::updateJointsFromMotors()",name_.c_str(),this);
 	if (!cableCoupler_) { return; }
 	cableCoupler_->coupleForward(motors_,joints_);
 	for (size_t i=0;i<jointCouplers_.size();i++) {
@@ -162,6 +179,7 @@ Arm::updateJointsFromMotors() {
 
 void
 Arm::updateMotorsFromJoints() {
+	TRACER_ENTER_SCOPE("Arm[%s]@%p::updateMotorsFromJoints()",name_.c_str(),this);
 	for (size_t i=0;i<jointCouplers_.size();i++) {
 		std::vector<JointPtr> baseJoints = jointCouplers_[i]->getBaseJoints(joints_);
 		ros::Time baseJointTimestamp(0);
@@ -191,6 +209,7 @@ Arm::updateMotorsFromJoints() {
 
 bool
 Arm::update() {
+	TRACER_ENTER_SCOPE("Arm[%s]@%p::update()",name_.c_str(),this);
 	ros::Time latestMotorUpdate(0);
 	for (MotorList::iterator itr=motors_.begin();itr!=motors_.end();itr++) {
 		if ((*itr)->getUpdateableTimestamp() > latestMotorUpdate) {
@@ -223,23 +242,69 @@ Arm::update() {
 	return Updateable::update();
 }
 
+Arm::IdType Arm::id() const { return id_; }
+std::string Arm::idString() const {
+#define ARM_ID_STRING_CHAR_BUFFER_SIZE 25
+	char buf[ARM_ID_STRING_CHAR_BUFFER_SIZE];
+	snprintf(buf,ARM_ID_STRING_CHAR_BUFFER_SIZE,"%i",id_);
+	return std::string(buf);
+}
+
+Arm::Type Arm::type() const { return type_; }
+bool Arm::isGold() const { return type_ == Type::GOLD; }
+bool Arm::isGreen() const { return type_ == Type::GREEN; }
+
+std::string
+Arm::typeString() const {
+	return type_.str();
+}
+std::string
+Arm::typeStringUpper() const {
+	return boost::to_upper_copy(typeString());
+}
+std::string
+Arm::typeStringLower() const {
+	return boost::to_lower_copy(typeString());
+}
+
+std::string Arm::name() const { return name_; }
+std::string Arm::nameUpper() const { return boost::to_upper_copy(name_); }
+std::string Arm::nameLower() const { return boost::to_lower_copy(name_); }
+
+bool Arm::enabled() const { return enabled_; }
+
+Arm::ToolType Arm::toolType() const { return toolType_; }
+
+btTransform Arm::basePose() const { return basePose_; }
+
+JointList Arm::joints() { return joints_; }
+ConstJointList Arm::joints() const { return constList(joints_); }
+
+JointPtr Arm::joint(size_t i) { return i>joints_.size() ? JointPtr() : joints_.at(i); }
+JointConstPtr Arm::joint(size_t i) const { return i>joints_.size() ? JointConstPtr() : JointConstPtr(joints_.at(i)); }
+
 JointPtr
-Arm::getJointByType(Joint::Type type) const {
-	size_t ind = type.value();
-	if (ind < joints_.size() && joints_[ind]->type() == type) {
+Arm::getJointById(Joint::IdType id) {
+	size_t ind = id.value();
+	if (ind < joints_.size() && joints_[ind]->id() == id) {
 		return joints_[ind];
 	}
 	std::vector<JointPtr>::const_iterator itr;
 	for (itr=joints_.begin();itr!=joints_.end();itr++) {
-		if ((*itr)->type() == type) {
+		if ((*itr)->id() == id) {
 			return *itr;
 		}
 	}
 	return JointPtr();
 }
 
+JointConstPtr
+Arm::getJointById(Joint::IdType id) const {
+	return JointConstPtr(const_cast<Arm*>(this)->getJointById(id));
+}
+
 JointPtr
-Arm::getJointByOldType(int type) const {
+Arm::getJointByOldType(int type) {
 	JointPtr joint;
 	int arm_id;
 	int joint_ind;
@@ -257,8 +322,13 @@ Arm::getJointByOldType(int type) const {
 	return joints_.at(joint_ind);
 }
 
+JointConstPtr
+Arm::getJointByOldType(int type) const {
+	return JointConstPtr(const_cast<Arm*>(this)->getJointByOldType(type));
+}
+
 MotorPtr
-Arm::getMotorByOldType(int type) const {
+Arm::getMotorByOldType(int type) {
 	MotorPtr motor;
 	int arm_id;
 	int joint_ind;
@@ -276,6 +346,11 @@ Arm::getMotorByOldType(int type) const {
 	return motors_.at(joint_ind);
 }
 
+MotorConstPtr
+Arm::getMotorByOldType(int type) const {
+	return MotorConstPtr(const_cast<Arm*>(this)->getMotorByOldType(type));
+}
+
 
 Eigen::VectorXf
 Arm::jointPositionVector() const {
@@ -284,6 +359,18 @@ Arm::jointPositionVector() const {
 Eigen::VectorXf
 Arm::jointVelocityVector() const {
 	return Joint::velocityVector(joints_);
+}
+
+void Arm::addJointCoupler(JointCouplerPtr coupler) { jointCouplers_.push_back(coupler); }
+
+MotorList Arm::motors() { return motors_; }
+ConstMotorList Arm::motors() const { return constList(motors_); }
+
+MotorPtr Arm::motor(size_t i) {
+	return i>motors_.size() ? MotorPtr() : motors_.at(i);
+}
+MotorConstPtr Arm::motor(size_t i) const {
+	return MotorConstPtr(const_cast<Arm*>(this)->motor(i));
 }
 
 Eigen::VectorXf
@@ -299,20 +386,52 @@ Arm::motorTorqueVector() const {
 	return Motor::torqueVector(motors_);
 }
 
+MotorFilterPtr Arm::stateMotorFilter() {
+	TRACER_VERBOSE_PRINT("Arm[%s]@%p state motor filter",name_.c_str(),this);
+	return stateMotorFilter_;
+}
+MotorFilterConstPtr Arm::stateMotorFilter() const {
+	TRACER_VERBOSE_PRINT("Arm[%s]@%p state motor filter (const)",name_.c_str(),this);
+	return stateMotorFilter_;
+}
+
 void
-Arm::setMotorFilter(MotorFilterPtr filter) {
+Arm::setStateMotorFilter(MotorFilterPtr filter) {
 	if (!filter) {
-		motorFilter_.reset(new NullMotorFilter(motors_));
+		stateMotorFilter_.reset(new NullMotorFilter(motors_));
 	} else {
 		if (filter->motors() == motors_) {
-			motorFilter_ = filter;
+			stateMotorFilter_ = filter;
 		} else {
-			motorFilter_ = filter->clone(motors_);
+			stateMotorFilter_ = filter->clone(motors_);
+		}
+	}
+}
+
+MotorFilterPtr Arm::controlMotorFilter() {
+	TRACER_VERBOSE_PRINT("Arm[%s]@%p control motor filter",name_.c_str(),this);
+	return controlMotorFilter_;
+}
+MotorFilterConstPtr Arm::controlMotorFilter() const {
+	TRACER_VERBOSE_PRINT("Arm[%s]@%p control motor filter (const)",name_.c_str(),this);
+	return controlMotorFilter_;
+}
+
+void
+Arm::setcontrolMotorFilter(MotorFilterPtr filter) {
+	if (!filter) {
+		controlMotorFilter_.reset(new NullMotorFilter(motors_));
+	} else {
+		if (filter->motors() == motors_) {
+			controlMotorFilter_ = filter;
+		} else {
+			controlMotorFilter_ = filter->clone(motors_);
 		}
 	}
 }
 
 btTransform
 Arm::pose() const {
+	TRACER_ENTER_SCOPE();
 	return kinematicSolver_->forwardPose();
 }

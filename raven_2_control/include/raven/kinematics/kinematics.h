@@ -31,7 +31,7 @@ private:
 	bool truncateJointsAtLimits_;
 
 	bool truncateJointDifferences_;
-	std::map<Joint::Type,float> maxJointDifferences_;
+	std::map<Joint::IdType,float> maxJointDifferences_;
 public:
 	InverseKinematicsOptions() : checkJointLimits_(true), truncateJointsAtLimits_(true), truncateJointDifferences_(false) {}
 
@@ -44,13 +44,13 @@ public:
 	bool truncateJointDifferences() const;
 	void setTruncateJointDifferences(bool on);
 
-	std::map<Joint::Type,float> maxJointDifferences() const;
-	float getMaxJointDifference(Joint::Type type) const;
+	std::map<Joint::IdType,float> maxJointDifferences() const;
+	float getMaxJointDifference(Joint::IdType type) const;
 
-	void setMaxJointDifferences(const std::map<Joint::Type,float>& diffs);
-	void setMaxJointDifference(Joint::Type type, float diff);
+	void setMaxJointDifferences(const std::map<Joint::IdType,float>& diffs);
+	void setMaxJointDifference(Joint::IdType type, float diff);
 
-	void clearMaxJointDifference(Joint::Type type);
+	void clearMaxJointDifference(Joint::IdType type);
 	void clearMaxJointDifferences();
 };
 

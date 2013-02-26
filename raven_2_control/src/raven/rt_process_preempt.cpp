@@ -220,14 +220,23 @@ static void *rt_process(void* )
 
     log_msg("*** Press pedal to begin homing ***");
 
+    TRACER_ON();
+
     ///TODO: Break loop when board becomes disconnected.
     //Only run while USB board is attached
-    while (ros::ok())
-    {
+    while (ros::ok()) {
         /// SLEEP until next timer shot
         clock_nanosleep(0, TIMER_ABSTIME, &t, NULL);
         gTime++;
-        //RunLevel::LOOP_NUMBER++;
+        LoopNumber::incrementMain();
+        int loopNumber = LoopNumber::get();
+
+        if (RunLevel::hasHomed()) {
+        	LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
+        		printf("****** Newly homed! [%i]\n",loopNumber);
+        		TRACER_ON();
+        	}
+        }
 
         TimingInfo t_info;
         t_info.mark_overall_start();
@@ -237,10 +246,13 @@ static void *rt_process(void* )
         getUSBPackets(&device0); //disable usb for parport test
         t_info.mark_usb_read_end();
 
+
         t_info.mark_state_machine_start();
         //Run Safety State Machine
         stateMachine(&device0, &currParams, &rcvdParams);
         t_info.mark_state_machine_end();
+
+        TRACER_OFF();
 
         t_info.mark_update_state_start();
         //Update Atmel Input Pins
@@ -262,6 +274,16 @@ static void *rt_process(void* )
         	controlRaven(&device0, &currParams);
         } else {
         	controlRaven(&device0, &currParams);
+        	bool scope_tracer_on = false;
+        	if (RunLevel::newlyHomed()) {
+        		printf("***Newly homed! [%i]\n",loopNumber);
+        		scope_tracer_on = true;
+        	}
+        	if (LoopNumber::onlyEvery("tracer control",5,1000)) {
+        		//scope_tracer_on = true;
+        	}
+        	TRACER_ON_IN_SCOPE_IF(scope_tracer_on);
+        	int ctrl_ret = Controller::executeInProcessControl();
 #ifdef TEST_NEW_CTRL
         	OldControlInputPtr ptr = ControlInput::oldControlInputUpdateBegin();
         	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
@@ -331,6 +353,7 @@ static void *rt_process(void* )
         t_info.mark_overall_end();
 
         TimingInfo::mark_loop_end();
+        TRACER_OFF();
 
         /*
         static bool test_done = false;

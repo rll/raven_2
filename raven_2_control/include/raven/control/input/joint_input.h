@@ -36,19 +36,23 @@ public:
 	const float& valueByOldType(int type) const;
 
 	Eigen::VectorXf values() const;
+	void values(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& jointInds) const;
+
+	Eigen::VectorXf fullVector() const;
+	void fullVector(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& jointInds) const;
 };
 
 class JointPositionInput : public JointValuesInput {
 public:
 	JointPositionInput(const Arm::IdList& ids) : JointValuesInput(ids) {}
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(JointPositionInput)
 
 class JointVelocityInput : public JointValuesInput {
 public:
 	JointVelocityInput(const Arm::IdList& ids) : JointValuesInput(ids) {}
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(JointVelocityInput)
 
@@ -69,7 +73,7 @@ class SingleArmJointPositionInput : public JointPositionInput, public SingleArmJ
 public:
 	SingleArmJointPositionInput(Arm::IdType armId) : JointPositionInput(Arm::IdList(1,armId)) {}
 	SINGLE_ARM_CONTROL_INPUT_METHODS(JointArmData)
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmJointPositionInput)
 
@@ -77,7 +81,7 @@ class SingleArmJointVelocityInput : public JointVelocityInput, public SingleArmJ
 public:
 	SingleArmJointVelocityInput(Arm::IdType armId) : JointVelocityInput(Arm::IdList(1,armId)) {}
 	SINGLE_ARM_CONTROL_INPUT_METHODS(JointArmData)
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmJointVelocityInput)
 

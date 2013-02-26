@@ -38,8 +38,10 @@
 using namespace std;
 
 
-#define STRINGIFY(x) #x
-#define EXPAND(x) STRINGIFY(x)
+#ifndef STRINGIFY
+#define STRINGIFY(s) STRINGIFY_HELPER(s)
+#define STRINGIFY_HELPER(s) #s
+#endif
 
 extern bool disable_arm_id[2];
 extern int NUM_MECH;
@@ -126,6 +128,11 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     fwdCableCoupling(device0, currParams->runlevel);
 
     {
+    	static bool printed_warning = false;
+    	if (!printed_warning) {
+    		log_err("************DISABLING GRASP2***************");
+    		printed_warning = true;
+    	}
     	struct mechanism* _mech = NULL;
     	struct DOF *_joint = NULL;
 		int i=0,j=0;
@@ -133,6 +140,13 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 		while (loop_over_mechs(device0,_mech,i)) {
 			if (armIdFromMechType(_mech->type) == GOLD_ARM_ID) {
 				_mech->joint[GRASP2].jpos = - _mech->joint[GRASP1].jpos;
+				break;
+			}
+		}
+		DevicePtr dev = Device::currentNoCloneMutable();
+		FOREACH_ARM_IN_DEVICE(arm,dev) {
+			if (arm->isGold()) {
+				arm->getJointById(Joint::IdType::FINGER2_)->setPosition(-arm->getJointById(Joint::IdType::FINGER1_)->position());
 				break;
 			}
 		}
@@ -509,7 +523,7 @@ int raven_sinusoidal_joint_motion(struct device *device0, struct param_pass *cur
 
 #ifdef USE_NEW_DEVICE
         OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
-    	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
+    	FOREACH_ARM_IN_CONST_DEVICE(arm,Device::currentNoClone()) {
     		OldArmInputData& armData = input->armById(arm->id());
     		for (size_t i=0;i<arm->motors().size();i++) {
     			armData.motorTorque(i) = 0;

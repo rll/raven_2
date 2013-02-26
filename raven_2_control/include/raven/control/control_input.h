@@ -41,15 +41,15 @@ public:
 	bool operator<(const MasterMode2& other) const { return str_ < other.str_; }
 	std::ostream& operator<<(std::ostream& o) const { o << str_; return o; }
 
-	static MasterMode2 NONE;
+	static const MasterMode2 NONE;
 
-	static MasterMode2 getMasterMode(Arm::IdType armId);
+	static MasterMode2 get(Arm::IdType armId);
 
-	static bool checkMasterMode(Arm::IdType armId, const MasterMode2& mode);
+	static bool check(Arm::IdType armId, const MasterMode2& mode);
 
-	static bool resetMasterMode(Arm::IdType armId);
+	static bool reset(Arm::IdType armId);
 
-	static bool getMasterModeStatus(MasterModeStatusMap& status);
+	static bool getStatus(MasterModeStatusMap& status);
 
 	static const ros::Duration TIMEOUT;
 	static void checkTimeout();
@@ -75,7 +75,11 @@ public:
 	virtual void setTimestamp(ros::Time time) { timestamp_ = time; }
 	void updateTimestamp() { setTimestamp(ros::Time::now()); }
 
-	virtual void setFrom(DevicePtr dev) = 0;
+	virtual Arm::IdList armIds() const=0;
+	size_t numArms() const { return armIds().size(); }
+	bool hasArmId(Arm::IdType id) const { return std::find(armIds().begin(),armIds().end(),id) != armIds().end(); }
+
+	virtual void setFrom(DeviceConstPtr dev) = 0;
 
 	static void setControlInput(Arm::IdType armId, const std::string& type, ControlInputPtr input);
 
@@ -91,15 +95,21 @@ public:
 };
 
 class MultipleControlInput : public ControlInput {
+public:
+	typedef std::map<std::string,ControlInputPtr> Map;
+	typedef std::map<std::string,ControlInputConstPtr> ConstMap;
 private:
-	std::map<std::string,ControlInputPtr> inputs_;
+	Map inputs_;
 public:
 	virtual ros::Time timestamp() const;
 	virtual void setTimestamp(ros::Time time);
 
-	virtual void setFrom(DevicePtr dev);
+	virtual Arm::IdList armIds() const;
 
-	std::map<std::string,ControlInputPtr> inputs() const { return inputs_; }
+	virtual void setFrom(DeviceConstPtr dev);
+
+	Map inputs() { return inputs_; }
+	ConstMap inputs() const;
 
 	void setInput(const std::string& name,ControlInputPtr input);
 	void removeInput(const std::string& name);
@@ -139,6 +149,60 @@ public:
 };
 POINTER_TYPES(MultipleControlInput)
 
+template<typename T1,typename T2>
+class DualControlInput : public ControlInput {
+public:
+	typedef boost::shared_ptr<T1> FirstPtr;
+	typedef boost::shared_ptr<const T1> FirstConstPtr;
+	typedef boost::shared_ptr<T2> SecondPtr;
+	typedef boost::shared_ptr<const T2> SecondConstPtr;
+
+	typedef std::pair<FirstPtr,SecondPtr> Pair;
+	typedef std::pair<FirstConstPtr,SecondConstPtr> ConstPair;
+
+	typedef boost::shared_ptr<DualControlInput> Ptr;
+	typedef boost::shared_ptr<const DualControlInput> ConstPtr;
+protected:
+	FirstPtr first_;
+	SecondPtr second_;
+public:
+	virtual ros::Time timestamp() const {
+		ros::Time stamp = first_->timestamp();
+		if (second_->timestamp() > stamp) {
+			stamp = second_->timestamp();
+		}
+		return stamp;
+	}
+	virtual void setTimestamp(ros::Time time) {
+		first_->setTimestamp(time);
+		second_->setTimestamp(time);
+	}
+
+	virtual Arm::IdList armIds() const {
+		Arm::IdSet ids = Arm::idSet(first_->armIds());
+		Arm::IdList secondIds = second_->armIds();
+		ids.insert(secondIds.begin(),secondIds.end());
+		return Device::sortArmIds(ids);
+	}
+
+	virtual void setFrom(DeviceConstPtr dev) {
+		first_->setFrom(dev);
+		second_->setFrom(dev);
+	}
+
+	Pair inputs() { return Pair(first_,second_); }
+	ConstPair inputs() const { return ConstPair(first_,second_); }
+
+	FirstPtr first() { return first_; }
+	FirstConstPtr first() const { return first_; }
+
+	SecondPtr second() { return second_; }
+	SecondConstPtr second() const { return second_; }
+
+	void setFirst(FirstPtr newFirst) { first_ = newFirst; }
+	void setSecond(SecondPtr newSecond) { second_ = newSecond; }
+};
+
 template<typename T>
 class SeparateArmControlInput : public ControlInput {
 private:
@@ -161,9 +225,10 @@ public:
 
 	typedef boost::shared_ptr<SeparateArmControlInput<T> > Ptr;
 
-	size_t numArms() const { return arms_.size(); }
-	const std::vector<Arm::IdType>& ids() const { return armIds_; }
-	bool hasId(Arm::IdType id) const { return std::find(armIds_.begin(),armIds_.end(),id) != armIds_.end(); }
+	virtual Arm::IdList armIds() const { return armIds_; }
+	const Arm::IdList& ids() const { return armIds_; }
+	bool hasId(Arm::IdType id) const { return hasArmId(id); }
+
 
 	T& arm(size_t i) { return arms_.at(i); }
 	const T& arm(size_t i) const { return arms_.at(i); }
@@ -304,7 +369,7 @@ class OldControlInput : public SeparateArmControlInput<OldArmInputData> {
 public:
 	OldControlInput();
 
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 
 	Eigen::VectorXf motorPositionVector() const;
 	Eigen::VectorXf motorVelocityVector() const;

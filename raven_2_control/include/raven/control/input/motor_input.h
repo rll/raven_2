@@ -37,26 +37,30 @@ public:
 	const float& valueByOldType(int type) const;
 
 	Eigen::VectorXf values() const;
+	void values(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& motorInds) const;
+
+	Eigen::VectorXf fullVector() const;
+	void fullVector(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& motorInds) const;
 };
 
 class MotorPositionInput : public MotorValuesInput {
 public:
 	MotorPositionInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(MotorPositionInput)
 
 class MotorVelocityInput : public MotorValuesInput {
 public:
 	MotorVelocityInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(MotorVelocityInput)
 
 class MotorTorqueInput : public MotorValuesInput {
 public:
 	MotorTorqueInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(MotorTorqueInput);
 
@@ -80,7 +84,7 @@ class SingleArmMotorPositionInput : public MotorPositionInput, public SingleArmM
 public:
 	SingleArmMotorPositionInput(Arm::IdType armId) : MotorPositionInput(Arm::IdList(1,armId)) {}
 	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmMotorPositionInput)
 
@@ -88,7 +92,7 @@ class SingleArmMotorVelocityInput : public MotorVelocityInput, public SingleArmM
 public:
 	SingleArmMotorVelocityInput(Arm::IdType armId) : MotorVelocityInput(Arm::IdList(1,armId)) {}
 	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmMotorVelocityInput)
 
@@ -96,7 +100,7 @@ class SingleArmMotorTorqueInput : public MotorTorqueInput, public SingleArmMotor
 public:
 	SingleArmMotorTorqueInput(Arm::IdType armId) : MotorTorqueInput(Arm::IdList(1,armId)) {}
 	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmMotorTorqueInput);
 

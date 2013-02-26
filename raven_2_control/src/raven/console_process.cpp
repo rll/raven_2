@@ -61,8 +61,9 @@ void *console_process(void *)
     char inputbuffer[100];
     sleep(1);
     // Run shell interaction
-    while (ros::ok())
-    {
+    while (ros::ok()) {
+    	LoopNumber::increment();
+
     	MasterMode masterMode;
     	std::set<MasterMode> masterModeConflicts;
     	getMasterModeConflicts(masterMode,masterModeConflicts);
@@ -274,11 +275,21 @@ int getkey() {
 
 void outputRobotState(){
 	RunLevel rl = RunLevel::get();
-	cout << "Runlevel: " << RunLevel::get().str() << " " << rl.isInit() << " " << rl.isInitSublevel(0) << " " << rl.isInitSublevel(1) << " " << rl.isInitSublevel(2) << endl;
+	cout << "Runlevel: " << RunLevel::get().str() << endl;
+	cout << "Main loop number: " << LoopNumber::getMain() << endl;
+	cout << "Console loop number: " << LoopNumber::get() << endl;
+
+
 	cout << "Pedal: " << RunLevel::getPedal() << " " << device0.surgeon_mode << endl;
 	cout << "inited " << RunLevel::isInitialized() << " " << initialized << endl;
 	cout << "Runlevel: " << static_cast<unsigned short int>(device0.runlevel) << endl;
-    cout << "Master mode: " << getMasterModeString() << endl;
+
+	cout << "Master mode: " << getMasterModeString() << endl;
+
+	MasterModeStatusMap statusMap;
+	MasterMode2::getStatus(statusMap);
+	//FIXME: print master modes
+
     cout << "Controller: " << controlModeToString(getControlMode()) << endl;
     mechanism* _mech = NULL;
     int mechnum=0;
@@ -326,7 +337,7 @@ void outputRobotState(){
         cout<<"     \t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	cout << std::string(arm->getJointByOldType(_joint->type)->type().str()).substr(0,7) <<"\t";
+        	cout << std::string(arm->getJointByOldType(_joint->type)->id().str()).substr(0,7) <<"\t";
         cout << endl;
 #endif
 
@@ -427,7 +438,7 @@ void outputRobotState(){
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        	if (arm->getJointByOldType(_joint->type)->id() != Joint::IdType::INSERTION_)
         		cout << arm->getJointByOldType(_joint->type)->position() * conv <<"\t";
         	else
         		cout << arm->getJointByOldType(_joint->type)->position()<<"\t";
@@ -447,7 +458,7 @@ void outputRobotState(){
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        	if (arm->getJointByOldType(_joint->type)->id() != Joint::IdType::INSERTION_)
         		cout << input->jointPositionByOldType(_joint->type) * conv <<"\t";
         	else
         		cout << input->jointPositionByOldType(_joint->type) <<"\t";
@@ -467,7 +478,7 @@ void outputRobotState(){
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        	if (arm->getJointByOldType(_joint->type)->id() != Joint::IdType::INSERTION_)
         		cout << arm->getJointByOldType(_joint->type)->velocity() * conv <<"\t";
         	else
         		cout << arm->getJointByOldType(_joint->type)->velocity() <<"\t";
@@ -487,7 +498,7 @@ void outputRobotState(){
         cout<<"        \t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
-        	if (arm->getJointByOldType(_joint->type)->type() != Joint::Type::INSERTION_)
+        	if (arm->getJointByOldType(_joint->type)->id() != Joint::IdType::INSERTION_)
         		cout << input->jointVelocityByOldType(_joint->type) * conv <<"\t";
         	else
         		cout << input->jointVelocityByOldType(_joint->type) <<"\t";

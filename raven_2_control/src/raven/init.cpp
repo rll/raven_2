@@ -438,7 +438,7 @@ void initDOFs(struct device *device0)
             	//Device::beginUpdate(Device::currentNoClone()->timestamp());
             	Device::beginCurrentUpdate(ros::Time(0));
             	//printf("Update begun     j %i init.cpp\n",joint_ind);
-            	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[i].type);
+            	ArmPtr arm = Device::currentNoCloneMutable()->getArmById(device0->mech[i].type);
             	MotorPtr motor = arm->motor(joint_ind);
             	motor->setEncoderOffset(_joint->enc_val);
             	//printf("Finishing update j %i init.cpp\n",joint_ind);
@@ -613,10 +613,10 @@ void setStartXYZ(struct device *device0)
     for (i = 0; i < NUM_MECH; i++)
     {
 #ifdef USE_NEW_DEVICE
-    	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[i].type);
+    	ArmPtr arm = Device::currentNoCloneMutable()->getArmById(device0->mech[i].type);
     	btTransform tf = toBt(device0->mech[i].pos,device0->mech[i].ori);
     	ControlInput::getOldControlInput()->armById(device0->mech[i].type).pose() = tf;
-    	ControlInput::getOldControlInput()->armById(device0->mech[i].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+    	ControlInput::getOldControlInput()->armById(device0->mech[i].type).grasp() = arm->joint(Joint::IdType::GRASP_)->position();
 #endif
 
         device0->mech[i].pos_d.x = device0->mech[i].pos.x;

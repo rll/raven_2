@@ -32,9 +32,11 @@ POINTER_TYPES(Device);
 #ifndef FOREACH_ARM_IN_DEVICE
 #include <algorithm>
 #define FOREACH_ARM_IN_DEVICE(armVar,devicePtr) BOOST_FOREACH(ArmPtr armVar,devicePtr->arms())
+#define FOREACH_ARM_IN_CONST_DEVICE(armVar,devicePtr) BOOST_FOREACH(ArmConstPtr armVar,devicePtr->arms())
 #define FOREACH_ARM_IN_CURRENT_DEVICE(armVar,devicePtr) Device::current(devicePtr); FOREACH_ARM_IN_DEVICE(armVar,devicePtr)
 
 #define FOREACH_ARM_IN_DEVICE_AND_ID_LIST(armVar,devicePtr,armIdList) FOREACH_ARM_IN_DEVICE(armVar,devicePtr) if (std::find(armIdList.begin(),armIdList.end(),armVar->id()) == armIdList.end()) continue; else
+#define FOREACH_ARM_IN_CONST_DEVICE_AND_ID_LIST(armVar,devicePtr,armIdList) FOREACH_ARM_IN_CONST_DEVICE(armVar,devicePtr) if (std::find(armIdList.begin(),armIdList.end(),armVar->id()) == armIdList.end()) continue; else
 #define FOREACH_ARM_ID_IN_LIST(armIdVar,armIdList) BOOST_FOREACH(Arm::IdType armIdVar,armIdList)
 #define FOREACH_ARM_ID(armIdVar) FOREACH_ARM_ID_IN_LIST(armIdVar,Device::armIds())
 
@@ -59,7 +61,8 @@ public:
 
 	static Arm::IdList ARM_IDS;
 	static Arm::IdList DISABLED_ARM_IDS;
-	static std::map<std::string,Arm::IdType> ARM_NAMES;
+	static std::map<Arm::IdType,std::string> ARM_NAMES;
+	static std::map<Arm::IdType,Arm::Type> ARM_TYPES;
 
 	static std::map<Arm::IdType,size_t> NUM_MOTORS;
 	static size_t TOTAL_NUM_MOTORS;
@@ -73,7 +76,8 @@ public:
 public:
 	static DevicePtr current(); //locks, returns clone
 	static void current(DevicePtr& device); //locks, returns clone
-	static DevicePtr currentNoClone(); //no lock, use carefully
+	static DeviceConstPtr currentNoClone(); //no lock, use carefully
+	static DevicePtr currentNoCloneMutable(); //no lock, use carefully
 	static ros::Time currentTimestamp();
 
 	static DevicePtr beginCurrentUpdate(ros::Time updateTime);
@@ -90,27 +94,45 @@ public:
 
 	static size_t numArms();
 	static Arm::IdList armIds();
-	ArmList arms() const;
-	ArmPtr arm(size_t i) const;
-	ArmPtr getArmById(Arm::IdType id) const;
-	ArmList getArmsById(const Arm::IdList& ids,bool includeDisabled=false) const;
-	ArmPtr getArmByName(const std::string& name) const;
+	static Arm::IdList& sortArmIds(Arm::IdList& armIds);
+	static Arm::IdList sortArmIds(const Arm::IdSet& armIds);
 
-	static Arm::IdType getArmIdByName(const std::string& name);
+	static Arm::Type getArmTypeFromId(Arm::IdType id);
+
+	ArmList arms();
+	ConstArmList arms() const;
+
+	ArmPtr arm(size_t i);
+	ArmConstPtr arm(size_t i) const;
+
+	ArmPtr getArmById(Arm::IdType id);
+	ArmConstPtr getArmById(Arm::IdType id) const;
+
+	ArmList getArmsById(const Arm::IdList& ids,bool includeDisabled=false);
+	ConstArmList getArmsById(const Arm::IdList& ids,bool includeDisabled=false) const;
+
+	ArmPtr getArmByName(const std::string& name);
+	ArmConstPtr getArmByName(const std::string& name) const;
+
+	static Arm::IdType getArmIdFromName(const std::string& name);
+	static std::string getArmNameFromId(Arm::IdType id);
 
 	static size_t numDisabledArms();
 	static Arm::IdList disabledArmIds();
-	ArmList disabledArms() const;
+	ArmList disabledArms();
+	ConstArmList disabledArms() const;
 
 	static size_t numAllArms();
 	static Arm::IdList allArmIds();
-	ArmList allArms() const;
+	ArmList allArms();
+	ConstArmList allArms() const;
 
 	static size_t numJoints();
 	static size_t numJointsOnArm(size_t i);
 	static size_t numJointsOnArmById(Arm::IdType id);
 
-	JointPtr getJointByOldType(int type) const;
+	JointPtr getJointByOldType(int type);
+	JointConstPtr getJointByOldType(int type) const;
 
 	Eigen::VectorXf jointVector() const { return jointPositionVector(); }
 	Eigen::VectorXf jointPositionVector() const;

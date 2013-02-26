@@ -64,37 +64,37 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		else
 			torqueSign = 1;
 
-		MotorPtr shoulder_motor(new Motor(Motor::Type::LARGE,Motor::TransmissionType::TA,Motor::CableType::LARGE));
+		MotorPtr shoulder_motor(new Motor(Motor::IdType::SHOULDER_,Motor::Type::LARGE,Motor::TransmissionType::TA,CableType::LARGE));
 		shoulder_motor->dacMax_ = SHOULDER_MAX_DAC;
 		shoulder_motor->transmissionRatio_ = arm->isGold() ? SHOULDER_TR_GOLD_ARM : SHOULDER_TR_GREEN_ARM;
 		arm->motors_.push_back(shoulder_motor);
 
-		MotorPtr elbow_motor(new Motor(Motor::Type::LARGE,Motor::TransmissionType::TA,Motor::CableType::LARGE));
+		MotorPtr elbow_motor(new Motor(Motor::IdType::ELBOW_,Motor::Type::LARGE,Motor::TransmissionType::TA,CableType::LARGE));
 		elbow_motor->dacMax_ = ELBOW_MAX_DAC;
 		elbow_motor->transmissionRatio_ = arm->isGold() ? ELBOW_TR_GOLD_ARM : ELBOW_TR_GREEN_ARM;
 		arm->motors_.push_back(elbow_motor);
 
-		MotorPtr insertion_motor(new Motor(Motor::Type::LARGE,Motor::TransmissionType::TA,Motor::CableType::LARGE));
+		MotorPtr insertion_motor(new Motor(Motor::IdType::INSERTION_,Motor::Type::LARGE,Motor::TransmissionType::TA,CableType::LARGE));
 		insertion_motor->dacMax_ = Z_INS_MAX_DAC;
 		insertion_motor->transmissionRatio_ = arm->isGold() ? Z_INS_TR_GOLD_ARM : Z_INS_TR_GREEN_ARM;
 		arm->motors_.push_back(insertion_motor);
 
-		MotorPtr tool_rot_motor(new Motor(Motor::Type::SMALL,Motor::TransmissionType::TB,Motor::CableType::SMALL));
+		MotorPtr tool_rot_motor(new Motor(Motor::IdType::TOOL1_,Motor::Type::SMALL,Motor::TransmissionType::TB,CableType::SMALL));
 		tool_rot_motor->dacMax_ = TOOL_ROT_MAX_DAC;
 		tool_rot_motor->transmissionRatio_ = arm->isGold() ? TOOL_ROT_TR_GOLD_ARM : TOOL_ROT_TR_GREEN_ARM;
 		arm->motors_.push_back(tool_rot_motor);
 
-		MotorPtr wrist_motor(new Motor(Motor::Type::SMALL,Motor::TransmissionType::TB,Motor::CableType::SMALL));
+		MotorPtr wrist_motor(new Motor(Motor::IdType::TOOL2_,Motor::Type::SMALL,Motor::TransmissionType::TB,CableType::SMALL));
 		wrist_motor->dacMax_ = WRIST_MAX_DAC;
 		wrist_motor->transmissionRatio_ = arm->isGold() ? WRIST_TR_GOLD_ARM : WRIST_TR_GREEN_ARM;
 		arm->motors_.push_back(wrist_motor);
 
-		MotorPtr grasp1_motor(new Motor(Motor::Type::SMALL,Motor::TransmissionType::TB,Motor::CableType::SMALL));
+		MotorPtr grasp1_motor(new Motor(Motor::IdType::TOOL3_,Motor::Type::SMALL,Motor::TransmissionType::TB,CableType::SMALL));
 		grasp1_motor->dacMax_ = GRASP1_MAX_DAC;
 		grasp1_motor->transmissionRatio_ = arm->isGold() ? GRASP1_TR_GOLD_ARM : GRASP1_TR_GREEN_ARM;
 		arm->motors_.push_back(grasp1_motor);
 
-		MotorPtr grasp2_motor(new Motor(Motor::Type::SMALL,Motor::TransmissionType::TB,Motor::CableType::SMALL));
+		MotorPtr grasp2_motor(new Motor(Motor::IdType::TOOL4_,Motor::Type::SMALL,Motor::TransmissionType::TB,CableType::SMALL));
 		grasp2_motor->dacMax_ = GRASP2_MAX_DAC;
 		grasp2_motor->transmissionRatio_ = arm->isGold() ? GRASP2_TR_GOLD_ARM : GRASP2_TR_GREEN_ARM;
 		arm->motors_.push_back(grasp2_motor);
@@ -133,7 +133,7 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		}
 
 
-		//arm->setMotorFilter(MotorFilterPtr(new LowPassMotorFilter(arm->motors_,arm->type_)));
+		//arm->setStateMotorFilter(MotorFilterPtr(new LowPassMotorFilter(arm->motors_,arm->type_)));
 
 		//Joint Defines
 		#undef SHOULDER
@@ -144,43 +144,43 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 		#undef GRASP1
 		#undef GRASP2
 
-		JointPtr shoulder_joint(new Joint(Joint::Type::SHOULDER_));
+		JointPtr shoulder_joint(new Joint(Joint::IdType::SHOULDER_));
 		arm->joints_.push_back(shoulder_joint);
 		shoulder_joint->minPosition_ = SHOULDER_MIN_LIMIT;
 		shoulder_joint->maxPosition_ = SHOULDER_MAX_LIMIT;
 		shoulder_joint->homePosition_ = SHOULDER_HOME_ANGLE;
 
-		JointPtr elbow_joint(new Joint(Joint::Type::ELBOW_));
+		JointPtr elbow_joint(new Joint(Joint::IdType::ELBOW_));
 		arm->joints_.push_back(elbow_joint);
 		elbow_joint->minPosition_ = ELBOW_MIN_LIMIT;
 		elbow_joint->maxPosition_ = ELBOW_MAX_LIMIT;
 		elbow_joint->homePosition_ = ELBOW_HOME_ANGLE;
 
-		JointPtr insertion_joint(new Joint(Joint::Type::INSERTION_));
+		JointPtr insertion_joint(new Joint(Joint::IdType::INSERTION_,Joint::Type::PRISMATIC));
 		arm->joints_.push_back(insertion_joint);
 		insertion_joint->minPosition_ = Z_INS_MIN_LIMIT;
 		insertion_joint->maxPosition_ = Z_INS_MAX_LIMIT;
 		insertion_joint->homePosition_ = Z_INS_HOME_ANGLE;
 
-		JointPtr tool_rot_joint(new Joint(Joint::Type::ROTATION_));
+		JointPtr tool_rot_joint(new Joint(Joint::IdType::ROTATION_));
 		arm->joints_.push_back(tool_rot_joint);
 		tool_rot_joint->minPosition_ = TOOL_ROLL_MIN_LIMIT;
 		tool_rot_joint->maxPosition_ = TOOL_ROLL_MAX_LIMIT;
 		tool_rot_joint->homePosition_ = TOOL_ROT_HOME_ANGLE;
 
-		JointPtr wrist_joint(new Joint(Joint::Type::WRIST_));
+		JointPtr wrist_joint(new Joint(Joint::IdType::WRIST_));
 		arm->joints_.push_back(wrist_joint);
 		wrist_joint->minPosition_ = TOOL_WRIST_MIN_LIMIT;
 		wrist_joint->maxPosition_ = TOOL_WRIST_MAX_LIMIT;
 		wrist_joint->homePosition_ = WRIST_HOME_ANGLE;
 
-		JointPtr gripper1_joint(new Joint(Joint::Type::FINGER1_));
+		JointPtr gripper1_joint(new Joint(Joint::IdType::FINGER1_));
 		arm->joints_.push_back(gripper1_joint);
 		gripper1_joint->minPosition_ = TOOL_GRASP1_MIN_LIMIT;
 		gripper1_joint->maxPosition_ = TOOL_GRASP1_MAX_LIMIT;
 		gripper1_joint->homePosition_ = GRASP1_HOME_ANGLE;
 
-		JointPtr gripper2_joint(new Joint(Joint::Type::FINGER2_));
+		JointPtr gripper2_joint(new Joint(Joint::IdType::FINGER2_));
 		arm->joints_.push_back(gripper2_joint);
 		gripper2_joint->minPosition_ = TOOL_GRASP2_MIN_LIMIT;
 		gripper2_joint->maxPosition_ = TOOL_GRASP2_MAX_LIMIT;
@@ -190,17 +190,20 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 
 		for (size_t m=0;m<arm->joints_.size();m++) {
 			arm->motors_[m]->hasMainJoint_ = true;
-			arm->motors_[m]->mainJoint_ = arm->joints_[m]->type_;
+			arm->motors_[m]->mainJoint_ = arm->joints_[m]->id_;
+			arm->joints_[m]->hasMainMotor_ = true;
+			arm->joints_[m]->mainMotor_ = arm->motors_[m]->id_;
 		}
 
-		JointPtr yaw_joint(new Joint(Joint::Type::YAW_));
+
+		JointPtr yaw_joint(new Joint(Joint::IdType::YAW_));
 		arm->joints_.push_back(yaw_joint);
 		yaw_joint->minPosition_ = -TOOL_GRASP_LIMIT;
 		yaw_joint->maxPosition_ = TOOL_GRASP_LIMIT;
 		yaw_joint->homePosition_ = 0;
 		cableCouplingForwardMask.push_back(false);
 
-		JointPtr grasp_joint(new Joint(Joint::Type::GRASP_));
+		JointPtr grasp_joint(new Joint(Joint::IdType::GRASP_));
 		arm->joints_.push_back(grasp_joint);
 		grasp_joint->minPosition_ = 0;
 		grasp_joint->maxPosition_ = 2 * TOOL_GRASP_LIMIT;
@@ -250,7 +253,7 @@ JointList
 YawGraspCoupler::getBaseJoints(const JointList& joints) const {
 	JointList bj;
 	for (size_t i=0;i<joints.size();i++) {
-		if (joints.at(i)->type() == Joint::Type::FINGER1_ || joints.at(i)->type() == Joint::Type::FINGER2_) {
+		if (joints.at(i)->id() == Joint::IdType::FINGER1_ || joints.at(i)->id() == Joint::IdType::FINGER2_) {
 			bj.push_back(joints.at(i));
 		}
 	}
@@ -261,7 +264,7 @@ JointList
 YawGraspCoupler::getDependentJoints(const JointList& joints) const {
 	JointList bj;
 	for (size_t i=0;i<joints.size();i++) {
-		if (joints.at(i)->type() == Joint::Type::YAW_ || joints.at(i)->type() == Joint::Type::GRASP_) {
+		if (joints.at(i)->id() == Joint::IdType::YAW_ || joints.at(i)->id() == Joint::IdType::GRASP_) {
 			bj.push_back(joints.at(i));
 		}
 	}
@@ -270,17 +273,18 @@ YawGraspCoupler::getDependentJoints(const JointList& joints) const {
 
 void
 YawGraspCoupler::coupleForward(const JointList& baseJoints,const JointList& depJoints) {
+	TRACER_ENTER_SCOPE("YawGraspCoupler::coupleForward()");
 	JointPtr gripper1;
 	JointPtr gripper2;
 	BOOST_FOREACH(JointPtr bj,baseJoints) {
-		if (bj->type() == Joint::Type::FINGER1_) { gripper1 = bj; }
-		if (bj->type() == Joint::Type::FINGER2_) { gripper2 = bj; }
+		if (bj->id() == Joint::IdType::FINGER1_) { gripper1 = bj; }
+		if (bj->id() == Joint::IdType::FINGER2_) { gripper2 = bj; }
 	}
 	JointPtr yaw;
 	JointPtr grasp;
 	BOOST_FOREACH(JointPtr dj,depJoints) {
-		if (dj->type() == Joint::Type::YAW_) { yaw = dj; }
-		if (dj->type() == Joint::Type::GRASP_) { grasp = dj; }
+		if (dj->id() == Joint::IdType::YAW_) { yaw = dj; }
+		if (dj->id() == Joint::IdType::GRASP_) { grasp = dj; }
 	}
 	if (armType_ == Arm::Type::GOLD) {
 		yaw->setPosition((gripper2->position() - gripper1->position())/2);
@@ -297,6 +301,7 @@ YawGraspCoupler::coupleForward(const JointList& baseJoints,const JointList& depJ
 
 void
 YawGraspCoupler::coupleBackward(const JointList& depJoints,const JointList& baseJoints) {
+	TRACER_ENTER_SCOPE("YawGraspCoupler::coupleBackward() NOT IMPLEMENTED");
 	//TODO: implement
 }
 

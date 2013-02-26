@@ -347,15 +347,20 @@ void getQuaternion(float* Q, float mat[3][3])
 
 void set_posd_to_pos(struct robot_device* device0)
 {
-    for (int m = 0; m < NUM_MECH; m++) {
 #ifdef USE_NEW_DEVICE
-    	ArmPtr arm = Device::currentNoClone()->getArmById(device0->mech[m].type);
-    	btTransform tf = toBt(device0->mech[m].pos,device0->mech[m].ori);
-    	OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
-    	input->armById(device0->mech[m].type).pose() = tf;
-    	input->armById(device0->mech[m].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
-    	ControlInput::oldControlInputUpdateEnd();
+	OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
+	input->setFrom(Device::currentNoClone());
+	ControlInput::oldControlInputUpdateEnd();
 #endif
+    for (int m = 0; m < NUM_MECH; m++) {
+//#ifdef USE_NEW_DEVICE
+//    	ArmConstPtr arm = Device::currentNoClone()->getArmById(device0->mech[m].type);
+//    	btTransform tf = toBt(device0->mech[m].pos,device0->mech[m].ori);
+//    	OldControlInputPtr input = ControlInput::oldControlInputUpdateBegin();
+//    	input->armById(device0->mech[m].type).pose() = tf;
+//    	input->armById(device0->mech[m].type).grasp() = arm->joint(Joint::Type::GRASP_)->position();
+//    	ControlInput::oldControlInputUpdateEnd();
+//#endif
     	device0->mech[m].pos_d.x     = device0->mech[m].pos.x;
         device0->mech[m].pos_d.y     = device0->mech[m].pos.y;
         device0->mech[m].pos_d.z     = device0->mech[m].pos.z;

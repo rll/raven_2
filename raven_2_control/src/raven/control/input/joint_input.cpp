@@ -59,8 +59,79 @@ JointValuesInput::values() const {
 }
 
 void
-JointPositionInput::setFrom(DevicePtr dev) {
-	FOREACH_ARM_IN_DEVICE(arm_in,dev) {
+JointValuesInput::values(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& jointInds) const {
+	size_t numEl = 0;
+	for (size_t i=0;i<arms_.size();i++) {
+		numEl += arms_[i].values().rows();
+	}
+	v.resize(numEl);
+	armIds.resize(numEl);
+	jointInds.resize(numEl);
+	size_t ind = 0;
+	for (size_t i=0;i<arms_.size();i++) {
+		size_t numElInArm = arms_[i].values().rows();
+		v.segment(ind,numElInArm) = arms_[i].values();
+		armIds.segment(ind,numElInArm).setConstant(armIds_[i]);
+		for (size_t j=0;j<numElInArm;j++) {
+			jointInds(ind + j) = j;
+		}
+		ind += numElInArm;
+	}
+}
+
+Eigen::VectorXf
+JointValuesInput::fullVector() const {
+	Arm::IdList ids = Device::armIds();
+	size_t numEl = 0;
+	for (size_t i=0;i<ids.size();i++) {
+		numEl += Device::numJointsOnArmById(ids[i]);
+	}
+	Eigen::VectorXf v(numEl);
+	size_t ind = 0;
+	for (size_t i=0;i<ids.size();i++) {
+		size_t numElInArm = Device::numJointsOnArmById(ids[i]);
+		Arm::IdList::const_iterator itr = std::find(armIds_.begin(),armIds_.end(),ids[i]);
+		if (itr != armIds_.end()) {
+			v.segment(ind,numElInArm) = armById(*itr).values();
+		}
+		ind += numElInArm;
+	}
+	return v;
+}
+
+void
+JointValuesInput::fullVector(Eigen::VectorXf& v, Eigen::VectorXi& armIds, Eigen::VectorXi& jointInds) const {
+	Arm::IdList ids = Device::armIds();
+	size_t numEl = 0;
+	for (size_t i=0;i<ids.size();i++) {
+		numEl += Device::numJointsOnArmById(ids[i]);
+	}
+	v.resize(numEl);
+	armIds.resize(numEl);
+	jointInds.resize(numEl);
+	size_t ind = 0;
+	for (size_t i=0;i<arms_.size();i++) {
+		size_t numElInArm = Device::numJointsOnArmById(ids[i]);
+		Arm::IdList::const_iterator itr = std::find(armIds_.begin(),armIds_.end(),ids[i]);
+		if (itr != armIds_.end()) {
+			v.segment(ind,numElInArm) = armById(*itr).values();
+			armIds.segment(ind,numElInArm).setConstant(*itr);
+			for (size_t j=0;j<numElInArm;j++) {
+				jointInds(ind + j) = j;
+			}
+		} else {
+			armIds.segment(ind,numElInArm).setConstant(-(*itr) - 1);
+			for (size_t j=0;j<numElInArm;j++) {
+				jointInds(ind + j) = -j - 1;
+			}
+		}
+		ind += numElInArm;
+	}
+}
+
+void
+JointPositionInput::setFrom(DeviceConstPtr dev) {
+	FOREACH_ARM_IN_CONST_DEVICE(arm_in,dev) {
 		JointArmData& arm_curr = armById(arm_in->id());
 		for (size_t i=0;i<arm_curr.size();i++) {
 			arm_curr.values()[i]= arm_in->joint(i)->position();
@@ -69,20 +140,20 @@ JointPositionInput::setFrom(DevicePtr dev) {
 }
 
 void
-JointVelocityInput::setFrom(DevicePtr dev) {
-	FOREACH_ARM_IN_DEVICE(arm_in,dev) {
-			JointArmData& arm_curr = armById(arm_in->id());
-			for (size_t i=0;i<arm_curr.size();i++) {
-				arm_curr.values()[i]= arm_in->joint(i)->velocity();
-			}
+JointVelocityInput::setFrom(DeviceConstPtr dev) {
+	FOREACH_ARM_IN_CONST_DEVICE(arm_in,dev) {
+		JointArmData& arm_curr = armById(arm_in->id());
+		for (size_t i=0;i<arm_curr.size();i++) {
+			arm_curr.values()[i]= arm_in->joint(i)->velocity();
 		}
+	}
 }
 
 /************ single arm ***********************/
 
 void
-SingleArmJointPositionInput::setFrom(DevicePtr dev) {
-	ArmPtr arm = dev->getArmById(id());
+SingleArmJointPositionInput::setFrom(DeviceConstPtr dev) {
+	ArmConstPtr arm = dev->getArmById(id());
 	size_t numJoints = Device::numJointsOnArmById(id());
 	data().values().resize(numJoints);
 	for (size_t i=0;i<numJoints;i++) {
@@ -91,8 +162,8 @@ SingleArmJointPositionInput::setFrom(DevicePtr dev) {
 }
 
 void
-SingleArmJointVelocityInput::setFrom(DevicePtr dev) {
-	ArmPtr arm = dev->getArmById(id());
+SingleArmJointVelocityInput::setFrom(DeviceConstPtr dev) {
+	ArmConstPtr arm = dev->getArmById(id());
 	size_t numJoints = Device::numJointsOnArmById(id());
 	data().values().resize(numJoints);
 	for (size_t i=0;i<numJoints;i++) {

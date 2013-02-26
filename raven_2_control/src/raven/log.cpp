@@ -9,7 +9,6 @@ Generic logging function
 #include <map>
 #include "log.h"
 #include <boost/thread/mutex.hpp>
-char buf[1024];
 
 static float defaultInterval = 1;
 static std::map<std::string,float> intervals;
@@ -20,6 +19,7 @@ static std::map<std::string,bool> print;
 //printf("%s\n",buf);
 
 #define SET_BUF \
+	static char buf[1024]; \
 	va_list args; \
 	va_start (args, fmt); \
 	vsprintf(buf,fmt,args); \
@@ -125,6 +125,39 @@ const std::string Tracer::WHITESPACE("                                          
 boost::thread_specific_ptr<std::string> Tracer::NAME;
 boost::thread_specific_ptr<int> Tracer::LEVEL;
 boost::thread_specific_ptr<bool> Tracer::ON;
+boost::thread_specific_ptr<time_t> Tracer::TIMESTAMP;
+
+Tracer::ScopedTracer::ScopedTracer() {
+	Tracer::enter("");
+}
+
+Tracer::ScopedTracer::ScopedTracer(const char* fmt,...) {
+	SET_BUF
+	Tracer::enter(buf);
+}
+
+Tracer::ScopedTracer::ScopedTracer(const std::type_info& type, const char* fmt,...) {
+	if (strlen(fmt) == 0) {
+		Tracer::enter("");
+	} else {
+		SET_BUF
+		Tracer::enter("%s::%s",type.name(),buf);
+	}
+}
+
+Tracer::ScopedTracer::ScopedTracer(void* p,const std::type_info& type, const char* fmt,...) {
+	if (strlen(fmt) == 0) {
+		Tracer::enter("");
+	} else {
+		SET_BUF
+		Tracer::enter("%s@%p::%s",type.name(),p,buf);
+	}
+}
+
+
+Tracer::ScopedTracer::~ScopedTracer() {
+	Tracer::leave();
+}
 
 std::string
 Tracer::getThreadName() {
@@ -143,18 +176,42 @@ Tracer::setThreadName(const std::string& name) {
 	}
 }
 
-void Tracer::on() {
-	if (ROS_UNLIKELY(!ON.get())) {
-		ON.reset(new bool(true));
-	} else {
-		*ON = true;
-	}
-}
-void Tracer::off() {
+bool Tracer::isOn() {
 	if (ROS_UNLIKELY(!ON.get())) {
 		ON.reset(new bool(false));
+	}
+	return *ON;
+}
+
+bool Tracer::set(bool on) {
+	if (ROS_UNLIKELY(!ON.get())) {
+		ON.reset(new bool(on));
+		return false;
 	} else {
+		bool prev = *ON;
+		*ON = on;
+		return prev;
+	}
+}
+
+bool Tracer::on() {
+	if (ROS_UNLIKELY(!ON.get())) {
+		ON.reset(new bool(true));
+		return false;
+	} else {
+		bool prev = *ON;
+		*ON = true;
+		return prev;
+	}
+}
+bool Tracer::off() {
+	if (ROS_UNLIKELY(!ON.get())) {
+		ON.reset(new bool(false));
+		return false;
+	} else {
+		bool prev = *ON;
 		*ON = false;
+		return prev;
 	}
 }
 
@@ -163,8 +220,9 @@ int Tracer::level() {
 }
 
 int
-Tracer::enter(const std::string& name) {
-	int currLevel = print(name);
+Tracer::enter(const char* fmt,...) {
+	SET_BUF
+	int currLevel = printf(buf);
 	if (currLevel >= 0) {
 		*LEVEL = currLevel + 1;
 	}
@@ -183,8 +241,10 @@ Tracer::leave() {
 	(*LEVEL) -= 1;
 }
 
+//#define PRINT_CURRENT_LEVEL
+
 int
-Tracer::print(const std::string& stuff) {
+Tracer::printf(const char* fmt,...) {
 	if (ROS_UNLIKELY(!ON.get())) {
 		ON.reset(new bool(false));
 		return -1;
@@ -199,10 +259,60 @@ Tracer::print(const std::string& stuff) {
 		currLevel = *LEVEL;
 	}
 	std::string thread = getThreadName();
-	if (thread.empty()) {
-		std::cout << WHITESPACE.substr(0,currLevel) << currLevel << ":" << stuff << std::endl;
-	} else {
-		std::cout << WHITESPACE.substr(0,currLevel) << "[" << thread << ":" << currLevel << "]" << stuff << " " << currLevel << std::endl;
+	if (strlen(fmt) != 0) {
+		SET_BUF
+		std::string whitespace = WHITESPACE.substr(0,currLevel*TRACER_INDENT_PER_LEVEL);
+		if (thread.empty()) {
+			std::cout
+			<< whitespace
+#ifdef PRINT_CURRENT_LEVEL
+			<< currLevel
+			<< ":"
+#endif
+			<< buf
+			<< std::endl;
+		} else {
+			std::cout
+			<< whitespace
+			<< "[" << thread
+#ifdef PRINT_CURRENT_LEVEL
+			<< ":" << currLevel
+#endif
+			<< "]"
+			<< buf
+#ifdef PRINT_CURRENT_LEVEL
+			<< " " << currLevel
+#endif
+			<< std::endl;
+		}
 	}
 	return currLevel;
+}
+
+int
+Tracer::printf(const std::type_info& type, const char* fmt,...) {
+	if (strlen(fmt)==0) {
+		return Tracer::printf("");
+	} else {
+		SET_BUF
+		return Tracer::printf("%s::%s",type.name(),buf);
+	}
+}
+
+int
+Tracer::printf(void* p, const std::type_info& type, const char* fmt,...) {
+	if (strlen(fmt)==0) {
+		return Tracer::printf("");
+	} else {
+		SET_BUF
+		return Tracer::printf("%s@%p::%s",type.name(),p,buf);
+	}
+}
+
+time_t
+Tracer::timestamp() {
+	if (ROS_UNLIKELY(!TIMESTAMP.get())) {
+		TIMESTAMP.reset(new time_t(0));
+	}
+	return *TIMESTAMP;
 }

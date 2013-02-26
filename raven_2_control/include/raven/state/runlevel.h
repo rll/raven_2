@@ -11,6 +11,12 @@
 #include <string>
 #include <map>
 //#include <atomic>
+#include <boost/thread/tss.hpp>
+
+#ifndef STRINGIFY
+#define STRINGIFY(s) STRINGIFY_HELPER(s)
+#define STRINGIFY_HELPER(s) #s
+#endif
 
 #define USE_NEW_RUNLEVEL
 
@@ -25,6 +31,8 @@ private:
 
 	static bool IS_INITED;
 	static bool HAS_HOMED;
+	static int FIRST_HOMED_LOOP;
+	static RunLevel* PREVIOUS_RUNLEVEL;
 	static RunLevel* INSTANCE;
 	static bool PEDAL;
 	static bool SOFTWARE_ESTOP;
@@ -33,7 +41,10 @@ public:
 	//static std::atomic_uint_least32_t LOOP_NUMBER;
 
 	static RunLevel get();
+	static RunLevel previous();
+	static bool changed(bool checkSublevel=false);
 	static bool hasHomed();
+	static bool newlyHomed();
 
 	static void eStop();
 
@@ -76,4 +87,60 @@ private:
 	static RunLevel _E_STOP_SOFTWARE_();
 };
 
+class LoopNumber {
+public:
+	struct CountInfo {
+		int count;
+		int loop;
+	};
+private:
+	static std::map<std::string,int> NAMED_INTERVALS;
+	static boost::thread_specific_ptr< std::map<std::string,CountInfo> > NAMED_COUNTS;
+
+	static boost::thread_specific_ptr<int> LOOP_NUMBER;
+	static int MAIN_LOOP_NUMBER;
+
+	static int internalGet();
+	static int internalGetNamedInterval(const std::string& name);
+	static bool internalOnlyEvery(const std::string& name, int limit, int interval);
+	static bool internalOnlyEveryAfter(const std::string& name, int min, int interval);
+	static CountInfo internalGetNamedCount(const std::string& name);
+
+	LoopNumber() {}
+public:
+	static int get();
+	static int getMain();
+
+	static void increment(int amt=1);
+	static void incrementMain(int amt=1);
+
+	static bool is(int loop);
+	static bool after(int loop);
+	static bool before(int loop);
+	static bool between(int start_inclusive,int end_exclusive);
+	static bool every(int interval);
+	static bool everyMain(int interval);
+	static inline bool always(int interval=-1) { return true; } //for convenience
+
+	static void setNamedInterval(const std::string& name,int interval);
+	static int getNamedInterval(const std::string& name);
+	static bool every(const std::string& name);
+	static bool everyMain(const std::string& name);
+	static inline bool always(const std::string& name) { return true; } //for convenience
+
+	static int getNamedCount(const std::string& name);
+
+	static bool once(const std::string& name);
+#define LOOP_NUMBER_ONCE(file,line) if (::LoopNumber::once(STRINGIFY(file) STRINGIFY(line))) //use: LOOP_NUMBER_ONCE(__FILE__,__LINE__) { }
+
+	static bool only(const std::string& name, int limit);
+	static bool onlyAfter(const std::string& name, int min);
+
+	static bool onlyEvery(const std::string& name, int limit);
+	static bool onlyEvery(const std::string& name, int limit, int interval);
+
+	static bool onlyEveryAfter(const std::string& name, int min);
+	static bool onlyEveryAfter(const std::string& name, int min, int interval);
+
+};
 #endif /* RUNLEVEL_H_ */

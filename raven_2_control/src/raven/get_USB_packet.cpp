@@ -135,8 +135,8 @@ void processEncoderPacket(struct mechanism* mech, unsigned char buffer[])
 #endif
 
 #ifdef USE_NEW_DEVICE
-    ArmPtr arm = Device::currentNoClone()->getArmById(mech->type);
-    arm->motorFilter()->getMotorsForUpdate(motorsForUpdating);
+    ArmPtr arm = Device::currentNoCloneMutable()->getArmById(mech->type);
+    arm->stateMotorFilter()->getMotorsForUpdate(motorsForUpdating);
 #endif
 
     //Loop through and read data for each channel

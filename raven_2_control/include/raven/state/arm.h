@@ -15,6 +15,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <memory>
 
 #include <raven/kinematics/kinematics.h>
@@ -29,25 +30,43 @@
 //typedef unsigned char pins_t;
 
 POINTER_TYPES(Arm)
-typedef std::vector<ArmPtr> ArmList;
+//typedef std::vector<ArmPtr> ArmList;
+//typedef std::vector<ArmConstPtr> ConstArmList;
 
 #ifndef FOREACH_JOINT_IN_ARM
 #define FOREACH_JOINT_IN_ARM(jointVar,armPtr) BOOST_FOREACH(JointPtr jointVar,armPtr->joints())
 #define FOREACH_MOTOR_IN_ARM(motorVar,armPtr) BOOST_FOREACH(MotorPtr motorVar,armPtr->motors())
 #endif
 
+typedef int ArmIdType;
+BOOST_ENUM(ArmType,(GOLD)(GREEN))
+BOOST_ENUM(ArmToolType, (NONE)(GRASPER_10MM)(GRASPER_8MM));
+
 class Arm : public Updateable {
 	friend class Device;
 	friend class DeviceInitializer;
 public:
-	BOOST_ENUM(Type,(GOLD)(GREEN))
-	//BOOST_ENUM_STRINGS(Type,(GOLD)("Gold")(GREEN)("Green"))
-
-	BOOST_ENUM(ToolType, (NONE)(GRASPER_10MM)(GRASPER_8MM));
-
-	typedef int IdType;
-	typedef std::vector<IdType> IdList;
+	typedef ArmIdType IdType;
 	static const IdType ALL_ARMS;
+
+	typedef ArmType Type;
+
+	typedef ArmToolType ToolType;
+
+	typedef std::vector<IdType> IdList;
+	typedef std::set<IdType> IdSet;
+	inline static IdSet idSet(const IdList& ids) {
+		return Arm::IdSet(ids.begin(),ids.end());
+	}
+	inline static IdSet& idSetAdd(IdSet& idSet, const IdList& ids) {
+		idSet.insert(ids.begin(),ids.end());
+		return idSet;
+	}
+	inline static IdSet& idSetAdd(IdSet& idSet, const IdSet& ids) {
+		idSet.insert(ids.begin(),ids.end());
+		return idSet;
+	}
+
 private:
 	IdType id_;
 	Type type_;
@@ -61,7 +80,8 @@ private:
 
 	JointList joints_;
 	MotorList motors_;
-	MotorFilterPtr motorFilter_;
+	MotorFilterPtr stateMotorFilter_;
+	MotorFilterPtr controlMotorFilter_;
 
 	CableCouplerPtr cableCoupler_;
 
@@ -82,39 +102,65 @@ public:
 	ArmPtr clone() const;
 	void cloneInto(ArmPtr& other) const;
 
-	IdType id() const { return id_; }
+	IdType id() const;
+	std::string idString() const;
 
-	Type type() const { return type_; }
-	bool isGold() const { return type_ == Type::GOLD; }
-	bool isGreen() const { return type_ == Type::GREEN; }
+	Type type() const;
+	bool isGold() const;
+	bool isGreen() const;
+	std::string typeString() const;
+	std::string typeStringUpper() const;
+	std::string typeStringLower() const;
 
-	std::string name() const { return name_; }
+	std::string name() const;
+	std::string nameUpper() const;
+	std::string nameLower() const;
 
-	bool enabled() const { return enabled_; }
 
-	ToolType toolType() const { return toolType_; }
+	bool enabled() const;
 
-	btTransform basePose() const { return basePose_; }
+	ToolType toolType() const;
 
-	JointList joints() const { return joints_; }
-	JointPtr joint(size_t i) const { return i>joints_.size() ? JointPtr() : joints_.at(i); }
-	JointPtr getJointByType(Joint::Type type) const;
-	JointPtr getJointByOldType(int type) const;
+	btTransform basePose() const;
+
+	JointList joints();
+	ConstJointList joints() const;
+
+	JointPtr joint(size_t i);
+	JointConstPtr joint(size_t i) const;
+
+	JointPtr getJointById(Joint::IdType id);
+	JointConstPtr getJointById(Joint::IdType id) const;
+
+	JointPtr getJointByOldType(int type);
+	JointConstPtr getJointByOldType(int type) const;
+
 	Eigen::VectorXf jointVector() const { return jointPositionVector(); }
 	Eigen::VectorXf jointPositionVector() const;
 	Eigen::VectorXf jointVelocityVector() const;
 
-	void addJointCoupler(JointCouplerPtr coupler) { jointCouplers_.push_back(coupler); }
+	void addJointCoupler(JointCouplerPtr coupler);
 
-	MotorList motors() const { return motors_; }
-	MotorPtr motor(size_t i) const { return i>motors_.size() ? MotorPtr() : motors_.at(i); }
-	MotorPtr getMotorByOldType(int type) const;
+	MotorList motors();
+	ConstMotorList motors() const;
+
+	MotorPtr motor(size_t i);
+	MotorConstPtr motor(size_t i) const;
+
+	MotorPtr getMotorByOldType(int type);
+	MotorConstPtr getMotorByOldType(int type) const;
+
 	Eigen::VectorXf motorPositionVector() const;
 	Eigen::VectorXf motorVelocityVector() const;
 	Eigen::VectorXf motorTorqueVector() const;
 
-	MotorFilterPtr motorFilter() const { return motorFilter_; }
-	void setMotorFilter(MotorFilterPtr filter);
+	MotorFilterPtr stateMotorFilter();
+	MotorFilterConstPtr stateMotorFilter() const;
+	void setStateMotorFilter(MotorFilterPtr filter);
+
+	MotorFilterPtr controlMotorFilter();
+	MotorFilterConstPtr controlMotorFilter() const;
+	void setcontrolMotorFilter(MotorFilterPtr filter);
 
 	KinematicSolver& kinematics() { return *kinematicSolver_; }
 	const KinematicSolver& kinematics() const { return *kinematicSolver_; }

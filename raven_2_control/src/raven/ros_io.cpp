@@ -16,6 +16,7 @@
 
 #include <raven/state/runlevel.h>
 #include <raven/state/device.h>
+#include <raven/control/control_input.h>
 
 #include "log.h"
 #include "utils.h"
@@ -67,6 +68,9 @@ ros::Publisher pub_raven_state;
 ros::Publisher pub_raven_array_state;
 ros::Publisher joint_publisher;
 
+ros::Publisher pub_raven_state_test;
+ros::Publisher pub_raven_state_test_diff;
+
 ros::Publisher pub_tool_pose_array;
 ros::Publisher pub_tool_pose[2];
 
@@ -99,6 +103,9 @@ void publish_marker(struct robot_device*);
 
 #define RAVEN_STATE_TOPIC "raven_state"
 #define RAVEN_ARRAY_STATE_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"array")
+
+#define RAVEN_STATE_TEST_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"test")
+#define RAVEN_STATE_TEST_DIFF_TOPIC APPEND_TOPIC(RAVEN_STATE_TEST_TOPIC,"diff")
 
 #define TOOL_POSE_TOPIC "tool_pose"
 #define TOOL_POSE_SIDE_TOPIC(side) APPEND_TOPIC(TOOL_POSE_TOPIC,side)
@@ -147,6 +154,26 @@ inline geometry_msgs::Pose toRos(position pos,orientation ori,btMatrix3x3 transf
 	pose.position = p;
 	pose.orientation  = q;
 	return pose;
+}
+
+inline geometry_msgs::Pose toRos(const btTransform& pose,btMatrix3x3 transform=btMatrix3x3::getIdentity()) {
+	btMatrix3x3 rot_mat = pose.getBasis() * transform;
+	btQuaternion rot;
+	rot_mat.getRotation(rot);
+	geometry_msgs::Point p;
+	p.x = pose.getOrigin().x();
+	p.y = pose.getOrigin().y();
+	p.z = pose.getOrigin().z();
+	geometry_msgs::Quaternion q;
+	rot.normalize();
+	q.x = rot.x();
+	q.y = rot.y();
+	q.z = rot.z();
+	q.w = rot.w();
+	geometry_msgs::Pose pose_msg;
+	pose_msg.position = p;
+	pose_msg.orientation  = q;
+	return pose_msg;
 }
 
 float rosGraspFromMech(int armId,int grasp) {
@@ -240,7 +267,7 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 
 	//RunLevel::setPedal(cmd.pedal_down);
 	for (size_t i=0;i<cmd.arms.size();i++) {
-		Arm::IdType armId = Device::getArmIdByName(cmd.arm_names[i]);
+		Arm::IdType armId = Device::getArmIdFromName(cmd.arm_names[i]);
 		RunLevel::setArmActive(armId,cmd.arms[i].active);
 	}
 
@@ -278,7 +305,7 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 		raven_2_msgs::ArmCommand armCmd;
 		bool found = false;
-		for (int i=0;i<cmd.arm_names.size();i++) {
+		for (size_t i=0;i<cmd.arm_names.size();i++) {
 			if (cmd.arm_names.at(i) == armNameFromId(arm_id)) {
 				armCmd = cmd.arms.at(i);
 				found = true;
@@ -505,8 +532,15 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 }
 
 void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 sublevel,ros::Duration since_last_pub);
+raven_2_msgs::RavenState publish_new_device();
 
 void publish_ros(struct robot_device *device0,param_pass currParams) {
+#ifdef USE_NEW_DEVICE
+	static DevicePtr dev;
+	Device::current(dev);
+	OldControlInputPtr input = ControlInput::getOldControlInput();
+#endif
+
 	u_08 runlevel;
 	u_08 sublevel;
 #ifdef USE_NEW_RUNLEVEL
@@ -558,7 +592,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	//raven_state
 
 #ifdef USE_NEW_DEVICE
-	raven_state.header.stamp = Device::currentTimestamp();
+	raven_state.header.stamp = dev->timestamp();
 #else
 	raven_state.header.stamp = ros::Time::now();
 #endif
@@ -613,6 +647,38 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 
 		arm_state.tool_pose = toRos(_mech->pos,_mech->ori,transform);
 		arm_state.tool_pose_desired = toRos(_mech->pos_d,_mech->ori_d,transform);
+
+#ifdef USE_NEW_DEVICE
+		{
+		btTransform tool_pose(toBt(_mech->ori) * transform,toBt(_mech->pos)/MICRON_PER_M);
+		btQuaternion tool_pose_rot = tool_pose.getRotation();
+		btVector3 tool_pose_pos = tool_pose.getOrigin();
+
+		btTransform tool_pose_new = dev->getArmById(_mech->type)->kinematics().forwardPose();
+		btQuaternion tool_pose_new_rot = tool_pose_new.getRotation();
+		btVector3 tool_pose_new_pos = tool_pose_new.getOrigin();
+
+		btTransform tool_pose_d(toBt(_mech->ori_d) * transform,toBt(_mech->pos_d)/MICRON_PER_M);
+		btQuaternion tool_pose_d_rot = tool_pose_d.getRotation();
+		btVector3 tool_pose_d_pos = tool_pose_d.getOrigin();
+
+		btTransform tool_pose_d_new = input->armById(_mech->type).pose();
+		btQuaternion tool_pose_d_new_rot = tool_pose_d_new.getRotation();
+		btVector3 tool_pose_d_new_pos = tool_pose_d_new.getOrigin();
+
+		double dist = tool_pose_pos.distance(tool_pose_new_pos);
+		double angle = tool_pose_rot.angle(tool_pose_new_rot) * 180 / M_PI;
+
+		double dist_d = tool_pose_d_pos.distance(tool_pose_d_new_pos);
+		double angle_d = tool_pose_d_rot.angle(tool_pose_d_new_rot) * 180 / M_PI;
+
+		if (false && LoopNumber::everyMain(1000)) {
+			log_msg("DIFFS [%.2d,%.1d] [%.2d, %.1d]",dist,angle,dist_d,angle_d);
+			log_msg("(%.2d,%.2d,%.2d) (%.2d,%.2d,%.2d)",tool_pose_pos.x(),tool_pose_pos.y(),tool_pose_pos.z(),tool_pose_new_pos.x(),tool_pose_new_pos.y(),tool_pose_new_pos.z());
+			log_msg("(%.2d,%.2d,%.2d) (%.2d,%.2d,%.2d)",tool_pose_d_pos.x(),tool_pose_d_pos.y(),tool_pose_d_pos.z(),tool_pose_d_new_pos.x(),tool_pose_d_new_pos.y(),tool_pose_d_new_pos.z());
+		}
+		}
+#endif
 
 		arm_state.grasp = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori.grasp);
 		arm_state.grasp_desired = rosGraspFromMech(armIdFromMechType(_mech->type),_mech->ori_d.grasp);
@@ -757,6 +823,244 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	}
 
 	pub_raven_array_state.publish(array_state);
+
+#ifdef USE_NEW_DEVICE
+	raven_2_msgs::RavenState new_state = publish_new_device();
+
+	for (size_t i=0;i<new_state.arms.size();i++) {
+		raven_2_msgs::ArmState armState = new_state.arms[i];
+		raven_2_msgs::ArmState otherArmState;
+		for (size_t ii=0;ii<raven_state.arms.size();ii++) {
+			if (raven_state.arms[ii].name == armState.name) {
+				otherArmState = raven_state.arms[ii];
+				break;
+			}
+		}
+		armState.base_pose.position.x -= otherArmState.base_pose.position.x;
+		armState.base_pose.position.y -= otherArmState.base_pose.position.y;
+		armState.base_pose.position.z -= otherArmState.base_pose.position.z;
+
+		armState.base_pose.orientation.x -= otherArmState.base_pose.orientation.x;
+		armState.base_pose.orientation.y -= otherArmState.base_pose.orientation.y;
+		armState.base_pose.orientation.z -= otherArmState.base_pose.orientation.z;
+		armState.base_pose.orientation.w -= otherArmState.base_pose.orientation.w;
+
+		armState.tool_pose.position.x -= otherArmState.tool_pose.position.x;
+		armState.tool_pose.position.y -= otherArmState.tool_pose.position.y;
+		armState.tool_pose.position.z -= otherArmState.tool_pose.position.z;
+
+		armState.tool_pose.orientation.x -= otherArmState.tool_pose.orientation.x;
+		armState.tool_pose.orientation.y -= otherArmState.tool_pose.orientation.y;
+		armState.tool_pose.orientation.z -= otherArmState.tool_pose.orientation.z;
+		armState.tool_pose.orientation.w -= otherArmState.tool_pose.orientation.w;
+
+		armState.tool_pose_desired.position.x -= otherArmState.tool_pose_desired.position.x;
+		armState.tool_pose_desired.position.y -= otherArmState.tool_pose_desired.position.y;
+		armState.tool_pose_desired.position.z -= otherArmState.tool_pose_desired.position.z;
+
+		armState.tool_pose_desired.orientation.x -= otherArmState.tool_pose_desired.orientation.x;
+		armState.tool_pose_desired.orientation.y -= otherArmState.tool_pose_desired.orientation.y;
+		armState.tool_pose_desired.orientation.z -= otherArmState.tool_pose_desired.orientation.z;
+		armState.tool_pose_desired.orientation.w -= otherArmState.tool_pose_desired.orientation.w;
+
+		armState.grasp -= otherArmState.grasp;
+		armState.grasp_desired -= otherArmState.grasp_desired;
+
+		for (size_t j=0;j<armState.joints.size();j++) {
+			raven_2_msgs::JointState jointState = armState.joints[j];
+			raven_2_msgs::JointState otherJointState = otherArmState.joints[j];
+
+			jointState.encoder_value -= otherJointState.encoder_value;
+			jointState.encoder_offset -= otherJointState.encoder_offset;
+			jointState.dac_command -= otherJointState.dac_command;
+			jointState.position -= otherJointState.position;
+			jointState.velocity -= otherJointState.velocity;
+			jointState.motor_position -= otherJointState.motor_position;
+			jointState.motor_velocity -= otherJointState.motor_velocity;
+			jointState.torque -= otherJointState.torque;
+			jointState.command.value -= otherJointState.command.value;
+
+			armState.joints[j] = jointState;
+		}
+
+		new_state.arms[i] = armState;
+	}
+
+	pub_raven_state_test_diff.publish(new_state);
+#endif
+
+}
+
+
+raven_2_msgs::RavenState publish_new_device() {
+	static raven_2_msgs::RavenState raven_state;
+#ifdef USE_NEW_DEVICE
+	static DevicePtr dev;
+	Device::current(dev);
+	OldControlInputPtr input = ControlInput::getOldControlInput();
+
+	u_08 runlevel;
+	u_08 sublevel;
+#ifdef USE_NEW_RUNLEVEL
+	RunLevel currRunlevel = RunLevel::get();
+	currRunlevel.getNumbers<u_08>(runlevel,sublevel);
+#else
+	runlevel = currParams.runlevel;
+	sublevel = currParams.sublevel;
+#endif
+	static bool hasHomed = false;
+	raven_state.arms.clear();
+
+	if (
+#ifdef USE_NEW_RUNLEVEL
+			RunLevel::isInitialized()
+#else
+	runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP
+#endif
+	) {
+		hasHomed = true;
+	}
+
+	raven_state.header.stamp = dev->timestamp();
+	raven_state.header.frame_id = "/0_link";
+#ifdef USE_NEW_RUNLEVEL
+	RunLevel rl = RunLevel::get();
+	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
+	raven_state.pedal_down = RunLevel::getPedal();
+#else
+	raven_state.runlevel = runlevel;
+	raven_state.sublevel = sublevel;
+	raven_state.pedal_down = device0->surgeon_mode;
+#endif
+
+	raven_state.master = getMasterModeString();
+
+	//t_controlmode controlMode = (t_controlmode)currParams.robotControlMode;
+	t_controlmode controlMode = getControlMode();
+	raven_state.controller = (uint8_t) controlMode;
+
+	FOREACH_ARM_IN_DEVICE(arm,dev) {
+		raven_2_msgs::ArmState arm_state;
+		uint8_t arm_type;
+		btMatrix3x3 transform;
+		if (arm->isGold()) {
+			arm_type = raven_2_msgs::Constants::ARM_TYPE_GOLD;
+			transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+		} else if (arm->isGreen()) {
+			arm_type = raven_2_msgs::Constants::ARM_TYPE_GREEN;
+			transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
+		} else {
+			ROS_ERROR_STREAM("Unknown arm type"<<arm->type());
+			continue;
+		}
+		arm_state.name = arm->name();
+		arm_state.type = arm_type;
+
+		arm_state.base_pose = toRos(arm->basePose(),transform);
+
+		switch (arm->toolType().index()) {
+		case Arm::ToolType::NONE: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_NONE; break;
+		case Arm::ToolType::GRASPER_10MM: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_GRASPER_10MM; break;
+		case Arm::ToolType::GRASPER_8MM: arm_state.tool_type = raven_2_msgs::Constants::TOOL_TYPE_GRASPER_8MM; break;
+		}
+
+		arm_state.tool_pose = toRos(arm->kinematics().forwardPose(),transform);
+		arm_state.tool_pose_desired = toRos(input->armById(arm->id()).pose(),transform);
+
+		arm_state.grasp = arm->getJointById(Joint::IdType::GRASP_)->position();
+		arm_state.grasp_desired = input->armById(arm->id()).grasp();
+
+		FOREACH_JOINT_IN_ARM(joint,arm) {
+			raven_2_msgs::JointState joint_state;
+			switch (joint->id().index()) {
+			case Joint::IdType::SHOULDER_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_SHOULDER; break;
+			case Joint::IdType::ELBOW_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_ELBOW; break;
+			case Joint::IdType::INSERTION_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_INSERTION; break;
+			case Joint::IdType::ROTATION_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_ROTATION; break;
+			case Joint::IdType::WRIST_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_PITCH; break;
+			case Joint::IdType::FINGER1_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_GRASP_FINGER1; break;
+			case Joint::IdType::FINGER2_: joint_state.type = raven_2_msgs::Constants::JOINT_TYPE_GRASP_FINGER2; break;
+			default: continue;
+			}
+
+			switch (joint->state().index()) {
+			case jstate_not_ready: joint_state.state = raven_2_msgs::JointState::STATE_NOT_READY; break;
+			case jstate_pos_unknown: joint_state.state = raven_2_msgs::JointState::STATE_POS_UNKNOWN; break;
+			case jstate_homing1: joint_state.state = raven_2_msgs::JointState::STATE_HOMING1; break;
+			case jstate_homing2: joint_state.state = raven_2_msgs::JointState::STATE_HOMING2; break;
+			case jstate_ready: joint_state.state = raven_2_msgs::JointState::STATE_READY; break;
+			case jstate_wait: joint_state.state = raven_2_msgs::JointState::STATE_WAIT; break;
+			case jstate_hard_stop: joint_state.state = raven_2_msgs::JointState::STATE_HARD_STOP; break;
+			default: joint_state.state = raven_2_msgs::JointState::STATE_LAST_TYPE; break;
+			}
+
+			MotorPtr motor = arm->motor(joint->id().index());
+
+			joint_state.encoder_value = motor->encoderValue();
+			joint_state.encoder_offset = motor->encoderOffset();
+			joint_state.dac_command = motor->dacCommand();
+
+			joint_state.position = joint->position();
+			joint_state.velocity = joint->velocity();
+
+			joint_state.motor_position = motor->position();
+			joint_state.motor_velocity = motor->velocity();
+
+			joint_state.torque = motor->torque();
+			joint_state.gravitation_torque_estimate = motor->gravitationalTorqueEstimate();
+
+			joint_state.integrated_position_error = 0;
+
+			raven_2_msgs::JointCommand joint_cmd;
+			joint_cmd.command_type = raven_2_msgs::JointCommand::COMMAND_TYPE_POSITION;
+			joint_cmd.value = input->armById(arm->id()).jointPosition(joint->id().index());
+			/*
+				    		joint_cmd.position = _joint->jpos;
+				    		joint_cmd.velocity = _joint->jvel;
+
+				    		joint_cmd.motor_position = _joint->mpos;
+				    		joint_cmd.motor_velocity = _joint->mvel;
+
+				    		joint_cmd.torque = _joint->tau;
+			 */
+
+			joint_state.command = joint_cmd;
+
+			arm_state.joints.push_back(joint_state);
+		}
+
+		raven_2_msgs::JointState yaw_state;
+		raven_2_msgs::JointState grasp_state;
+		yaw_state.type = raven_2_msgs::Constants::JOINT_TYPE_YAW;
+		grasp_state.type = raven_2_msgs::Constants::JOINT_TYPE_GRASP;
+
+		switch (arm->getJointById(Joint::IdType::GRASP_)->state().index()) {
+		case jstate_not_ready: yaw_state.state = raven_2_msgs::JointState::STATE_NOT_READY; break;
+		case jstate_pos_unknown: yaw_state.state = raven_2_msgs::JointState::STATE_POS_UNKNOWN; break;
+		case jstate_homing1: yaw_state.state = raven_2_msgs::JointState::STATE_HOMING1; break;
+		case jstate_homing2: yaw_state.state = raven_2_msgs::JointState::STATE_HOMING2; break;
+		case jstate_ready: yaw_state.state = raven_2_msgs::JointState::STATE_READY; break;
+		case jstate_wait: yaw_state.state = raven_2_msgs::JointState::STATE_WAIT; break;
+		case jstate_hard_stop: yaw_state.state = raven_2_msgs::JointState::STATE_HARD_STOP; break;
+		default: yaw_state.state = raven_2_msgs::JointState::STATE_LAST_TYPE; break;
+		}
+		grasp_state.state = yaw_state.state;
+
+		yaw_state.position = arm->getJointById(Joint::IdType::YAW_)->position();
+		yaw_state.velocity = arm->getJointById(Joint::IdType::YAW_)->velocity();
+
+		grasp_state.position = arm->getJointById(Joint::IdType::GRASP_)->position();
+
+		arm_state.joints.push_back(yaw_state);
+		arm_state.joints.push_back(grasp_state);
+
+		raven_state.arms.push_back(arm_state);
+	}
+
+	pub_raven_state_test.publish(raven_state);
+
+#endif
+	return raven_state;
 }
 
 void publish_command_pose(struct robot_device* device0) {
@@ -1002,6 +1306,9 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 	pub_raven_state = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TOPIC, 1000);
 	pub_raven_array_state = n.advertise<raven_2_msgs::RavenArrayState>(RAVEN_ARRAY_STATE_TOPIC, 1000);
 	joint_publisher = n.advertise<sensor_msgs::JointState>("joint_states", 1);
+
+	pub_raven_state_test = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TEST_TOPIC, 1000);
+	pub_raven_state_test_diff = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TEST_DIFF_TOPIC, 1000);
 
 	mechanism* _mech = NULL;
 	int mechnum = 0;

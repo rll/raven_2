@@ -65,6 +65,9 @@ void stateMachine(struct device *device0, struct param_pass *currParams, struct 
         rlDelayCounter++;
         return;
     }
+#ifdef USE_NEW_RUNLEVEL
+	//RunLevel::updateRunlevel(rlDesired);
+#endif
 
     rlDelayCounter = 0;
 #ifdef USE_NEW_RUNLEVEL

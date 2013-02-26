@@ -16,6 +16,8 @@
 #include <boost/foreach.hpp>
 #include <stdio.h>
 
+#include "log.h"
+
 class Updateable;
 
 typedef boost::shared_ptr<Updateable> UpdateablePtr;
@@ -35,7 +37,9 @@ public:
 	ros::Time getUpdateableTimestamp() const { return timestamp_; }
 
 	virtual bool update() {
+		TRACER_ENTER_SCOPE_OF(this,"update()");
 		if (heldUpdateTimestamp_ != ros::Time(0)) {
+			TRACER_PRINT("held update timestamp");
 			setUpdateableTimestamp(heldUpdateTimestamp_);
 		}
 		if (parent_) {
@@ -60,10 +64,12 @@ public:
 	void setImmediateUpdate(bool immediate) { immediateUpdate_ = immediate; }
 
 	void holdUpdateBegin() {
+		TRACER_ENTER_SCOPE_OF(this,"holdUpdateBegin()");
 		holdUpdates_ = true;
 		heldUpdateTimestamp_ = ros::Time(0);
 	}
 	bool holdUpdateEnd() {
+		TRACER_ENTER_SCOPE_OF(this,"holdUpdateEnd()");
 		bool changed = heldUpdateTimestamp_ != ros::Time(0);
 		if (changed) {
 			update();
@@ -83,10 +89,12 @@ protected:
 	void setUpdateableTimestamp(ros::Time stamp) { timestamp_ = stamp; }
 
 	virtual void notify(Updateable* sender) {
+		TRACER_ENTER_SCOPE_OF(this,"notify() from %s@%p",typeid(*sender).name(),sender);
 		if (sender->getUpdateableTimestamp() <= getUpdateableTimestamp()) {
 			return;
 		}
 		if (holdUpdates_) {
+			TRACER_PRINT("Holding updates");
 			heldUpdateTimestamp_ = sender->getUpdateableTimestamp();
 			return;
 		} else {

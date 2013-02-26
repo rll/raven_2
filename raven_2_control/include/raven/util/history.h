@@ -11,18 +11,24 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/circular_buffer.hpp>
 
+#include "log.h"
+
 template<class T>
 struct CloningWrapper {
 	typedef boost::shared_ptr<T> ValueType;
 	ValueType value;
 
 	CloningWrapper() : value() {}
-	CloningWrapper(const ValueType& theValue) : value(theValue) {}
+	CloningWrapper(const ValueType& theValue) : value(theValue) {
+		TRACER_VERBOSE_ENTER_SCOPE("CloningWrapper<%s> constructor",typeid(T).name());
+	}
 	CloningWrapper(const CloningWrapper& other) {
+		TRACER_VERBOSE_ENTER_SCOPE("CloningWrapper<%s> copy constructor",typeid(T).name());
 		other.value->cloneInto(value);
 	}
 
 	CloningWrapper& operator=(const CloningWrapper& other) {
+		TRACER_VERBOSE_ENTER_SCOPE("CloningWrapper<%s> assignment",typeid(T).name());
 		other.value->cloneInto(value);
 		return *this;
 	}

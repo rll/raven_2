@@ -26,9 +26,9 @@ EndEffectorPoseInput::values() const {
 }
 
 void
-EndEffectorPoseInput::setFrom(DevicePtr dev) {
+EndEffectorPoseInput::setFrom(DeviceConstPtr dev) {
 	relative_ = false;
-	FOREACH_ARM_IN_DEVICE(arm,dev) {
+	FOREACH_ARM_IN_CONST_DEVICE(arm,dev) {
 		armById(arm->id()).value() = arm->kinematics().forwardPose();
 	}
 }
@@ -76,7 +76,7 @@ SingleArmEndEffectorPoseInput::SingleArmEndEffectorPoseInput(Arm::IdType id, boo
 }
 
 void
-SingleArmEndEffectorPoseInput::setFrom(DevicePtr dev) {
+SingleArmEndEffectorPoseInput::setFrom(DeviceConstPtr dev) {
 	relative_ = false;
 	data().value() = dev->getArmById(id())->kinematics().forwardPose();
 }

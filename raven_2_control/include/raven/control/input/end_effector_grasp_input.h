@@ -27,7 +27,7 @@ public:
 
 	std::vector<float> values() const;
 
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(EndEffectorGraspInput)
 
@@ -39,7 +39,7 @@ public:
 	float& value() { return data().value(); }
 	const float& value() const { return data().value(); }
 
-	virtual void setFrom(DevicePtr dev);
+	virtual void setFrom(DeviceConstPtr dev);
 };
 POINTER_TYPES(SingleArmEndEffectorGraspInput)
 

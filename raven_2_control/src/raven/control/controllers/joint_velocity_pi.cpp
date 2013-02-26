@@ -49,7 +49,7 @@ JointVelocityPI::internalApplyControl(DevicePtr device) {
 
 	size_t begin_ind = 0;
 	for (size_t i=0;i<device->arms().size();i++) {
-		device->arm(i)->motorFilter()->getMotorsForUpdate(motorsForUpdate);
+		device->arm(i)->controlMotorFilter()->getMotorsForUpdate(motorsForUpdate);
 		Eigen::VectorXf armVals = values.segment(motorsForUpdate.size(),begin_ind);
 
 		for (size_t j=0;i<motorsForUpdate.size();j++) {

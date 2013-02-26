@@ -44,17 +44,17 @@ InverseKinematicsOptions::setTruncateJointDifferences(bool on) {
 	truncateJointDifferences_ = on;
 }
 
-std::map<Joint::Type,float>
+std::map<Joint::IdType,float>
 InverseKinematicsOptions::maxJointDifferences() const {
 	if (!truncateJointDifferences_) {
-		return std::map<Joint::Type,float>();
+		return std::map<Joint::IdType,float>();
 	} else {
 		return maxJointDifferences_;
 	}
 }
 
 float
-InverseKinematicsOptions::getMaxJointDifference(Joint::Type type) const {
+InverseKinematicsOptions::getMaxJointDifference(Joint::IdType type) const {
 	if (truncateJointDifferences_ && maxJointDifferences_.find(type) != maxJointDifferences_.end()) {
 		return maxJointDifferences_.at(type);
 	} else {
@@ -63,17 +63,17 @@ InverseKinematicsOptions::getMaxJointDifference(Joint::Type type) const {
 }
 
 void
-InverseKinematicsOptions::setMaxJointDifferences(const std::map<Joint::Type,float>& diffs) {
+InverseKinematicsOptions::setMaxJointDifferences(const std::map<Joint::IdType,float>& diffs) {
 	maxJointDifferences_ = diffs;
 }
 
 void
-InverseKinematicsOptions::setMaxJointDifference(Joint::Type type, float diff) {
+InverseKinematicsOptions::setMaxJointDifference(Joint::IdType type, float diff) {
 	maxJointDifferences_[type] = diff;
 }
 
 void
-InverseKinematicsOptions::clearMaxJointDifference(Joint::Type type) {
+InverseKinematicsOptions::clearMaxJointDifference(Joint::IdType type) {
 	maxJointDifferences_.erase(type);
 }
 
@@ -108,28 +108,30 @@ KinematicSolver::cloneInto(KinematicSolverPtr& other,Arm* arm) const {
 
 int
 KinematicSolver::forward(btTransform& pose) const {
-	if (forwardKinTimestamp_ == arm_->timestamp()) {
+	TRACER_ENTER_SCOPE("KinematicSolver::forward()");
+	if (false && forwardKinTimestamp_ == arm_->timestamp()) {
 		pose = forwardKinCached_;
 		return 0;
 	}
 
-	Arm::IdType armId = arm_->id();
+	Arm::IdType armId_new = arm_->id();
+	int armId = armIdFromSerial(arm_->id());
 
 	pose = actual_world_to_ik_world(armId)
 						* Tw2b
-						* Zs(THS_TO_IK(armId,arm_->getJointByType(Joint::Type::SHOULDER_)->position()))
+						* Zs(THS_TO_IK(armId,arm_->getJointById(Joint::IdType::SHOULDER_)->position()))
 						* Xu
-						* Ze(THE_TO_IK(armId,arm_->getJointByType(Joint::Type::ELBOW_)->position()))
+						* Ze(THE_TO_IK(armId,arm_->getJointById(Joint::IdType::ELBOW_)->position()))
 						* Xf
-						* Zr(THR_TO_IK(armId,arm_->getJointByType(Joint::Type::ROTATION_)->position()))
-						* Zi(D_TO_IK(armId,arm_->getJointByType(Joint::Type::INSERTION_)->position()))
+						* Zr(THR_TO_IK(armId,arm_->getJointById(Joint::IdType::ROTATION_)->position()))
+						* Zi(D_TO_IK(armId,arm_->getJointById(Joint::IdType::INSERTION_)->position()))
 						* Xip
-						* Zp(THP_TO_IK(armId,arm_->getJointByType(Joint::Type::WRIST_)->position()))
+						* Zp(THP_TO_IK(armId,arm_->getJointById(Joint::IdType::WRIST_)->position()))
 						* Xpy
-						* Zy(THY_TO_IK_FROM_FINGERS(armId,arm_->getJointByType(Joint::Type::FINGER1_)->position(),arm_->getJointByType(Joint::Type::FINGER2_)->position()))
+						* Zy(THY_TO_IK_FROM_FINGERS(armId,arm_->getJointById(Joint::IdType::FINGER1_)->position(),arm_->getJointById(Joint::IdType::FINGER2_)->position()))
 						* Tg;
 
-	//int grasp = MECH_GRASP_FROM_MECH_FINGERS(armId,arm_->getJointByType(Joint::Type::GRIPPER1_)->position(),arm_->getJointByType(Joint::Type::GRIPPER2_)->position());
+	//int grasp = MECH_GRASP_FROM_MECH_FINGERS(armId,arm_->getJointById(Joint::Type::GRIPPER1_)->position(),arm_->getJointById(Joint::Type::GRIPPER2_)->position());
 
 	const_cast<KinematicSolver*>(this)->forwardKinCached_ = pose;
 	const_cast<KinematicSolver*>(this)->forwardKinTimestamp_ = arm_->timestamp();
@@ -150,6 +152,7 @@ KinematicSolver::inverse(const btTransform& pose) {
 
 InverseKinematicsReportPtr
 KinematicSolver::inverse(const btTransform& pose,const InverseKinematicsOptions& options) {
+	TRACER_ENTER_SCOPE("KinematicSolver[arm@%p]::inverse()",arm_);
 	if (invKinTimestamp_ == arm_->timestamp() && pose == invKinCached_) {
 		return invKinReport_;
 	}
@@ -213,9 +216,11 @@ KinematicSolver::motorTorqueVector() const {
 
 InverseKinematicsReportPtr
 KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm,const InverseKinematicsOptions& options) const {
+	TRACER_ENTER_SCOPE("KinematicSolver::internalInverseSoln(arm@%p)",arm);
 	InverseKinematicsReportPtr report(new InverseKinematicsReport());
 
-	Arm::IdType armId = arm->id();
+	Arm::IdType armId_new = arm_->id();
+	int armId = armIdFromSerial(arm_->id());
 
 
 	// desired tip position
@@ -230,33 +235,33 @@ KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm,const Inv
 //	tb_angles actualPoseAngles = tb_angles(ori_d->R);
 
 	//float grasp = GRASP_TO_IK(armId,mech->ori_d.grasp);
-	float grasp = arm->getJointByType(Joint::Type::GRASP_)->position();
+	float grasp = arm->getJointById(Joint::IdType::GRASP_)->position();
 
 //	if (print) {
 //		log_msg("j s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
-//				arm->getJointByType(Joint::Type::SHOULDER_)->position() RAD2DEG,
-//				arm->getJointByType(Joint::Type::ELBOW_)->position() RAD2DEG,
-//				arm->getJointByType(Joint::Type::TOOL_ROT_)->position() RAD2DEG,
-//				arm->getJointByType(Joint::Type::INSERTION__)->position(),
-//				arm->getJointByType(Joint::Type::WRIST_)->position() RAD2DEG,
-//				fix_angle(arm->getJointByType(Joint::Type::GRIPPER1_)->position() - arm->getJointByType(Joint::Type::GRIPPER2_)->position()) / 2 RAD2DEG,
-//				(arm->getJointByType(Joint::Type::GRIPPER1_)->position() + arm->getJointByType(Joint::Type::GRIPPER2_)->position()) RAD2DEG,
-//				arm->getJointByType(Joint::Type::GRIPPER1_)->position() RAD2DEG,arm->getJointByType(Joint::Type::GRIPPER2_)->position() RAD2DEG);
+//				arm->getJointById(Joint::Type::SHOULDER_)->position() RAD2DEG,
+//				arm->getJointById(Joint::Type::ELBOW_)->position() RAD2DEG,
+//				arm->getJointById(Joint::Type::TOOL_ROT_)->position() RAD2DEG,
+//				arm->getJointById(Joint::Type::INSERTION__)->position(),
+//				arm->getJointById(Joint::Type::WRIST_)->position() RAD2DEG,
+//				fix_angle(arm->getJointById(Joint::Type::GRIPPER1_)->position() - arm->getJointById(Joint::Type::GRIPPER2_)->position()) / 2 RAD2DEG,
+//				(arm->getJointById(Joint::Type::GRIPPER1_)->position() + arm->getJointById(Joint::Type::GRIPPER2_)->position()) RAD2DEG,
+//				arm->getJointById(Joint::Type::GRIPPER1_)->position() RAD2DEG,arm->getJointById(Joint::Type::GRIPPER2_)->position() RAD2DEG);
 //		log_msg("v s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f y % 2.1f g % 2.1f g1 % 2.1f g2 % 2.1f",
-//				arm->getJointByType(Joint::Type::SHOULDER].jvel RAD2DEG,
-//				arm->getJointByType(Joint::Type::ELBOW].jvel RAD2DEG,
-//				arm->getJointByType(Joint::Type::TOOL_ROT].jvel RAD2DEG,
-//				arm->getJointByType(Joint::Type::INSERTION_].jvel,
-//				arm->getJointByType(Joint::Type::WRIST].jvel RAD2DEG,
-//				(arm->getJointByType(Joint::Type::GRASP1].jvel - arm->getJointByType(Joint::Type::GRASP2].jvel) / 2 RAD2DEG,
-//				arm->getJointByType(Joint::Type::GRASP1].jvel + arm->getJointByType(Joint::Type::GRASP2].jvel RAD2DEG,
-//				arm->getJointByType(Joint::Type::GRASP1].jvel RAD2DEG,arm->getJointByType(Joint::Type::GRASP2].jvel RAD2DEG);
-//		log_msg("t s % 1.3f e % 1.3f r % 1.3f i % 1.3f p % 1.3f g1 % 1.3f g2 % 1.3f",arm->getJointByType(Joint::Type::SHOULDER].tau_d,
-//				arm->getJointByType(Joint::Type::ELBOW].tau_d,arm->getJointByType(Joint::Type::TOOL_ROT].tau_d,arm->getJointByType(Joint::Type::INSERTION_].tau_d,arm->getJointByType(Joint::Type::WRIST].tau_d,
-//				arm->getJointByType(Joint::Type::GRASP1].tau_d,arm->getJointByType(Joint::Type::GRASP2].tau_d);
-//		log_msg("d s %d e %d r %d i %d p %d g1 %d g2 %d",tToDACVal(&(arm->getJointByType(Joint::Type::SHOULDER])),
-//				tToDACVal(&(arm->getJointByType(Joint::Type::ELBOW])),tToDACVal(&(arm->getJointByType(Joint::Type::TOOL_ROT])),tToDACVal(&(arm->getJointByType(Joint::Type::INSERTION_])),tToDACVal(&(arm->getJointByType(Joint::Type::WRIST])),
-//				tToDACVal(&(arm->getJointByType(Joint::Type::GRASP1])),tToDACVal(&(arm->getJointByType(Joint::Type::GRASP2])));
+//				arm->getJointById(Joint::Type::SHOULDER].jvel RAD2DEG,
+//				arm->getJointById(Joint::Type::ELBOW].jvel RAD2DEG,
+//				arm->getJointById(Joint::Type::TOOL_ROT].jvel RAD2DEG,
+//				arm->getJointById(Joint::Type::INSERTION_].jvel,
+//				arm->getJointById(Joint::Type::WRIST].jvel RAD2DEG,
+//				(arm->getJointById(Joint::Type::GRASP1].jvel - arm->getJointById(Joint::Type::GRASP2].jvel) / 2 RAD2DEG,
+//				arm->getJointById(Joint::Type::GRASP1].jvel + arm->getJointById(Joint::Type::GRASP2].jvel RAD2DEG,
+//				arm->getJointById(Joint::Type::GRASP1].jvel RAD2DEG,arm->getJointById(Joint::Type::GRASP2].jvel RAD2DEG);
+//		log_msg("t s % 1.3f e % 1.3f r % 1.3f i % 1.3f p % 1.3f g1 % 1.3f g2 % 1.3f",arm->getJointById(Joint::Type::SHOULDER].tau_d,
+//				arm->getJointById(Joint::Type::ELBOW].tau_d,arm->getJointById(Joint::Type::TOOL_ROT].tau_d,arm->getJointById(Joint::Type::INSERTION_].tau_d,arm->getJointById(Joint::Type::WRIST].tau_d,
+//				arm->getJointById(Joint::Type::GRASP1].tau_d,arm->getJointById(Joint::Type::GRASP2].tau_d);
+//		log_msg("d s %d e %d r %d i %d p %d g1 %d g2 %d",tToDACVal(&(arm->getJointById(Joint::Type::SHOULDER])),
+//				tToDACVal(&(arm->getJointById(Joint::Type::ELBOW])),tToDACVal(&(arm->getJointById(Joint::Type::TOOL_ROT])),tToDACVal(&(arm->getJointById(Joint::Type::INSERTION_])),tToDACVal(&(arm->getJointById(Joint::Type::WRIST])),
+//				tToDACVal(&(arm->getJointById(Joint::Type::GRASP1])),tToDACVal(&(arm->getJointById(Joint::Type::GRASP2])));
 //		log_msg("cp (% 1.3f,% 1.3f,% 1.3f\typr (% 1.3f,% 1.3f,% 1.3f))",
 //				currentPoint.x(),currentPoint.y(),currentPoint.z(),
 //				currentPoseAngles.yaw_deg,currentPoseAngles.pitch_deg,currentPoseAngles.roll_deg);
@@ -426,15 +431,15 @@ KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm,const Inv
 
 //		if (print) {
 //			log_msg("j s % 3.1f e % 3.1f r % 3.1f i % 1.3f p % 3.1f y % 3.1f g % 3.1f g1 % 3.1f g2 % 3.1f",
-//					arm->getJointByType(Joint::Type::SHOULDER_)->position() RAD2DEG,
-//					arm->getJointByType(Joint::Type::ELBOW_)->position() RAD2DEG,
-//					arm->getJointByType(Joint::Type::TOOL_ROT_)->position() RAD2DEG,
-//					arm->getJointByType(Joint::Type::INSERTION__)->position(),
-//					arm->getJointByType(Joint::Type::WRIST_)->position() RAD2DEG,
-//					THY_MECH_FROM_FINGERS(armIdFromMechType(mech->type),arm->getJointByType(Joint::Type::GRIPPER1_)->position(), arm->getJointByType(Joint::Type::GRIPPER2_)->position()) RAD2DEG,//fix_angle(arm->getJointByType(Joint::Type::GRIPPER2_)->position() - arm->getJointByType(Joint::Type::GRIPPER1_)->position(),0) / 2  RAD2DEG,
+//					arm->getJointById(Joint::Type::SHOULDER_)->position() RAD2DEG,
+//					arm->getJointById(Joint::Type::ELBOW_)->position() RAD2DEG,
+//					arm->getJointById(Joint::Type::TOOL_ROT_)->position() RAD2DEG,
+//					arm->getJointById(Joint::Type::INSERTION__)->position(),
+//					arm->getJointById(Joint::Type::WRIST_)->position() RAD2DEG,
+//					THY_MECH_FROM_FINGERS(armIdFromMechType(mech->type),arm->getJointById(Joint::Type::GRIPPER1_)->position(), arm->getJointById(Joint::Type::GRIPPER2_)->position()) RAD2DEG,//fix_angle(arm->getJointById(Joint::Type::GRIPPER2_)->position() - arm->getJointById(Joint::Type::GRIPPER1_)->position(),0) / 2  RAD2DEG,
 //					mech->ori.grasp * 1000. RAD2DEG,
-//					fix_angle(arm->getJointByType(Joint::Type::GRIPPER1_)->position() + arm->getJointByType(Joint::Type::GRIPPER2_)->position(),0) RAD2DEG,
-//					arm->getJointByType(Joint::Type::GRIPPER1_)->position() RAD2DEG, arm->getJointByType(Joint::Type::GRIPPER2_)->position() RAD2DEG);
+//					fix_angle(arm->getJointById(Joint::Type::GRIPPER1_)->position() + arm->getJointById(Joint::Type::GRIPPER2_)->position(),0) RAD2DEG,
+//					arm->getJointById(Joint::Type::GRIPPER1_)->position() RAD2DEG, arm->getJointById(Joint::Type::GRIPPER2_)->position() RAD2DEG);
 //			log_msg("%d s % 3.1f e % 3.1f r % 3.1f i % 1.3f p % 3.1f y % 3.1f g % 3.1f g1 % 3.1f g2 % 3.1f",i,
 //					ths_act[i] RAD2DEG,
 //					the_act[i] RAD2DEG,
@@ -462,33 +467,33 @@ KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm,const Inv
 			setJointsWithLimits1(arm,d_act,thp_act,g1_act,g2_act);
 			setJointsWithLimits2(arm,ths_act[i],the_act[i],thr_act[i]);
 
-			ths_diff = arm->getJointByType(Joint::Type::SHOULDER_)->position() - ths_act[i];
-			the_diff = arm->getJointByType(Joint::Type::ELBOW_)->position()    - the_act[i];
-			d_diff = arm->getJointByType(Joint::Type::INSERTION_)->position()    - d_act;
-			thr_diff = arm->getJointByType(Joint::Type::ROTATION_)->position() - thr_act[i];
-			thp_diff = arm->getJointByType(Joint::Type::WRIST_)->position()    - thp_act;
-			thg1_diff = arm->getJointByType(Joint::Type::FINGER1_)->position()   - g1_act;
-			thg2_diff = arm->getJointByType(Joint::Type::FINGER2_)->position()   - g2_act;
+			ths_diff = arm->getJointById(Joint::IdType::SHOULDER_)->position() - ths_act[i];
+			the_diff = arm->getJointById(Joint::IdType::ELBOW_)->position()    - the_act[i];
+			d_diff = arm->getJointById(Joint::IdType::INSERTION_)->position()    - d_act;
+			thr_diff = arm->getJointById(Joint::IdType::ROTATION_)->position() - thr_act[i];
+			thp_diff = arm->getJointById(Joint::IdType::WRIST_)->position()    - thp_act;
+			thg1_diff = arm->getJointById(Joint::IdType::FINGER1_)->position()   - g1_act;
+			thg2_diff = arm->getJointById(Joint::IdType::FINGER2_)->position()   - g2_act;
 			/*
-			ths_diff = arm->getJointByType(Joint::Type::SHOULDER_)->position()_d - ths_act;
-			the_diff = arm->getJointByType(Joint::Type::ELBOW_)->position()_d    - the_act;
-			d_diff = arm->getJointByType(Joint::Type::INSERTION__)->position()_d    - d_act;
-			thr_diff = arm->getJointByType(Joint::Type::TOOL_ROT_)->position()_d - thr_act;
-			thp_diff = arm->getJointByType(Joint::Type::WRIST_)->position()_d    - thp_act;
-			thg1_diff = arm->getJointByType(Joint::Type::GRIPPER1_)->position()_d   - g1_act;
-			thg2_diff = arm->getJointByType(Joint::Type::GRIPPER2_)->position()_d   - g2_act;
+			ths_diff = arm->getJointById(Joint::Type::SHOULDER_)->position()_d - ths_act;
+			the_diff = arm->getJointById(Joint::Type::ELBOW_)->position()_d    - the_act;
+			d_diff = arm->getJointById(Joint::Type::INSERTION__)->position()_d    - d_act;
+			thr_diff = arm->getJointById(Joint::Type::TOOL_ROT_)->position()_d - thr_act;
+			thp_diff = arm->getJointById(Joint::Type::WRIST_)->position()_d    - thp_act;
+			thg1_diff = arm->getJointById(Joint::Type::GRIPPER1_)->position()_d   - g1_act;
+			thg2_diff = arm->getJointById(Joint::Type::GRIPPER2_)->position()_d   - g2_act;
 			 */
 
 //			if (print) {
 //				log_msg("%d s % 2.1f e % 2.1f r % 2.1f i % 1.3f p % 2.1f        g % 2.1f g1 % 2.1f g2 % 2.1f",i,
-//						arm->getJointByType(Joint::Type::SHOULDER_)->position()_d RAD2DEG,
-//						arm->getJointByType(Joint::Type::ELBOW_)->position()_d RAD2DEG,
-//						arm->getJointByType(Joint::Type::TOOL_ROT_)->position()_d RAD2DEG,
-//						arm->getJointByType(Joint::Type::INSERTION__)->position()_d,
-//						arm->getJointByType(Joint::Type::WRIST_)->position()_d RAD2DEG,
+//						arm->getJointById(Joint::Type::SHOULDER_)->position()_d RAD2DEG,
+//						arm->getJointById(Joint::Type::ELBOW_)->position()_d RAD2DEG,
+//						arm->getJointById(Joint::Type::TOOL_ROT_)->position()_d RAD2DEG,
+//						arm->getJointById(Joint::Type::INSERTION__)->position()_d,
+//						arm->getJointById(Joint::Type::WRIST_)->position()_d RAD2DEG,
 //						grasp RAD2DEG,
-//						arm->getJointByType(Joint::Type::GRIPPER1_)->position()_d RAD2DEG,
-//						arm->getJointByType(Joint::Type::GRIPPER2_)->position()_d RAD2DEG);
+//						arm->getJointById(Joint::Type::GRIPPER1_)->position()_d RAD2DEG,
+//						arm->getJointById(Joint::Type::GRIPPER2_)->position()_d RAD2DEG);
 //				log_msg("diff:");
 //				log_msg("R s %0.4f e %0.4f r %0.4f d %0.4f p %0.4f                     g1 %0.4f  g2 %0.4f",
 //						ths_diff,the_diff,thr_diff,d_diff,thp_diff,thg1_diff,thg2_diff);
@@ -573,51 +578,51 @@ KinematicSolver::setJointsWithLimits1(Arm* arm, float d_act, float thp_act, floa
 	//	if (_ik_counter % PRINT_EVERY == 0) {
 	//		log_msg("setting joints 1");
 	//	}
-	arm->getJointByType(Joint::Type::INSERTION_)->setPosition(d_act);
-	arm->getJointByType(Joint::Type::WRIST_)->setPosition(thp_act); //WRIST_HOME_ANGLE; int WARNING_WRIST_NOT_SET;
-	arm->getJointByType(Joint::Type::FINGER1_)->setPosition(g1_act); //GRASP1_HOME_ANGLE; int WARNING_GRASP1_NOT_SET;
-	arm->getJointByType(Joint::Type::FINGER2_)->setPosition(g2_act); //GRASP2_HOME_ANGLE; int WARNING_GRASP2_NOT_SET;
+	arm->getJointById(Joint::IdType::INSERTION_)->setPosition(d_act);
+	arm->getJointById(Joint::IdType::WRIST_)->setPosition(thp_act); //WRIST_HOME_ANGLE; int WARNING_WRIST_NOT_SET;
+	arm->getJointById(Joint::IdType::FINGER1_)->setPosition(g1_act); //GRASP1_HOME_ANGLE; int WARNING_GRASP1_NOT_SET;
+	arm->getJointById(Joint::IdType::FINGER2_)->setPosition(g2_act); //GRASP2_HOME_ANGLE; int WARNING_GRASP2_NOT_SET;
 
 	int limits=0;
 
-	if (arm->getJointByType(Joint::Type::INSERTION_)->position()  < Z_INS_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::INSERTION_)->position()  < Z_INS_MIN_LIMIT) {
 		limits++;
 		log_msg("insertion min limit");
-		arm->getJointByType(Joint::Type::INSERTION_)->setPosition(Z_INS_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::INSERTION_)->position()  > Z_INS_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::INSERTION_)->setPosition(Z_INS_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::INSERTION_)->position()  > Z_INS_MAX_LIMIT) {
 		limits++;
 		log_msg("insertion max limit");
-		arm->getJointByType(Joint::Type::INSERTION_)->setPosition(Z_INS_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::INSERTION_)->setPosition(Z_INS_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::WRIST_)->position()  < TOOL_WRIST_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::WRIST_)->position()  < TOOL_WRIST_MIN_LIMIT) {
 		log_msg("wrist min limit");
 		limits++;
-		arm->getJointByType(Joint::Type::WRIST_)->setPosition(TOOL_WRIST_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::WRIST_)->position()  > TOOL_WRIST_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::WRIST_)->setPosition(TOOL_WRIST_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::WRIST_)->position()  > TOOL_WRIST_MAX_LIMIT) {
 		limits++;
 		log_msg("wrist max limit");
-		arm->getJointByType(Joint::Type::WRIST_)->setPosition(TOOL_WRIST_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::WRIST_)->setPosition(TOOL_WRIST_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::FINGER1_)->position()  < TOOL_GRASP1_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::FINGER1_)->position()  < TOOL_GRASP1_MIN_LIMIT) {
 		limits++;
 		log_msg("grasp1 min limit");
-		arm->getJointByType(Joint::Type::FINGER1_)->setPosition(TOOL_GRASP1_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::FINGER1_)->position()  > TOOL_GRASP1_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::FINGER1_)->setPosition(TOOL_GRASP1_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::FINGER1_)->position()  > TOOL_GRASP1_MAX_LIMIT) {
 		limits++;
 		log_msg("grasp1 max limit");
-		arm->getJointByType(Joint::Type::FINGER1_)->setPosition(TOOL_GRASP1_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::FINGER1_)->setPosition(TOOL_GRASP1_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::FINGER2_)->position()  < TOOL_GRASP2_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::FINGER2_)->position()  < TOOL_GRASP2_MIN_LIMIT) {
 		log_msg("grasp2 min limit");
 		limits++;
-		arm->getJointByType(Joint::Type::FINGER2_)->setPosition(TOOL_GRASP2_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::FINGER2_)->position()  > TOOL_GRASP2_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::FINGER2_)->setPosition(TOOL_GRASP2_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::FINGER2_)->position()  > TOOL_GRASP2_MAX_LIMIT) {
 		limits++;
 		log_msg("grasp2 max limit");
-		arm->getJointByType(Joint::Type::FINGER2_)->setPosition(TOOL_GRASP2_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::FINGER2_)->setPosition(TOOL_GRASP2_MAX_LIMIT);
 	}
 
 	return limits;
@@ -628,40 +633,40 @@ KinematicSolver::setJointsWithLimits2(Arm* arm, float ths_act, float the_act, fl
 	//	if (_ik_counter % PRINT_EVERY == 0) {
 	//		log_msg("setting joints 2");
 	//	}
-	arm->getJointByType(Joint::Type::SHOULDER_)->setPosition(ths_act);
-	arm->getJointByType(Joint::Type::ELBOW_)->setPosition(the_act);
-	//arm->getJointByType(Joint::Type::TOOL_ROT_)->setPosition(fix_angle(thr_act + M_PI); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
-	arm->getJointByType(Joint::Type::ROTATION_)->setPosition(thr_act); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
+	arm->getJointById(Joint::IdType::SHOULDER_)->setPosition(ths_act);
+	arm->getJointById(Joint::IdType::ELBOW_)->setPosition(the_act);
+	//arm->getJointById(Joint::Type::TOOL_ROT_)->setPosition(fix_angle(thr_act + M_PI); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
+	arm->getJointById(Joint::IdType::ROTATION_)->setPosition(thr_act); //TOOL_ROT_HOME_ANGLE; int WARNING_ROT_NOT_SET;
 
 	int limits = 0;
-	if (arm->getJointByType(Joint::Type::SHOULDER_)->position() < SHOULDER_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::SHOULDER_)->position() < SHOULDER_MIN_LIMIT) {
 		limits++;
 		log_msg("shoulder min limit");
-		arm->getJointByType(Joint::Type::SHOULDER_)->setPosition(SHOULDER_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::SHOULDER_)->position() > SHOULDER_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::SHOULDER_)->setPosition(SHOULDER_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::SHOULDER_)->position() > SHOULDER_MAX_LIMIT) {
 		limits++;
 		log_msg("shoulder max limit");
-		arm->getJointByType(Joint::Type::SHOULDER_)->setPosition(SHOULDER_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::SHOULDER_)->setPosition(SHOULDER_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::ELBOW_)->position() < ELBOW_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::ELBOW_)->position() < ELBOW_MIN_LIMIT) {
 		limits++;
 		log_msg("elbow min limit");
-		arm->getJointByType(Joint::Type::ELBOW_)->setPosition(ELBOW_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::ELBOW_)->position() > ELBOW_MAX_LIMIT) {
+		arm->getJointById(Joint::IdType::ELBOW_)->setPosition(ELBOW_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::ELBOW_)->position() > ELBOW_MAX_LIMIT) {
 		limits++;
 		log_msg("elbow max limit");
-		arm->getJointByType(Joint::Type::ELBOW_)->setPosition(ELBOW_MAX_LIMIT);
+		arm->getJointById(Joint::IdType::ELBOW_)->setPosition(ELBOW_MAX_LIMIT);
 	}
 
-	if (arm->getJointByType(Joint::Type::ROTATION_)->position() < TOOL_ROLL_MIN_LIMIT) {
+	if (arm->getJointById(Joint::IdType::ROTATION_)->position() < TOOL_ROLL_MIN_LIMIT) {
 		limits++;
-		log_msg("roll % 3.1fdeg under min limit",arm->getJointByType(Joint::Type::ROTATION_)->position() RAD2DEG);
-		arm->getJointByType(Joint::Type::ROTATION_)->setPosition(TOOL_ROLL_MIN_LIMIT);
-	} else if (arm->getJointByType(Joint::Type::ROTATION_)->position() > TOOL_ROLL_MAX_LIMIT) {
+		log_msg("roll % 3.1fdeg under min limit",arm->getJointById(Joint::IdType::ROTATION_)->position() RAD2DEG);
+		arm->getJointById(Joint::IdType::ROTATION_)->setPosition(TOOL_ROLL_MIN_LIMIT);
+	} else if (arm->getJointById(Joint::IdType::ROTATION_)->position() > TOOL_ROLL_MAX_LIMIT) {
 		limits++;
-		log_msg("roll % 3.1fdeg over max limit",arm->getJointByType(Joint::Type::ROTATION_)->position() RAD2DEG);
-		arm->getJointByType(Joint::Type::ROTATION_)->setPosition(TOOL_ROLL_MAX_LIMIT);
+		log_msg("roll % 3.1fdeg over max limit",arm->getJointById(Joint::IdType::ROTATION_)->position() RAD2DEG);
+		arm->getJointById(Joint::IdType::ROTATION_)->setPosition(TOOL_ROLL_MAX_LIMIT);
 	}
 
 	return limits;

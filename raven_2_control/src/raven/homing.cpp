@@ -69,7 +69,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     if (begin_homing || !homing_inited)
     {
 #ifdef USE_NEW_DEVICE
-    	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoClone()) {
+    	FOREACH_ARM_IN_DEVICE(arm,Device::currentNoCloneMutable()) {
     		OldArmInputData& armData = ControlInput::getOldControlInput()->armById(arm->id());
     		for (size_t i=0;i<arm->motors().size();i++) {
     			armData.motorTorque(i) = 0;
@@ -192,7 +192,7 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
 #ifdef USE_NEW_DEVICE
     Device::beginCurrentUpdate(ros::Time(0));
 
-    ArmPtr arm = Device::currentNoClone()->getArmById(_mech->type);
+    ArmPtr arm = Device::currentNoCloneMutable()->getArmById(_mech->type);
 #endif
 
     /// Set joint position reference for just tools, or all DOFS
@@ -217,9 +217,9 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
     invMechCableCoupling(_mech, 1);
 
 #ifdef USE_NEW_DEVICE
-	arm->motorFilter()->reset();
+	arm->stateMotorFilter()->reset();
 
-	arm->motorFilter()->getMotorsForUpdate(motors);
+	arm->stateMotorFilter()->getMotorsForUpdate(motors);
 #endif
 
 	_joint = NULL;

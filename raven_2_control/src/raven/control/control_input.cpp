@@ -27,16 +27,16 @@ std::map<Arm::IdType,MasterMode2> MasterMode2::MASTER_MODES;
 std::map<Arm::IdType,std::set<MasterMode2> > MasterMode2::MASTER_MODE_CONFLICTS;
 std::map<Arm::IdType,ros::Time> MasterMode2::LAST_CHECK_TIMES;
 
-MasterMode2 MasterMode2::NONE = MasterMode2("");
+MasterMode2 const MasterMode2::NONE = MasterMode2("");
 
 MasterMode2
-MasterMode2::getMasterMode(Arm::IdType armId) {
+MasterMode2::get(Arm::IdType armId) {
 	boost::mutex::scoped_lock(masterMutex);
 	return MASTER_MODES[armId];
 }
 
 bool
-MasterMode2::checkMasterMode(Arm::IdType armId, const MasterMode2& mode) {
+MasterMode2::check(Arm::IdType armId, const MasterMode2& mode) {
 	if (mode.isNone()) {
 			return false;
 	#ifdef USE_NEW_RUNLEVEL
@@ -75,7 +75,7 @@ MasterMode2::checkMasterMode(Arm::IdType armId, const MasterMode2& mode) {
 }
 
 bool
-MasterMode2::resetMasterMode(Arm::IdType armId) {
+MasterMode2::reset(Arm::IdType armId) {
 	boost::mutex::scoped_lock(masterMutex);
 	if (armId == Arm::ALL_ARMS) {
 		MASTER_MODES.clear();
@@ -86,7 +86,7 @@ MasterMode2::resetMasterMode(Arm::IdType armId) {
 }
 
 bool
-MasterMode2::getMasterModeStatus(MasterModeStatusMap& status) {
+MasterMode2::getStatus(MasterModeStatusMap& status) {
 	boost::mutex::scoped_lock(masterMutex);
 	FOREACH_ARM_ID(armId) {
 		MasterModeStatus arm_status;
@@ -164,18 +164,20 @@ ControlInput::getOldControlInput() {
 
 OldControlInputPtr
 ControlInput::oldControlInputUpdateBegin() {
+	TRACER_ENTER_SCOPE("ControlInput::oldControlInputUpdateBegin()");
 	oldInputMutex.lock();
 	return getOldControlInput();
 }
 void
 ControlInput::oldControlInputUpdateEnd() {
+	TRACER_ENTER_SCOPE("ControlInput::oldControlInputUpdateEnd()");
 	oldInputMutex.unlock();
 }
 
 ros::Time
 MultipleControlInput::timestamp() const {
 	ros::Time stamp(0);
-	std::map<std::string,ControlInputPtr>::const_iterator itr;
+	Map::const_iterator itr;
 	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
 		ros::Time t =  itr->second->timestamp();
 		if (t>stamp) {
@@ -186,18 +188,39 @@ MultipleControlInput::timestamp() const {
 }
 void
 MultipleControlInput::setTimestamp(ros::Time time) {
-	std::map<std::string,ControlInputPtr>::iterator itr;
+	Map::iterator itr;
 	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
 		itr->second->setTimestamp(time);
 	}
 }
 
+Arm::IdList
+MultipleControlInput::armIds() const {
+	Arm::IdSet ids;
+	Map::const_iterator itr;
+	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
+		Arm::IdList theseIds = itr->second->armIds();
+		ids.insert(theseIds.begin(),theseIds.end());
+	}
+	return Device::sortArmIds(ids);
+}
+
 void
-MultipleControlInput::setFrom(DevicePtr dev) {
-	std::map<std::string,ControlInputPtr>::iterator itr;
+MultipleControlInput::setFrom(DeviceConstPtr dev) {
+	Map::iterator itr;
 	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
 		itr->second->setFrom(dev);
 	}
+}
+
+MultipleControlInput::ConstMap
+MultipleControlInput::inputs() const {
+	ConstMap map;
+	Map::const_iterator itr;
+	for (itr=inputs_.begin();itr!=inputs_.end();itr++) {
+		map[itr->first] = ControlInputConstPtr(itr->second);
+	}
+	return map;
 }
 
 bool
@@ -264,8 +287,9 @@ OldControlInput::OldControlInput() : SeparateArmControlInput<OldArmInputData>(De
 }
 
 void
-OldControlInput::setFrom(DevicePtr dev) {
-	FOREACH_ARM_IN_DEVICE(arm_in,dev) {
+OldControlInput::setFrom(DeviceConstPtr dev) {
+	TRACER_ENTER_SCOPE("OldControlInput::setFrom()");
+	FOREACH_ARM_IN_CONST_DEVICE(arm_in,dev) {
 		OldArmInputData& arm_curr = armById(arm_in->id());
 		for (size_t i=0;i<arm_curr.motorPositions().size();i++) {
 			arm_curr.motorPositions()[i]= arm_in->motor(i)->position();
@@ -283,7 +307,7 @@ OldControlInput::setFrom(DevicePtr dev) {
 			arm_curr.jointVelocities()[i]= arm_in->joint(i)->velocity();
 		}
 		arm_curr.pose() = arm_in->pose();
-		arm_curr.grasp() = arm_in->joint(Joint::Type::GRASP_)->position();
+		arm_curr.grasp() = arm_in->joint(Joint::IdType::GRASP_)->position();
 	}
 }
 

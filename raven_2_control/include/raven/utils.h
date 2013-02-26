@@ -62,6 +62,15 @@ inline btTransform toBt(position p,orientation o) {
 	return btTransform(toBt(o),toBt(p));
 }
 
+inline btTransform toBt(position p,float R[3][3]) {
+	return btTransform(toBt(R),toBt(p));
+}
+
+template<typename OtherType>
+inline btTransform toBt(position p,OtherType R) {
+	return btTransform(toBt(R),toBt(p));
+}
+
 //btTransform Z(float theta,float d);
 //btTransform X(float alpha,float a);
 

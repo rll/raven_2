@@ -34,6 +34,7 @@ LowPassMotorFilter<order>::internalCloneInto(MotorFilterPtr& other, const MotorL
 template<int order>
 void
 LowPassMotorFilter<order>::internalApplyUpdate() {
+	TRACER_ENTER_SCOPE("LowPassMotorFilter<order>::internalApplyUpdate");
 	ros::Time callTime = ros::Time::now();
 	for (size_t i=0;i<motorsForUpdate_.size();i++) {
 		bool resized = false;
