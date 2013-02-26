@@ -15,7 +15,7 @@
   <depend package="geometry_msgs"/>
   <depend package="sensor_msgs"/>
   <depend package="tf"/>
-  <depend package='tfx'/>
+  <depend package='tfx'/> <!-- https://bitbucket.org/benkehoe/tfx -->
 
 </package>
 

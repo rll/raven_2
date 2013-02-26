@@ -1,0 +1,372 @@
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest('raven_2_control')
+roslib.load_manifest('tfx')
+import rospy
+
+from raven_2_msgs.msg import *
+from tfx.canonical_tf import *
+
+import optparse
+from collections import defaultdict
+import os
+
+
+#Runlevel: PEDAL_UP
+#Main loop number: 380867
+#Master mode: NONE
+#Controller: joint_torque_control
+#Green arm:	Board 0, type 23:
+#type:		SHOULD	ELBOW_	Z_INS_	TOOL_R	WRIST_	GRASP1	GRASP2	
+#enc_val:	40795	-2930	57	153	279	363	92	
+#enc_off:	-705	-118839	63889	21456	21420	25568	25614	
+#mpos:		65.19	182.07	-100.27	-33.46	-33.21	-39.59	-40.09	
+#mpos_d:		65.24	181.56	-100.27	-33.47	-33.21	-39.59	-40.09	
+#mvel:		0	-0	-0	0	-0	-0	0	
+#mvel_d:		0	0	0	0	0	0	0	
+#jpos:		0.52	1.62	-0.05	0.16	0.12	-0.59	-0.64	
+#jpos_d:		0.52	1.61	-0.05	0.16	0.12	-0.59	-0.64	
+#jvel:		0.00	-0.00	-0.00	0.00	0.00	0.00	0.00	
+#jvel_d:		0.00	-0.00	-0.00	0.00	0.00	0.00	0.00	
+#tau_d:		0.000	0.000	0.000	0.000	0.000	0.000	0.000	
+#DAC:		0	0	0	0	0	0	0	
+#KP gains:	0.060	0.050	0.020	0.090	0.050	0.020	0.020	
+#KD gains:	0.003	0.004	0.001	0.001	0.000	0.000	0.000	
+#KI gains:	0.000	0.000	0.000	0.050	0.050	0.020	0.020	
+
+
+class StatePrinter(object):
+	
+	
+	def short_name(self,name):
+		if self.short_names.has_key(name):
+			return self.short_names[name]
+		else:
+			return name
+	
+	def __init__(self,options,enabled):
+		self.options = options
+		self.enabled = enabled
+		
+		self.duration = rospy.Duration(1./options.rate)
+		self.last_print_time = None
+		
+		self.output = None
+		
+		self.joints_enabled = options.joints
+		if self.joints_enabled and enabled and set(['set_points','state']).isdisjoint(enabled):
+			for name in enabled:
+				if name.startswith('j'):
+					break
+			else:
+				self.joints_enabled = False
+		
+		self.motors_enabled = options.joints
+		if self.motors_enabled and enabled and set(['set_points','torque']).isdisjoint(enabled):
+			for name in enabled:
+				if name.startswith('m'):
+					break
+			else:
+				self.motors_enabled = False
+		
+		self.short_names = {
+				'joint_states': 'state',
+				'joint_positions': 'jpos',
+				'joint_velocities': 'jvel',
+				'joint_command_types': 'jcmd_type',
+				'joint_command_values': 'jcmd',
+				'joint_set_point_positions': 'jpos_d',
+				'joint_set_point_velocities': 'jvel_d',
+				
+				'motor_positions': 'mpos',
+				'motor_velocities': 'mvel',
+				'motor_torques': 'torque',
+				
+				'motor_set_point_positions': 'mpos_d',
+				'motor_set_point_velocities': 'mvel_d',
+				
+				'motor_enc_vals': 'enc_value',
+				'motor_enc_offsets': 'enc_offset',
+				'motor_dac_cmds': 'dac_cmd'
+				}
+		
+		self.default_off = set(['motor_enc_vals','motor_enc_offsets','motor_dac_cmds'])
+		self.nick_names = defaultdict(list,**{
+						'jcmd':['joint_command_types'],
+						'jstate':['joint_states'],
+						'joints':['jpos','jvel'],
+						'set_points':['jpos_d','jvel_d',
+									'mpos_d','mvel_d'],
+						'pose':['tool_pose'],
+						'tool':['tool_pose','grasp']
+						})
+	
+	def is_enabled(self,field):
+		if not self.enabled:
+			return field not in self.default_off
+		elif field in self.enabled:
+			return True
+		elif self.short_name(field) in self.enabled:
+			return True
+		else:
+			for name in self.enabled:
+				if field in self.nick_names[name] or self.short_name(field) in self.nick_names[name]:
+					return True
+			return False
+	
+	def add_line(self,line,*args):
+		if not all(map(self.is_enabled,args)):
+			return
+		self.output += line.format(**(self.fields)) + '\n'
+	
+	def state_callback(self,msg):
+		now = msg.header.stamp
+		if self.last_print_time and now - self.last_print_time < self.duration:
+			return
+		self.last_print_time = now
+		
+		
+		self.fields = {}
+		
+		self.output = ''
+		add_line = lambda line: self.output + line.format(**self.fields) + '\n'
+		
+		#std_msgs/Header header
+		#  uint32 seq
+		self.fields['loop_number'] = msg.header.seq
+		#  time stamp
+		self.fields['stamp'] = msg.header.stamp.to_sec()
+		#  string frame_id
+		self.fields['frame_id'] = msg.header.frame_id
+		#uint8 runlevel
+		#uint8 sublevel
+		runlevel_strs = defaultdict(lambda: 'UNKNOWN',{0:'E_STOP',1:'INIT',2:'PEDAL_UP',3:'PEDAL_DOWN'})
+		init_sublevel_strs = defaultdict(lambda: 'UNKNOWN',{0:'0',1:'1',2:'2',3:'3'})
+		
+		self.fields['runlevel'] = runlevel_strs[msg.runlevel]
+		if msg.runlevel == 1:
+			self.fields['runlevel'] += ':' + init_sublevel_strs[msg.sublevel]
+
+		#bool pedal_down
+		self.fields['pedal_down'] = msg.pedal_down
+
+		#string master
+		#uint8 controller
+		self.fields['_master'] = msg.master
+		self.fields['controller'] = Constants.CONTROLLER_STRINGS.split(',')[msg.controller]
+		
+#		self.output = add_line('Runlevel:   {runlevel:10.10s}')
+#		self.output = add_line('Timestamp:  {stamp:f} [{loop_number:d}]')
+#		self.output = add_line('Master:     {master}')
+#		self.output = add_line('Controller: {controller}')
+		self.add_line('Runlevel:   {runlevel:10.10s}')
+		self.add_line('Timestamp:  {stamp:f} [{loop_number:d}]')
+		self.add_line('Master:     {_master}')
+		self.add_line('Controller: {controller}')
+					
+		#raven_2_msgs/ArmState[] arms
+		for arm in msg.arms:
+			if self.options.arm and arm.name not in self.options.arm:
+				continue
+			
+			#  string name
+			self.fields['arm_name'] = arm.name
+			
+			#  uint8 type
+			self.fields['arm_type'] = Constants.ARM_TYPE_STRINGS.split(',')[arm.type]
+			
+			self.output = add_line('\n****Arm {arm_name} [{arm_type}]****')
+			
+			#  geometry_msgs/Pose base_pose
+			base_pose = canonical_tf(arm.base_pose)
+			self.fields['base_pose'] = base_pose
+			
+			#  uint8 tool_type
+			self.fields['tool_type'] = Constants.TOOL_TYPE_STRINGS.split(',')[arm.tool_type]
+			
+			#  raven_2_msgs/ToolState tool
+			#    geometry_msgs/Pose pose
+			#    float32 grasp
+			tool_pose = canonical_tf(arm.tool.pose)
+			self.fields['tool_pose'] = tool_pose
+			self.fields['grasp'] = arm.tool.grasp
+			
+#			self.output = add_line('Pose: ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})')
+#			self.output = add_line('      {tool_pose.tb_angles}')
+#			self.output = add_line('Grasp: {grasp:.3f}')
+			self.add_line('','tool_pose','grasp')
+			self.add_line('Pose: ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})','tool_pose')
+			self.add_line('      {tool_pose.tb_angles}','tool_pose')
+			self.add_line('Grasp: {grasp:.3f}','grasp')
+			
+			#  raven_2_msgs/ToolSetPoint tool_set_point
+			#    geometry_msgs/Pose pose
+			#    float32 grasp
+			tool_pose_desired = canonical_tf(arm.tool_set_point.pose)
+			self.fields['tool_pose_desired'] = tool_pose_desired
+			self.fields['grasp_desired'] = arm.tool_set_point.grasp
+			
+			self.fields['joint_types'] = []
+			self.fields['joint_states'] = []
+			self.fields['joint_positions'] = []
+			self.fields['joint_velocities'] = []
+			self.fields['joint_command_types'] = []
+			self.fields['joint_command_values'] = []
+			self.fields['joint_set_point_positions'] = []
+			self.fields['joint_set_point_velocities'] = []
+			
+			self.fields['motor_types'] = []
+			self.fields['motor_positions'] = []
+			self.fields['motor_velocities'] = []
+			self.fields['motor_torques'] = []
+			
+			self.fields['motor_set_point_positions'] = []
+			self.fields['motor_set_point_velocities'] = []
+			
+			self.fields['motor_enc_vals'] = []
+			self.fields['motor_enc_offsets'] = []
+			self.fields['motor_dac_cmds'] = []
+			
+			#  raven_2_msgs/JointState[] joints
+			for joint in arm.joints:
+				#    uint16 type
+				self.fields['joint_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
+				#    int16 state
+				self.fields['joint_states'].append(JointState.STATE_STRINGS.split(',')[joint.state])
+				
+				#    float32 position
+				self.fields['joint_positions'].append(joint.position)
+				#    float32 velocity
+				self.fields['joint_velocities'].append(joint.velocity)
+				
+				
+				#    raven_2_msgs/JointCommand command
+				#      uint8 command_type
+				#      float32 value
+				self.fields['joint_command_types'].append(JointCommand.COMMAND_TYPE_STRINGS.split(',')[joint.command.command_type])
+				self.fields['joint_command_values'].append(joint.command.value)
+				
+				#    raven_2_msgs/DOFSetPoint set_point
+				#      float32 position
+				#      float32 velocity
+				self.fields['joint_set_point_positions'].append(joint.set_point.position)
+				self.fields['joint_set_point_velocities'].append(joint.set_point.velocity)
+				
+				if joint.type not in (Constants.JOINT_TYPE_GRASP,Constants.JOINT_TYPE_YAW):
+					self.fields['motor_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
+					
+					#    float32 motor_position
+					self.fields['motor_positions'].append(joint.motor_position)
+					#    float32 motor_velocity
+					self.fields['motor_velocities'].append(joint.motor_velocity)
+					#    float32 torque
+					self.fields['motor_torques'].append(joint.torque)
+					
+					#    float32 gravitation_torque_estimate
+					#    float32 integrated_position_error
+					
+					#    raven_2_msgs/DOFSetPoint set_point
+					#      float32 motor_position
+					#      float32 motor_velocity
+					self.fields['motor_set_point_positions'].append(joint.set_point.motor_position)
+					self.fields['motor_set_point_velocities'].append(joint.set_point.motor_velocity)
+					
+					#    int32 encoder_value
+					self.fields['motor_enc_vals'].append(joint.encoder_value)
+					#    int32 encoder_offset
+					self.fields['motor_enc_offsets'].append(joint.encoder_offset)
+					#    int16 dac_command
+					self.fields['motor_dac_cmds'].append(joint.dac_command)
+			
+			field_name_format = '{field_name:10.10}:'
+			num_field_format = '{{{field_num:d}: 7.{precision:d}f}}'
+			str_field_format = '{{{field_num:d}:>7.{precision:d}}}'
+			
+			header_field_name_format = '{field_name:10.10} '
+			header_field_format = '{{{field_num:d}:^7.7}}'
+			
+			header_fmt = ' '.join([header_field_name_format] + ([header_field_format.format(field_num=i) for i in xrange(len(arm.joints))]))
+			
+			
+			
+			line_fmt = lambda field_format,precision: ' '.join([field_name_format] + ([field_format.format(field_num=i,precision=precision) for i in xrange(len(arm.joints))]))
+			
+			num_line_fmt = lambda precision: line_fmt(num_field_format,precision)
+			str_line_fmt = lambda precision=7: line_fmt(str_field_format,precision)
+			line = lambda field_name, precision: num_line_fmt(precision).format(*(self.fields[field_name]),field_name=self.short_name(field_name))
+			str_line = lambda field_name,precision: str_line_fmt(precision).format(*(self.fields[field_name]),field_name=self.short_name(field_name))
+			
+			add_line = lambda field_name,precision: self.add_line(line(field_name,precision),field_name)
+			add_str_line = lambda field_name,precision: self.add_line(str_line(field_name,precision),field_name)
+			
+			if self.joints_enabled:
+				self.add_line('\n------------------------------JOINTS------------------------------')
+				self.add_line(header_fmt.format(*(self.fields['joint_types']),field_name=''))
+				add_str_line('joint_states',7)
+				
+				add_line('joint_positions',3)
+				add_line('joint_velocities',3)
+				add_str_line('joint_command_types',3)
+				add_line('joint_command_values',3)
+				
+				
+				add_line('joint_set_point_positions',3)
+				add_line('joint_set_point_velocities',3)
+			
+			header_fmt = ' '.join([header_field_name_format] + ([header_field_format.format(field_num=i) for i in xrange(len(self.fields['motor_types']))]))
+			line_fmt = lambda field_format,precision: ' '.join([field_name_format] + ([field_format.format(field_num=i,precision=precision) for i in xrange(len(self.fields['motor_types']))]))
+			
+			if self.motors_enabled:
+				self.add_line('\n------------------------------MOTORS------------------------------')
+				self.add_line(header_fmt.format(*(self.fields['motor_types']),field_name=''))
+				add_line('motor_positions',1)
+				add_line('motor_velocities',1)
+				add_line('motor_torques',3)
+				
+				add_line('motor_set_point_positions',1)
+				add_line('motor_set_point_velocities',1)
+				
+				add_line('motor_enc_vals',0)
+				add_line('motor_enc_offsets',0)
+				add_line('motor_dac_cmds',0)
+			''
+			
+			#  uint8 input_pins
+			#  uint8 self.output_pins
+		
+		os.system('clear')
+		print self.output
+	
+	def array_state_callback(self,msg):
+		pass
+
+if __name__ == '__main__':
+	rospy.init_node('print_state',anonymous=True)
+	
+	parser = optparse.OptionParser()
+	
+	parser.add_option('-r','--rate',type='float',default=10.)
+	
+	parser.add_option('-j','--joints',action='store_true',default=None)
+	parser.add_option('-m','--motors',action='store_true',default=None)
+	
+	parser.add_option('--arm',action='append')
+	
+	(options,args) = parser.parse_args(rospy.myargv())
+	
+	if options.joints is None and options.motors is None:
+		options.joints = True
+		options.motors = True
+	
+	if len(args) > 1:
+		enabled = set(args[1:])
+	else:
+		enabled = set()
+	
+	printer = StatePrinter(options=options,enabled=enabled)
+	
+	sub = rospy.Subscriber('raven_state',RavenState,printer.state_callback)
+	#sub = rospy.Subscriber('raven_state/array',printer.array_state_callback)
+	
+	rospy.spin()
