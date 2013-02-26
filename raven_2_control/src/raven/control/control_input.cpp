@@ -13,17 +13,115 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 
+#include <raven/state/runlevel.h>
+
 boost::mutex inputMutex;
-std::map<std::string,ControlInputPtr> ControlInput::CONTROL_INPUT;
+std::map<std::pair<Arm::IdType,std::string>,ControlInputPtr> ControlInput::CONTROL_INPUT;
 
 
 boost::recursive_mutex oldInputMutex;
 OldControlInputPtr ControlInput::OLD_CONTROL_INPUT;
 
+boost::mutex masterMutex;
+std::map<Arm::IdType,MasterMode2> MasterMode2::MASTER_MODES;
+std::map<Arm::IdType,std::set<MasterMode2> > MasterMode2::MASTER_MODE_CONFLICTS;
+std::map<Arm::IdType,ros::Time> MasterMode2::LAST_CHECK_TIMES;
+
+MasterMode2 MasterMode2::NONE = MasterMode2("");
+
+MasterMode2
+MasterMode2::getMasterMode(Arm::IdType armId) {
+	boost::mutex::scoped_lock(masterMutex);
+	return MASTER_MODES[armId];
+}
+
+bool
+MasterMode2::checkMasterMode(Arm::IdType armId, const MasterMode2& mode) {
+	if (mode.isNone()) {
+			return false;
+	#ifdef USE_NEW_RUNLEVEL
+		} else if (!RunLevel::hasHomed()) {
+	#else
+		} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
+	#endif
+			return false;
+		}
+		bool succeeded = false;
+		boost::mutex::scoped_lock(masterMutex);
+		printf("checking master mode\n");
+		ros::Time now = ros::Time::now();
+		if (armId == Arm::ALL_ARMS) {
+			bool any_failed = false;
+			FOREACH_ARM_ID(armId) {
+				LAST_CHECK_TIMES[armId] = now;
+				if (MASTER_MODES[armId] == mode || MASTER_MODES[armId].isNone()) {
+					MASTER_MODES[armId] = mode;
+				} else {
+					MASTER_MODE_CONFLICTS[armId].insert(mode);
+					any_failed = true;
+				}
+			}
+			succeeded = !any_failed;
+		} else {
+			LAST_CHECK_TIMES[armId] = now;
+			if (MASTER_MODES[armId] == mode || MASTER_MODES[armId].isNone()) {
+				MASTER_MODES[armId] = mode;
+				succeeded = true;
+			} else {
+				MASTER_MODE_CONFLICTS[armId].insert(mode);
+			}
+		}
+		return succeeded;
+}
+
+bool
+MasterMode2::resetMasterMode(Arm::IdType armId) {
+	boost::mutex::scoped_lock(masterMutex);
+	if (armId == Arm::ALL_ARMS) {
+		MASTER_MODES.clear();
+	} else {
+		MASTER_MODES[armId] = NONE;
+	}
+	return true;
+}
+
+bool
+MasterMode2::getMasterModeStatus(MasterModeStatusMap& status) {
+	boost::mutex::scoped_lock(masterMutex);
+	FOREACH_ARM_ID(armId) {
+		MasterModeStatus arm_status;
+		arm_status.mode = MASTER_MODES[armId];
+		arm_status.conflicts = MASTER_MODE_CONFLICTS[armId];
+		status[armId] = arm_status;
+	}
+	MASTER_MODE_CONFLICTS.clear();
+	return true;
+}
+
+const ros::Duration MasterMode2::TIMEOUT(0.5);
+
 void
-ControlInput::setControlInput(const std::string& type,ControlInputPtr input) {
+MasterMode2::checkTimeout() {
+	boost::mutex::scoped_lock(masterMutex);
+	printf("checking master mode2\n");
+	ros::Time now = ros::Time::now();
+	Arm::IdList resetIds;
+	FOREACH_ARM_ID(armId) {
+		if (!MASTER_MODES[armId].isNone()) {
+			if (now > LAST_CHECK_TIMES[armId] + TIMEOUT) {
+				MASTER_MODES[armId] = NONE;
+				MASTER_MODE_CONFLICTS[armId].clear();
+				resetIds.push_back(armId);
+				RunLevel::setArmActive(armId,false);
+			}
+		}
+	}
+}
+
+void
+ControlInput::setControlInput(Arm::IdType arm, const std::string& type,ControlInputPtr input) {
 	boost::mutex::scoped_lock(inputMutex);
-	ControlInput::CONTROL_INPUT[type] = input;
+	ControlInput::CONTROL_INPUT[std::pair<Arm::IdType,std::string>(arm,type)] = input;
 }
 
 /*
@@ -34,13 +132,21 @@ ControlInput::getControlInput() {
 */
 
 ControlInputPtr
-ControlInput::getControlInput(const std::string& type) {
+ControlInput::getControlInput(Arm::IdType arm, const std::string& type) {
 	boost::mutex::scoped_lock(inputMutex);
 	ControlInputPtr input;
+	std::pair<Arm::IdType,std::string> pair_type(arm,type);
 	if (type == "old") {
 		input = getOldControlInput();
+	} else if (arm == Arm::ALL_ARMS) {
+		std::map<std::pair<Arm::IdType,std::string>,ControlInputPtr>::iterator itr = CONTROL_INPUT.find(pair_type);
+		if (itr != CONTROL_INPUT.end()) {
+			input = itr->second;
+		} else {
+			//FIXME: make a fuss?
+		}
 	} else {
-		input = CONTROL_INPUT[type];
+		input = CONTROL_INPUT[pair_type];
 	}
 	return input;
 }
@@ -100,10 +206,16 @@ MultipleControlInput::hasInput(const std::string& name) const {
 }
 ControlInputPtr
 MultipleControlInput::getInput(const std::string& name) {
+	if (!hasInput(name)) {
+		return ControlInputPtr();
+	}
 	return inputs_.at(name);
 }
 ControlInputConstPtr
 MultipleControlInput::getInput(const std::string& name) const {
+	if (!hasInput(name)) {
+		return ControlInputConstPtr();
+	}
 	return inputs_.at(name);
 }
 
@@ -144,7 +256,7 @@ OldArmInputData::OldArmInputData(int id,size_t numMotors,size_t numJoints) :
 }
 
 
-OldControlInput::OldControlInput() {
+OldControlInput::OldControlInput() : SeparateArmControlInput<OldArmInputData>(Device::armIds()) {
 	/*static DevicePtr device;
 	FOREACH_ARM_IN_CURRENT_DEVICE(arm,device) {
 		arms_.push_back(OldArmInputData(arm->id()));

@@ -12,12 +12,82 @@
 
 #include <raven/state/arm.h>
 
+bool
+InverseKinematicsOptions::checkJointLimits() const {
+	return checkJointLimits_;
+}
+void
+InverseKinematicsOptions::setCheckJointLimits(bool on) {
+	checkJointLimits_ = on;
+}
+
+bool
+InverseKinematicsOptions::truncateJointsAtLimits() const {
+	return checkJointLimits_ && truncateJointsAtLimits_;
+}
+
+void
+InverseKinematicsOptions::setTruncateJointsAtLimits(bool on) {
+	if (on) {
+		checkJointLimits_ = true;
+	}
+	truncateJointsAtLimits_ = on;
+}
+
+bool
+InverseKinematicsOptions::truncateJointDifferences() const {
+	return truncateJointDifferences_;
+}
+
+void
+InverseKinematicsOptions::setTruncateJointDifferences(bool on) {
+	truncateJointDifferences_ = on;
+}
+
+std::map<Joint::Type,float>
+InverseKinematicsOptions::maxJointDifferences() const {
+	if (!truncateJointDifferences_) {
+		return std::map<Joint::Type,float>();
+	} else {
+		return maxJointDifferences_;
+	}
+}
+
+float
+InverseKinematicsOptions::getMaxJointDifference(Joint::Type type) const {
+	if (truncateJointDifferences_ && maxJointDifferences_.find(type) != maxJointDifferences_.end()) {
+		return maxJointDifferences_.at(type);
+	} else {
+		return std::numeric_limits<float>().max();
+	}
+}
+
+void
+InverseKinematicsOptions::setMaxJointDifferences(const std::map<Joint::Type,float>& diffs) {
+	maxJointDifferences_ = diffs;
+}
+
+void
+InverseKinematicsOptions::setMaxJointDifference(Joint::Type type, float diff) {
+	maxJointDifferences_[type] = diff;
+}
+
+void
+InverseKinematicsOptions::clearMaxJointDifference(Joint::Type type) {
+	maxJointDifferences_.erase(type);
+}
+
+void
+InverseKinematicsOptions::clearMaxJointDifferences() {
+	maxJointDifferences_.clear();
+}
+
 InverseKinematicsReport::InverseKinematicsReport() : success_(false) {
 
 }
 
 static int numKS = 0;
-KinematicSolver::KinematicSolver(Arm* arm) : arm_(arm), checkJointLimits_(true), truncateJointsAtLimits_(true), forwardKinTimestamp_(0), invKinTimestamp_(0) {
+KinematicSolver::KinematicSolver(Arm* arm) : arm_(arm), forwardKinTimestamp_(0), invKinTimestamp_(0) {
 	//printf("+KS %i %p\n",++numKS,this);
 }
 
@@ -75,12 +145,17 @@ KinematicSolver::forwardPose() const {
 
 InverseKinematicsReportPtr
 KinematicSolver::inverse(const btTransform& pose) {
+	return inverse(pose,defaultIKOptions_);
+}
+
+InverseKinematicsReportPtr
+KinematicSolver::inverse(const btTransform& pose,const InverseKinematicsOptions& options) {
 	if (invKinTimestamp_ == arm_->timestamp() && pose == invKinCached_) {
 		return invKinReport_;
 	}
 
 	arm_->holdUpdateBegin();
-	InverseKinematicsReportPtr report = internalInverseSoln(pose,arm_);
+	InverseKinematicsReportPtr report = internalInverseSoln(pose,arm_,options);
 	arm_->holdUpdateEnd();
 
 	invKinCached_ = pose;
@@ -91,10 +166,15 @@ KinematicSolver::inverse(const btTransform& pose) {
 
 InverseKinematicsReportPtr
 KinematicSolver::inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln) const {
+	return inverseSoln(pose,soln,defaultIKOptions_);
+}
+
+InverseKinematicsReportPtr
+KinematicSolver::inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln,const InverseKinematicsOptions& options) const {
 	arm_->cloneInto(soln);
 
 	soln->holdUpdateBegin();
-	InverseKinematicsReportPtr report = internalInverseSoln(pose,soln.get());
+	InverseKinematicsReportPtr report = internalInverseSoln(pose,soln.get(),options);
 	soln->holdUpdateEnd();
 
 	if (!report->success()) {
@@ -132,7 +212,7 @@ KinematicSolver::motorTorqueVector() const {
 }
 
 InverseKinematicsReportPtr
-KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm) const {
+KinematicSolver::internalInverseSoln(const btTransform& pose, Arm* arm,const InverseKinematicsOptions& options) const {
 	InverseKinematicsReportPtr report(new InverseKinematicsReport());
 
 	Arm::IdType armId = arm->id();

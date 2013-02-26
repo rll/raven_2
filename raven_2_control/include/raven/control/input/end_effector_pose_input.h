@@ -27,11 +27,11 @@ public:
 };
 
 class EndEffectorPoseInput : public SeparateArmControlInput<EndEffectorPoseData> {
-private:
+protected:
 	bool relative_;
 public:
-	EndEffectorPoseInput();
-	EndEffectorPoseInput(bool relative);
+	EndEffectorPoseInput(const Arm::IdList& ids);
+	EndEffectorPoseInput(const Arm::IdList& ids,bool relative);
 
 	bool relative() const { return relative_; }
 	bool absolute() const { return !relative_; }
@@ -45,22 +45,57 @@ public:
 POINTER_TYPES(EndEffectorPoseInput)
 
 class EndEffectorPoseAndInsertionInput : public EndEffectorPoseInput {
-private:
+protected:
 	std::map<Arm::IdType,float> insertions_;
 public:
-	EndEffectorPoseAndInsertionInput();
+	EndEffectorPoseAndInsertionInput(const Arm::IdList& ids);
 
 	virtual void setRelative(bool value = true) { if (!value) { throw std::runtime_error("EndEffectorPoseAndInsertionInput cannot be set to absolute!"); } }
 	virtual void setAbsolute(bool value = true) { if (value) { throw std::runtime_error("EndEffectorPoseAndInsertionInput cannot be set to absolute!"); } }
 
-	bool hasInsertion(Arm::IdType id) const;
-	float getInsertion(Arm::IdType id) const;
-	void setInsertion(Arm::IdType id,float velocity);
-	void removeInsertion(Arm::IdType id);
-	void clearInsertions();
+	virtual bool hasInsertion(Arm::IdType id) const;
+	virtual float getInsertion(Arm::IdType id) const;
+	virtual void setInsertion(Arm::IdType id,float velocity);
+	virtual void removeInsertion(Arm::IdType id);
+	virtual void clearInsertions();
 
 	virtual void setFrom(DevicePtr dev) { throw std::runtime_error("EndEffectorPoseAndInsertionInput cannot be set from device!"); }
 };
 POINTER_TYPES(EndEffectorPoseAndInsertionInput)
+
+
+/************ single arm ***********************/
+
+class SingleArmEndEffectorPoseInput : public EndEffectorPoseInput, public SingleArmControlInput<EndEffectorPoseData> {
+public:
+	SingleArmEndEffectorPoseInput(Arm::IdType id);
+	SingleArmEndEffectorPoseInput(Arm::IdType id, bool relative);
+	SINGLE_ARM_CONTROL_INPUT_METHODS(EndEffectorPoseData)
+
+	btTransform& value() { return data().value(); }
+	const btTransform& value() const { return data().value(); }
+
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmEndEffectorPoseInput)
+
+class SingleArmEndEffectorPoseAndInsertionInput : public EndEffectorPoseAndInsertionInput, public SingleArmEndEffectorPoseInput {
+public:
+	SingleArmEndEffectorPoseAndInsertionInput(Arm::IdType id);
+
+	virtual void setRelative(bool value = true) { if (!value) { throw std::runtime_error("SingleArmEndEffectorPoseAndInsertionInput cannot be set to absolute!"); } }
+	virtual void setAbsolute(bool value = true) { if (value) { throw std::runtime_error("SingleArmEndEffectorPoseAndInsertionInput cannot be set to absolute!"); } }
+
+	virtual bool hasInsertion() const;
+	virtual float getInsertion() const;
+	void setInsertion(float velocity);
+	void clearInsertion();
+
+	virtual void setInsertion(Arm::IdType id,float velocity);
+
+	virtual void setFrom(DevicePtr dev) { throw std::runtime_error("SingleArmEndEffectorPoseAndInsertionInput cannot be set from device!"); }
+};
+POINTER_TYPES(SingleArmEndEffectorPoseAndInsertionInput)
+
 
 #endif /* END_EFFECTOR_POSE_INPUT_H_ */

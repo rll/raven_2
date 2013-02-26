@@ -10,6 +10,7 @@
 
 #include <ros/ros.h>
 #include <vector>
+#include <set>
 
 #include "device.h"
 
@@ -25,6 +26,7 @@ struct ArmData {
 class DeviceInitializer {
 private:
 	static std::vector<ArmData> ARM_DATA;
+	static std::set<std::string> DISABLE_ARMS;
 
 public:
 	virtual ~DeviceInitializer() {}
@@ -32,6 +34,8 @@ public:
 	static std::vector<ArmData> getArms();
 	static void addArm(int id, Arm::Type type, Arm::ToolType toolType);
 	static void addArm(int id, const std::string& name, Arm::Type type, Arm::ToolType toolType);
+
+	static void disableArm(const std::string& armName);
 
 	virtual void initializeDevice(DevicePtr device);
 	virtual void initializeDeviceInstance();

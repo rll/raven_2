@@ -19,6 +19,7 @@
 #define GB_RATIO (GEAR_BOX_GP42_TR/GEAR_BOX_GP32_TR * (1.08 * CAPSTAN_RADIUS_GP32/CAPSTAN_RADIUS_GP42))
 
 std::vector<ArmData> DeviceInitializer::ARM_DATA;
+std::set<std::string> DeviceInitializer::DISABLE_ARMS;
 
 std::vector<ArmData> DeviceInitializer::getArms() {
 	return ARM_DATA;
@@ -32,6 +33,10 @@ void DeviceInitializer::addArm(int id, const std::string& name, Arm::Type type, 
 	ARM_DATA.push_back(ArmData(id,type,name,toolType));
 }
 
+void DeviceInitializer::disableArm(const std::string& armName) {
+	DISABLE_ARMS.insert(armName);
+}
+
 void initForwardCableCoupling(Eigen::MatrixXf& matrix,ArmPtr arm);
 void initBackwardCableCoupling(Eigen::MatrixXf& matrix,const Eigen::MatrixXf& fwdMatrix, ArmPtr arm);
 
@@ -39,7 +44,7 @@ void
 DeviceInitializer::initializeDevice(DevicePtr device) {
 	device->timestamp_ = ros::Time(0);
 
-	device->surgeonMode_ = false;
+	//device->surgeonMode_ = false;
 	device->arms_.clear();
 
 	std::vector<ArmData> armDataList = getArms();
@@ -221,8 +226,12 @@ DeviceInitializer::initializeDevice(DevicePtr device) {
 
 		arm->cableCoupler_ = cableCoupler;
 
+		if (DISABLE_ARMS.count(arm->name())) {
+			arm->enabled_ = false;
+		}
+
 		Arm::init(arm);
-		device->arms_.push_back(arm);
+		device->addArm(arm);
 	}
 
 	Device::init(device);

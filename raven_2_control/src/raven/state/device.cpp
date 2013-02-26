@@ -16,6 +16,7 @@
 #include <boost/thread/recursive_mutex.hpp>
 
 #include <sstream>
+#include <algorithm>
 
 static ros::Time theUpdateTime(0);
 
@@ -26,6 +27,15 @@ DevicePtr Device::INSTANCE;
 #define USE_DEVICE_HISTORY_MUTEX
 boost::mutex deviceHistoryMutex;
 History<Device>::Type Device::HISTORY = History<Device>::Type(DEVICE_HISTORY_SIZE,0,CloningWrapper<Device>());
+
+Arm::IdList Device::ARM_IDS;
+Arm::IdList Device::DISABLED_ARM_IDS;
+std::map<std::string,Arm::IdType> Device::ARM_NAMES;
+
+std::map<Arm::IdType,size_t> Device::NUM_MOTORS;
+size_t Device::TOTAL_NUM_MOTORS = 0;
+std::map<Arm::IdType,size_t> Device::NUM_JOINTS;
+size_t Device::TOTAL_NUM_JOINTS = 0;
 
 DevicePtr
 Device::current() {
@@ -60,7 +70,7 @@ Device::currentTimestamp() {
 }
 
 static int numD = 0;
-Device::Device(DeviceType type) : Updateable(), type_(type), timestamp_(0), surgeonMode_(false) {
+Device::Device(DeviceType type) : Updateable(), type_(type), timestamp_(0) {
 	//printf("+D  %i %p\n",++numD,this);
 }
 
@@ -212,23 +222,150 @@ Device::processNotification(Updateable* sender) {
 	return true;
 }
 
+void
+Device::addArm(ArmPtr arm) {
+	if (arm->enabled()) {
+		arms_.push_back(arm);
+		ARM_IDS.push_back(arm->id());
+		TOTAL_NUM_JOINTS += arm->joints().size();
+		TOTAL_NUM_MOTORS += arm->motors().size();
+	} else {
+		disabledArms_.push_back(arm);
+		DISABLED_ARM_IDS.push_back(arm->id());
+	}
+	ARM_NAMES[arm->name()] = arm->id();
+	NUM_JOINTS[arm->id()] = arm->joints().size();
+	NUM_MOTORS[arm->id()] = arm->motors().size();
+}
+
+size_t
+Device::numArms() {
+	return ARM_IDS.size();
+}
+
+std::vector<Arm::IdType>
+Device::armIds() {
+	return ARM_IDS;
+}
+
+ArmList
+Device::arms() const {
+	return arms_;
+}
+
+ArmPtr
+Device::arm(size_t i) const {
+	return arms_[i];
+}
+
 ArmPtr
 Device::getArmById(Arm::IdType id) const {
-	for (size_t i=0;i<arms_.size();i++) {
-		if (arms_.at(i)->id() == id) {
-			return arms_.at(i);
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if ((*itr)->id() == id) {
+			return *itr;
+		}
+	}
+	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+		if ((*itr)->id() == id) {
+			return *itr;
 		}
 	}
 	return ArmPtr();
 }
+
+ArmList
+Device::getArmsById(const Arm::IdList& ids,bool includeDisabled) const {
+	ArmList arms;
+	bool includeAll = std::find(ids.begin(),ids.end(),Arm::ALL_ARMS) != ids.end();
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
+			arms.push_back(*itr);
+		}
+	}
+	if (includeDisabled) {
+		for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+			if (includeAll || std::find(ids.begin(),ids.end(),(*itr)->id()) != ids.end()) {
+				arms.push_back(*itr);
+			}
+		}
+	}
+	return arms;
+}
+
 ArmPtr
 Device::getArmByName(const std::string& name) const {
-	for (size_t i=0;i<arms_.size();i++) {
-		if (arms_.at(i)->name() == name) {
-			return arms_.at(i);
+	ArmList::const_iterator itr;
+	for (itr=arms_.begin();itr!=arms_.end();itr++) {
+		if ((*itr)->name() == name) {
+			return *itr;
+		}
+	}
+	for (itr=disabledArms_.begin();itr!=disabledArms_.end();itr++) {
+		if ((*itr)->name() == name) {
+			return *itr;
 		}
 	}
 	return ArmPtr();
+}
+
+Arm::IdType
+Device::getArmIdByName(const std::string& name) {
+	std::map<std::string,Arm::IdType>::const_iterator itr = ARM_NAMES.find(name);
+	if (itr == ARM_NAMES.end()) {
+		std::stringstream ss;
+		ss << "Arm name " << name << " not found!";
+		throw std::runtime_error(ss.str());
+	}
+	return itr->second;
+}
+
+size_t
+Device::numDisabledArms() {
+	return DISABLED_ARM_IDS.size();
+}
+
+Arm::IdList
+Device::disabledArmIds() {
+	return DISABLED_ARM_IDS;
+}
+
+ArmList
+Device::disabledArms() const {
+	return disabledArms_;
+}
+
+size_t
+Device::numAllArms() {
+	return numArms() + numDisabledArms();
+}
+
+Arm::IdList
+Device::allArmIds() {
+	Arm::IdList armIds = ARM_IDS;
+	armIds.insert(armIds.end(),DISABLED_ARM_IDS.begin(),DISABLED_ARM_IDS.end());
+	return armIds;
+}
+
+
+ArmList
+Device::allArms() const {
+	ArmList arms = arms_;
+	arms.insert(arms.end(),disabledArms_.begin(),disabledArms_.end());
+	return arms;
+}
+
+size_t
+Device::numJoints() {
+	return TOTAL_NUM_JOINTS;
+}
+size_t
+Device::numJointsOnArm(size_t i) {
+	return NUM_JOINTS[ARM_IDS[i]];
+}
+size_t Device::numJointsOnArmById(Arm::IdType id) {
+	return NUM_JOINTS[id];
 }
 
 JointPtr
@@ -271,6 +408,18 @@ Device::jointVelocityVector() const {
 		ind += numElInArm;
 	}
 	return v;
+}
+
+size_t
+Device::numMotors() {
+	return TOTAL_NUM_MOTORS;
+}
+size_t
+Device::numMotorsOnArm(size_t i) {
+	return NUM_MOTORS[ARM_IDS[i]];
+}
+size_t Device::numMotorsOnArmById(Arm::IdType id) {
+	return NUM_MOTORS[id];
 }
 
 Eigen::VectorXf

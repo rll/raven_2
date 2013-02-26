@@ -8,6 +8,7 @@
 */
 
 #include <ros/ros.h>
+#include <math.h>
 
 #include "rt_raven.h"
 #include "defines.h"
@@ -124,6 +125,20 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     //Foward Cable Coupling
     fwdCableCoupling(device0, currParams->runlevel);
 
+    {
+    	struct mechanism* _mech = NULL;
+    	struct DOF *_joint = NULL;
+		int i=0,j=0;
+		float jp;
+		while (loop_over_mechs(device0,_mech,i)) {
+			if (armIdFromMechType(_mech->type) == GOLD_ARM_ID) {
+				_mech->joint[GRASP2].jpos = - _mech->joint[GRASP1].jpos;
+				break;
+			}
+		}
+    }
+
+
     //Forward kinematics
     fwdKin(device0, currParams->runlevel);
 
@@ -181,7 +196,8 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     			set_posd_to_pos(device0);
     			printf("Setting control mode to cartestian space\n");
 #ifdef USE_NEW_RUNLEVEL
-    			RunLevel::setPedal(false);
+    			//RunLevel::setPedal(false);
+    			RunLevel::setArmActive(Arm::ALL_ARMS,false);
 #else
     			device0->surgeon_mode = false;
     			currParams->runlevel = RL_PEDAL_UP;
@@ -331,6 +347,83 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     //Inverse kinematics
     invKin(device0, currParams);
 
+    static ros::NodeHandle* nh = 0;
+    if (!nh) {
+    	nh = new ros::NodeHandle("/");
+    }
+
+    /*
+    while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	static double* smd = 0;
+    	static double* emd = 0;
+    	static double* imd = 0;
+    	static double* rmd = 0;
+    	static double* wmd = 0;
+    	static double* gmd = 0;
+
+    	int type = jointTypeFromCombinedType(_joint->type);
+    	double max_diff = 10000;
+    	switch (type) {
+    	case SHOULDER:
+    		if (!smd) {
+    			smd = new double;
+    			nh->param("ik/max_diff/shoulder",*smd,10.);
+    			*smd = *smd DEG2RAD;
+    		}
+    		max_diff = *smd;
+    		break;
+    	case ELBOW:
+    		if (!emd) {
+    			emd = new double;
+    			nh->param("ik/max_diff/elbow",*emd,10.);
+    			*emd = *emd DEG2RAD;
+    		}
+    		max_diff = *emd;
+    		break;
+    	case Z_INS:
+    		if (!imd) {
+    			imd = new double;
+    			nh->param("ik/max_diff/insertion",*imd,0.005);
+    		}
+    		max_diff = *imd;
+    		break;
+    	case TOOL_ROT:
+    		if (!rmd) {
+    			rmd = new double;
+    			nh->param("ik/max_diff/rotation",*rmd,10.);
+    			*rmd = *rmd DEG2RAD;
+    		}
+    		max_diff = *rmd;
+    		break;
+    	case WRIST:
+    		if (!wmd) {
+    			wmd = new double;
+    			nh->param("ik/max_diff/wrist",*wmd,10.);
+    			*wmd = *wmd DEG2RAD;
+    		}
+    		max_diff = *wmd;
+    		break;
+    	case GRASP1:
+    	case GRASP2:
+    		if (!gmd) {
+    			gmd = new double;
+    			nh->param("ik/max_diff/grasp",*gmd,10.);
+    			*gmd = *gmd DEG2RAD;
+    		}
+    		max_diff = *gmd;
+    		break;
+    	}
+
+    	if (fabs(_joint->jpos_d - _joint->jpos) > max_diff) {
+			if (_joint->jpos_d > _joint->jpos) {
+				_joint->jpos_d = _joint->jpos + max_diff;
+			} else {
+				_joint->jpos_d = _joint->jpos - max_diff;
+			}
+		}
+    }
+    */
+
     //Inverse Cable Coupling
     invCableCoupling(device0, currParams->runlevel);
 
@@ -338,6 +431,15 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
+
+    	static bool printed_warning = false;
+    	if (_joint->type == GRASP2_GOLD) {
+    		if (!printed_warning) {
+    			log_err("************DISABLING GRASP2***************");
+    			printed_warning = true;
+    		}
+    		_joint->mpos_d = _joint->mpos;
+    	}
 #ifdef USE_NEW_RUNLEVEL
     	if (!RunLevel::get().isPedalDown() || disable_arm_id[armIdFromMechType(_mech->type)]) {
 #else

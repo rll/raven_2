@@ -116,6 +116,14 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     _mech = NULL;  _joint = NULL;
     while ( loop_over_joints(device0, _mech, _joint, i,j) )
     {
+    	static bool printed_warning = false;
+		if (_joint->type == GRASP2_GOLD) {
+			if (!printed_warning) {
+				log_err("************DISABLING GRASP2***************");
+				printed_warning = true;
+			}
+			_joint->mpos_d = _joint->mpos;
+		}
         mpos_PD_control( _joint );
     }
 

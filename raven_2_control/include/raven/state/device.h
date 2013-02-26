@@ -22,7 +22,7 @@
 
 #define DEVICE_HISTORY_SIZE 10
 
-//#define USE_NEW_DEVICE
+#define USE_NEW_DEVICE
 
 //class Device;
 //typedef boost::shared_ptr<Device> DevicePtr;
@@ -30,9 +30,14 @@
 POINTER_TYPES(Device);
 
 #ifndef FOREACH_ARM_IN_DEVICE
+#include <algorithm>
 #define FOREACH_ARM_IN_DEVICE(armVar,devicePtr) BOOST_FOREACH(ArmPtr armVar,devicePtr->arms())
 #define FOREACH_ARM_IN_CURRENT_DEVICE(armVar,devicePtr) Device::current(devicePtr); FOREACH_ARM_IN_DEVICE(armVar,devicePtr)
-//#define FOREACH_ARM(armVar) FOREACH_ARM_IN_DEVICE(armVar,Device::current())
+
+#define FOREACH_ARM_IN_DEVICE_AND_ID_LIST(armVar,devicePtr,armIdList) FOREACH_ARM_IN_DEVICE(armVar,devicePtr) if (std::find(armIdList.begin(),armIdList.end(),armVar->id()) == armIdList.end()) continue; else
+#define FOREACH_ARM_ID_IN_LIST(armIdVar,armIdList) BOOST_FOREACH(Arm::IdType armIdVar,armIdList)
+#define FOREACH_ARM_ID(armIdVar) FOREACH_ARM_ID_IN_LIST(armIdVar,Device::armIds())
+
 #endif
 
 class Device : public Updateable {
@@ -41,16 +46,25 @@ public:
 	enum DeviceType { RAVEN_ROBOT };
 private:
 	static DevicePtr INSTANCE;
-	//static boost::circular_buffer<DevicePtr> HISTORY;
-public:
 	static History<Device>::Type HISTORY;
+
+	void addArm(ArmPtr arm);
+public:
 
 	DeviceType type_;
 	ros::Time timestamp_;
 
-	//RunLevel runlevel_;
-	bool surgeonMode_;
 	ArmList arms_;
+	ArmList disabledArms_;
+
+	static Arm::IdList ARM_IDS;
+	static Arm::IdList DISABLED_ARM_IDS;
+	static std::map<std::string,Arm::IdType> ARM_NAMES;
+
+	static std::map<Arm::IdType,size_t> NUM_MOTORS;
+	static size_t TOTAL_NUM_MOTORS;
+	static std::map<Arm::IdType,size_t> NUM_JOINTS;
+	static size_t TOTAL_NUM_JOINTS;
 
 	Device(DeviceType type);
 
@@ -74,18 +88,37 @@ public:
 
 	virtual ros::Time timestamp() const { return timestamp_; }
 
-	bool surgeonMode() const { return surgeonMode_; }
-
-	ArmList arms() const { return arms_; }
-	ArmPtr arm(size_t i) const { return arms_[i]; }
+	static size_t numArms();
+	static Arm::IdList armIds();
+	ArmList arms() const;
+	ArmPtr arm(size_t i) const;
 	ArmPtr getArmById(Arm::IdType id) const;
+	ArmList getArmsById(const Arm::IdList& ids,bool includeDisabled=false) const;
 	ArmPtr getArmByName(const std::string& name) const;
+
+	static Arm::IdType getArmIdByName(const std::string& name);
+
+	static size_t numDisabledArms();
+	static Arm::IdList disabledArmIds();
+	ArmList disabledArms() const;
+
+	static size_t numAllArms();
+	static Arm::IdList allArmIds();
+	ArmList allArms() const;
+
+	static size_t numJoints();
+	static size_t numJointsOnArm(size_t i);
+	static size_t numJointsOnArmById(Arm::IdType id);
 
 	JointPtr getJointByOldType(int type) const;
 
 	Eigen::VectorXf jointVector() const { return jointPositionVector(); }
 	Eigen::VectorXf jointPositionVector() const;
 	Eigen::VectorXf jointVelocityVector() const;
+
+	static size_t numMotors();
+	static size_t numMotorsOnArm(size_t i);
+	static size_t numMotorsOnArmById(Arm::IdType id);
 
 	Eigen::VectorXf motorPositionVector() const;
 	Eigen::VectorXf motorVelocityVector() const;

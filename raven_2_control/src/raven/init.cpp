@@ -211,6 +211,37 @@ void initDOFs(struct device *device0)
 
     ros::NodeHandle nh("/");
 
+    double shoulder_max_adj_gold = 0;
+    double shoulder_max_adj_green = 0;
+
+    if (nh.hasParam("max_position/shoulder/gold")) {
+    	nh.getParam("max_position/shoulder/gold",shoulder_max_adj_gold);
+    }
+    if (nh.hasParam("max_position/shoulder/green")) {
+    	nh.getParam("max_position/shoulder/green",shoulder_max_adj_green);
+    }
+
+    double elbow_max_adj_gold = 0;
+    double elbow_max_adj_green = 0;
+
+    if (nh.hasParam("max_position/elbow/gold")) {
+    	nh.getParam("max_position/elbow/gold",elbow_max_adj_gold);
+    }
+    if (nh.hasParam("max_position/elbow/green")) {
+    	nh.getParam("max_position/elbow/green",elbow_max_adj_green);
+    }
+
+    double insertion_max_adj_gold = 0;
+	double insertion_max_adj_green = 0;
+
+	if (nh.hasParam("max_position/insertion/gold")) {
+		nh.getParam("max_position/insertion/gold",insertion_max_adj_gold);
+	}
+	if (nh.hasParam("max_position/insertion/green")) {
+		nh.getParam("max_position/insertion/green",insertion_max_adj_green);
+	}
+
+
     double rotation_max_adj_gold = 0;
     double rotation_max_adj_green = 0;
 
@@ -230,29 +261,41 @@ void initDOFs(struct device *device0)
     	nh.getParam("max_position/wrist/green",wrist_max_adj_green);
     }
 
-    double grasp_max_adj_gold = 0;
-	double grasp_max_adj_green = 0;
+    double grasp1_max_adj_gold = 0;
+    double grasp2_max_adj_gold = 0;
+	double grasp1_max_adj_green = 0;
+	double grasp2_max_adj_green = 0;
 	if (nh.hasParam("max_position/grasp/gold")) {
-		nh.getParam("max_position/grasp/gold",grasp_max_adj_gold);
+		nh.getParam("max_position/grasp/gold",grasp1_max_adj_gold);
+		nh.getParam("max_position/grasp/gold",grasp2_max_adj_gold);
 	}
-	if (nh.hasParam("max_position/grasp/green")) {
-		nh.getParam("max_position/grasp/green",grasp_max_adj_green);
+	if (nh.hasParam("max_position/grasp1/gold")) {
+		nh.getParam("max_position/grasp1/gold",grasp1_max_adj_gold);
+	}
+	if (nh.hasParam("max_position/grasp2/gold")) {
+		nh.getParam("max_position/grasp2/gold",grasp2_max_adj_gold);
+	}
+	if (nh.hasParam("max_position/grasp1/green")) {
+		nh.getParam("max_position/grasp1/green",grasp1_max_adj_green);
+	}
+	if (nh.hasParam("max_position/grasp2/green")) {
+		nh.getParam("max_position/grasp2/green",grasp2_max_adj_green);
 	}
 
-    DOF_types[SHOULDER_GOLD].max_position  = SHOULDER_MAX_ANGLE;
-    DOF_types[SHOULDER_GREEN].max_position = SHOULDER_MAX_ANGLE;
-    DOF_types[ELBOW_GOLD].max_position     = ELBOW_MAX_ANGLE;
-    DOF_types[ELBOW_GREEN].max_position    = ELBOW_MAX_ANGLE;
+    DOF_types[SHOULDER_GOLD].max_position  = SHOULDER_MAX_ANGLE + shoulder_max_adj_gold DEG2RAD;
+    DOF_types[SHOULDER_GREEN].max_position = SHOULDER_MAX_ANGLE + shoulder_max_adj_green DEG2RAD;
+    DOF_types[ELBOW_GOLD].max_position     = ELBOW_MAX_ANGLE + elbow_max_adj_gold DEG2RAD;
+    DOF_types[ELBOW_GREEN].max_position    = ELBOW_MAX_ANGLE + elbow_max_adj_green DEG2RAD;
     DOF_types[TOOL_ROT_GOLD].max_position  = TOOL_ROT_MAX_ANGLE + rotation_max_adj_gold DEG2RAD;
     DOF_types[TOOL_ROT_GREEN].max_position = TOOL_ROT_MAX_ANGLE + rotation_max_adj_green DEG2RAD;
-    DOF_types[Z_INS_GOLD].max_position     = Z_INS_MAX_ANGLE;
-    DOF_types[Z_INS_GREEN].max_position    = Z_INS_MAX_ANGLE;
+    DOF_types[Z_INS_GOLD].max_position     = Z_INS_MAX_ANGLE + insertion_max_adj_gold DEG2RAD;
+    DOF_types[Z_INS_GREEN].max_position    = Z_INS_MAX_ANGLE + insertion_max_adj_green DEG2RAD;
     DOF_types[WRIST_GOLD].max_position     = WRIST_MAX_ANGLE + wrist_max_adj_gold DEG2RAD;
     DOF_types[WRIST_GREEN].max_position    = WRIST_MAX_ANGLE + wrist_max_adj_green DEG2RAD;
-    DOF_types[GRASP1_GOLD].max_position    = GRASP1_MAX_ANGLE + grasp_max_adj_gold DEG2RAD;
-    DOF_types[GRASP1_GREEN].max_position   = -GRASP1_MAX_ANGLE - grasp_max_adj_gold DEG2RAD;
-    DOF_types[GRASP2_GOLD].max_position    = GRASP2_MAX_ANGLE + grasp_max_adj_green DEG2RAD;
-    DOF_types[GRASP2_GREEN].max_position   = -GRASP2_MAX_ANGLE - grasp_max_adj_green DEG2RAD;
+    DOF_types[GRASP1_GOLD].max_position    = GRASP1_MAX_ANGLE + grasp1_max_adj_gold DEG2RAD;
+    DOF_types[GRASP1_GREEN].max_position   = -GRASP1_MAX_ANGLE - grasp1_max_adj_green DEG2RAD;
+    DOF_types[GRASP2_GOLD].max_position    = GRASP2_MAX_ANGLE + grasp2_max_adj_gold DEG2RAD;
+    DOF_types[GRASP2_GREEN].max_position   = -GRASP2_MAX_ANGLE - grasp2_max_adj_green DEG2RAD;
 
     DOF_types[SHOULDER_GOLD].home_position  = SHOULDER_HOME_ANGLE;
     DOF_types[SHOULDER_GREEN].home_position = SHOULDER_HOME_ANGLE;

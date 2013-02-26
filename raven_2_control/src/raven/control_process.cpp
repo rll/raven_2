@@ -26,10 +26,10 @@ void* control_process(void* ) {
 
 	log_msg("Registering controller");
 
-	Controller::registerController("motor.position",pid);
+	Controller::registerController(Arm::ALL_ARMS,"motor/position",pid);
 
 	log_msg("Setting controller");
-	Controller::setController("motor.position");
+	Controller::setController(Arm::ALL_ARMS,"motor/position");
 
 	log_msg("Waiting for input");
 	while (ros::ok()) {

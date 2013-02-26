@@ -162,12 +162,12 @@
   </joint>
 
   <link name="grasper2_L">
-    <visual>
+    <!-- visual>
       <geometry>
         <mesh filename="package://raven_2_params/data/left_arm/grasper_2.dae" />
       </geometry>
       <origin rpy="-0.17380227661240275 -0.60079813692467054 -0.75437730271855163" xyz="-0.0120 0 0" />
-    </visual>
+    </visual -->
   </link>
 
   <joint name="grasper_yaw_L" type="revolute">

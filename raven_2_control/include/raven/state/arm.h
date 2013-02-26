@@ -46,10 +46,14 @@ public:
 	BOOST_ENUM(ToolType, (NONE)(GRASPER_10MM)(GRASPER_8MM));
 
 	typedef int IdType;
+	typedef std::vector<IdType> IdList;
+	static const IdType ALL_ARMS;
 private:
 	IdType id_;
 	Type type_;
 	std::string name_;
+
+	bool enabled_;
 
 	ToolType toolType_;
 
@@ -85,6 +89,8 @@ public:
 	bool isGreen() const { return type_ == Type::GREEN; }
 
 	std::string name() const { return name_; }
+
+	bool enabled() const { return enabled_; }
 
 	ToolType toolType() const { return toolType_; }
 

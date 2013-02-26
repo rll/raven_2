@@ -10,7 +10,11 @@
 #include "log.h"
 #include <ros/ros.h>
 
+#include <raven/state/device.h>
+
 #include <boost/thread/recursive_mutex.hpp>
+
+//std::atomic<unsigned int> RunLevel::LOOP_NUMBER(0);
 
 #define USE_RUNLEVEL_MUTEX
 boost::recursive_mutex runlevelMutex;
@@ -19,6 +23,7 @@ bool RunLevel::PEDAL = false;
 bool RunLevel::SOFTWARE_ESTOP = false;
 bool RunLevel::IS_INITED = false;
 bool RunLevel::HAS_HOMED = false;
+std::map<int,bool> RunLevel::ARMS_ACTIVE;
 
 RunLevel RunLevel::_E_STOP_() { return RunLevel::_E_STOP_SOFTWARE_(); }
 RunLevel RunLevel::_E_STOP_SOFTWARE_() { return RunLevel(0,1); }
@@ -28,9 +33,7 @@ RunLevel RunLevel::_PEDAL_UP_() { return RunLevel(2); }
 RunLevel RunLevel::_PEDAL_DOWN_() { return RunLevel(3); }
 
 void RunLevel::updateRunlevel(runlevel_t level) {
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
 	if (SOFTWARE_ESTOP) {
 		setInitialized(false);
 		if (level != 0) {
@@ -81,9 +84,11 @@ bool RunLevel::isPedalDown() const {
 	return value_ == 3;
 }
 
+/*
 bool RunLevel::isActive() const {
 	return value_ >= 2;
 }
+*/
 
 std::string
 RunLevel::str() const {
@@ -119,17 +124,14 @@ RunLevel::str() const {
 
 RunLevel
 RunLevel::get() {
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
 	RunLevel rl(*INSTANCE);
+	rl.armsActive_ = ARMS_ACTIVE;
 	return rl;
 }
 
 void RunLevel::setSublevel(runlevel_t sublevel) {
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
 	if (INSTANCE->isInit() && INSTANCE->sublevel_ != sublevel) {
 		INSTANCE->sublevel_ = sublevel;
 		log_msg("Entered runlevel %s", INSTANCE->str().c_str());
@@ -138,42 +140,28 @@ void RunLevel::setSublevel(runlevel_t sublevel) {
 
 bool
 RunLevel::hasHomed() {
-	bool ret;
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
-	ret = HAS_HOMED;
-	return ret;
+	return HAS_HOMED;
 }
 
 bool
 RunLevel::isInitialized() {
-	bool ret;
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.lock();
-#endif
-	ret = IS_INITED;
-#ifdef USE_RUNLEVEL_MUTEX
-	runlevelMutex.unlock();
-#endif
-	return ret;
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
+	return IS_INITED;
 }
 
 void
 RunLevel::setInitialized(bool value) {
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
 	IS_INITED = value;
 }
 
 void
 RunLevel::eStop() {
-#ifdef USE_RUNLEVEL_MUTEX
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
 	SOFTWARE_ESTOP = true;
 }
+/*
 void
 RunLevel::setPedal(bool down) {
 #ifdef USE_RUNLEVEL_MUTEX
@@ -181,12 +169,42 @@ RunLevel::setPedal(bool down) {
 #endif
 	RunLevel::PEDAL = down;
 }
+*/
 bool
 RunLevel::getPedal() {
-	bool pedal;
-#ifdef USE_RUNLEVEL_MUTEX
+	bool pedal = false;
 	boost::recursive_mutex::scoped_lock l(runlevelMutex);
-#endif
-	pedal = RunLevel::PEDAL;
+	//pedal = RunLevel::PEDAL;
+	std::map<int,bool>::const_iterator itr;
+	for (itr = ARMS_ACTIVE.begin();itr!=ARMS_ACTIVE.end();itr++) {
+		if (itr->second) {
+			pedal = true;
+			break;
+		}
+	}
 	return pedal;
+}
+void
+RunLevel::setArmActive(int armId,bool active) {
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
+	if (armId == Arm::ALL_ARMS) {
+		FOREACH_ARM_ID(armId) {
+			RunLevel::ARMS_ACTIVE[armId] = active;
+		}
+	} else {
+		RunLevel::ARMS_ACTIVE[armId] = active;
+	}
+}
+bool
+RunLevel::isArmActive(int armId) const {
+	boost::recursive_mutex::scoped_lock l(runlevelMutex);
+	if (!isPedalDown()) {
+		return false;
+	}
+	std::map<int,bool>::const_iterator itr = armsActive_.find(armId);
+	if (itr == armsActive_.end()) {
+		return false;
+	} else {
+		return itr->second;
+	}
 }

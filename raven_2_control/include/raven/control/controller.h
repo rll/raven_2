@@ -38,33 +38,39 @@ public:
 };
 
 POINTER_TYPES(Controller)
+typedef std::map<Arm::IdType,std::pair<std::string,ControllerPtr> > ControllerMap;
 
 class Controller {
 private:
-	static std::string CURRENT_CONTROLLER;
-	static std::map<std::string,ControllerPtr> CONTROLLERS;
-	static DevicePtr CONTROL_OUTPUT;
-	static std::map<std::string,History<Device>::Type> CONTROL_OUTPUT_HISTORY;
-	static int internalExecuteControl(ControllerPtr controller, const std::string& type);
-	static void setControlOutput(DevicePtr dev);
+	static std::map<Arm::IdType,std::string> CURRENT_CONTROLLERS;
+	static std::map<std::pair<Arm::IdType,std::string>,ControllerPtr> CONTROLLERS;
+	static std::map<Arm::IdType,DevicePtr> CONTROL_OUTPUT;
+	static std::map<std::pair<Arm::IdType,std::string>,History<Device>::Type> CONTROL_OUTPUT_HISTORY;
+	static int internalExecuteControl(std::pair<Arm::IdType,std::string> type, ControllerPtr controller);
+	static void setControlOutput(Arm::IdType armId,DevicePtr dev);
+
+	static ControllerPtr HOLD_POSITION_CONTROLLER;
+	static ControllerPtr getHoldPositionController();
 
 	boost::circular_buffer<ControllerStatePtr> history_;
 	void saveState(ControllerStatePtr state);
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device)=0;
 
 	ControlInputPtr input_;
+	bool reset_;
 
 	boost::shared_ptr<ros::Rate> rate_;
 public:
 
-	static void registerController(const std::string& type,ControllerPtr controller);
-	static bool setController(const std::string& type);
-	static ControllerPtr getController();
-	static ControllerPtr getControllerAndType(std::string& type);
+	static void registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller);
+	static bool setController(Arm::IdType armId, const std::string& type);
+	static ControllerMap getControllers();
 
 	static int executeInProcessControl();
 	static int executeOutOfProcessControl();
-	static DevicePtr getControlOutput();
+
+	static std::map<Arm::IdType,DevicePtr> getControlOutput();
+	static DevicePtr getControlOutput(Arm::IdType armId);
 
 	virtual ~Controller() {}
 
@@ -72,7 +78,8 @@ public:
 	virtual std::string type() const=0;
 
 	virtual bool inProcess() const { return true; }
-	ros::Rate& rate() const { return *rate_; }
+	ros::Rate& rate() { if (!rate_) { rate_.reset(new ros::Rate(0)); } return *rate_; }
+	virtual ControllerPtr getAuxilliaryInProcessController() { return ControllerPtr(); }
 
 	virtual void setInput(ControlInputPtr input) { input_ = input; }
 	virtual void clearInput() { input_.reset(); }
@@ -91,7 +98,7 @@ public:
 		return input.get();
 	}
 
-
+	virtual void resetState() { reset_ = true; }
 
 	virtual int applyControl(DevicePtr device);
 
@@ -126,6 +133,8 @@ protected:
 	void setRate(double hz) {
 		rate_.reset(new ros::Rate(hz));
 	}
+
+	bool getResetState() { bool ret = reset_; reset_ = false; return ret; }
 
 	template<typename T>
 	T getParameter(const std::string& paramName,T defaultValue=T()) {

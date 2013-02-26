@@ -29,6 +29,9 @@ public:
 };
 
 class MotorValuesInput : public SeparateArmControlInput<MotorArmData> {
+protected:
+	MotorValuesInput(const Arm::IdList& ids) : SeparateArmControlInput<MotorArmData>(ids) {}
+
 public:
 	float& valueByOldType(int type);
 	const float& valueByOldType(int type) const;
@@ -38,20 +41,63 @@ public:
 
 class MotorPositionInput : public MotorValuesInput {
 public:
+	MotorPositionInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
 	virtual void setFrom(DevicePtr dev);
 };
 POINTER_TYPES(MotorPositionInput)
 
 class MotorVelocityInput : public MotorValuesInput {
 public:
+	MotorVelocityInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
 	virtual void setFrom(DevicePtr dev);
 };
 POINTER_TYPES(MotorVelocityInput)
 
 class MotorTorqueInput : public MotorValuesInput {
 public:
+	MotorTorqueInput(const Arm::IdList& ids) : MotorValuesInput(ids) {}
 	virtual void setFrom(DevicePtr dev);
 };
 POINTER_TYPES(MotorTorqueInput);
+
+
+/************ single arm ***********************/
+
+class SingleArmMotorValuesInput : public SingleArmControlInput<MotorArmData> {
+protected:
+	SingleArmMotorValuesInput() {}
+public:
+	size_t size() const { return data().size(); }
+
+	float& valueByOldType(int type);
+	const float& valueByOldType(int type) const;
+
+	Eigen::VectorXf& values() { return data().values(); }
+	const Eigen::VectorXf& values() const { return data().values(); }
+};
+
+class SingleArmMotorPositionInput : public MotorPositionInput, public SingleArmMotorValuesInput {
+public:
+	SingleArmMotorPositionInput(Arm::IdType armId) : MotorPositionInput(Arm::IdList(1,armId)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmMotorPositionInput)
+
+class SingleArmMotorVelocityInput : public MotorVelocityInput, public SingleArmMotorValuesInput {
+public:
+	SingleArmMotorVelocityInput(Arm::IdType armId) : MotorVelocityInput(Arm::IdList(1,armId)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmMotorVelocityInput)
+
+class SingleArmMotorTorqueInput : public MotorTorqueInput, public SingleArmMotorValuesInput {
+public:
+	SingleArmMotorTorqueInput(Arm::IdType armId) : MotorTorqueInput(Arm::IdList(1,armId)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(MotorArmData)
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmMotorTorqueInput);
 
 #endif /* MOTOR_INPUT_H_ */

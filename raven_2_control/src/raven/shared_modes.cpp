@@ -22,23 +22,15 @@ extern struct robot_device device0;
 
 /*********************** MASTER MODE *********************************/
 
-#ifdef MASTER_MODE_STRING
 MasterMode masterMode = "";
-#else
-MasterMode masterMode = MasterMode::NONE;
-#endif
 std::set<MasterMode> masterModeConflictSet;
 boost::mutex masterModeMutex;
 
 std::string masterModeToString(const MasterMode& mode) {
-#ifdef MASTER_MODE_STRING
 	if (masterMode.empty()) {
 		return "NONE";
 	}
 	return mode;
-#else
-	return masterMode.str();
-#endif
 }
 
 std::string getMasterModeString() {
@@ -51,19 +43,11 @@ MasterMode getMasterMode() {
 }
 
 bool masterModeIsNone(const MasterMode& mode) {
-#ifdef MASTER_MODE_STRING
 	return mode.empty();
-#else
-	return mode == MasterMode::NONE;
-#endif
 }
 
 bool checkMasterMode(const MasterMode& mode) {
-#ifdef MASTER_MODE_STRING
 	if (mode.empty())
-#else
-	if (mode == MasterMode::NONE)
-#endif
 	{
 		return false;
 #ifdef USE_NEW_RUNLEVEL
@@ -75,11 +59,7 @@ bool checkMasterMode(const MasterMode& mode) {
 	}
 	bool succeeded = false;
 	boost::mutex::scoped_lock _lock(masterModeMutex);
-#ifdef MASTER_MODE_STRING
 	if (masterMode == mode || masterMode.empty())
-#else
-	if (masterMode == mode || masterMode == MasterMode::NONE)
-#endif
 	{
 		masterMode = mode;
 		succeeded = true;
@@ -102,11 +82,7 @@ bool getMasterModeConflicts(MasterMode& mode, std::set<MasterMode>& conflicts) {
 bool resetMasterMode() {
 	bool succeeded = false;
 	boost::mutex::scoped_lock _lock(masterModeMutex);
-#ifdef MASTER_MODE_STRING
 	masterMode = "";
-#else
-	masterMode = MasterMode::NONE;
-#endif
 	masterModeConflictSet.clear();
 	succeeded = true;
 	return succeeded;

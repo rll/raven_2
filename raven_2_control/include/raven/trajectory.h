@@ -7,6 +7,9 @@
 */
 
 #include "struct.h"
+
+#include <ros/ros.h>
+
 #include <raven/util/enum.h>
 
 // Setup and teardown of trajectory generation
@@ -29,6 +32,6 @@ bool clearTrajectory();
 bool hasTrajectory();
 bool getTrajectory(param_pass_trajectory& traj);
 
-BOOST_ENUM(TrajectoryStatus,(NO_TRAJECTORY)(BEFORE_START)(OK)(ENDED))
+BOOST_ENUM(TrajectoryStatus, (NO_TRAJECTORY)(BEFORE_START)(OK)(ENDED));
 
 TrajectoryStatus getCurrentTrajectoryParams(t_controlmode& controller,param_pass& param);

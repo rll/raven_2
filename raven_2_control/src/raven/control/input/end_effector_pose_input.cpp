@@ -9,10 +9,10 @@
 
 #include <sstream>
 
-EndEffectorPoseInput::EndEffectorPoseInput() : SeparateArmControlInput<EndEffectorPoseData>(), relative_(false) {
+EndEffectorPoseInput::EndEffectorPoseInput(const Arm::IdList& ids) : SeparateArmControlInput<EndEffectorPoseData>(ids), relative_(false) {
 
 }
-EndEffectorPoseInput::EndEffectorPoseInput(bool relative) : SeparateArmControlInput<EndEffectorPoseData>(), relative_(relative) {
+EndEffectorPoseInput::EndEffectorPoseInput(const Arm::IdList& ids,bool relative) : SeparateArmControlInput<EndEffectorPoseData>(ids), relative_(relative) {
 
 }
 
@@ -34,7 +34,7 @@ EndEffectorPoseInput::setFrom(DevicePtr dev) {
 }
 
 
-EndEffectorPoseAndInsertionInput::EndEffectorPoseAndInsertionInput() : EndEffectorPoseInput(true) {
+EndEffectorPoseAndInsertionInput::EndEffectorPoseAndInsertionInput(const Arm::IdList& ids) : EndEffectorPoseInput(ids,true) {
 
 }
 
@@ -66,4 +66,48 @@ EndEffectorPoseAndInsertionInput::removeInsertion(Arm::IdType id) {
 void
 EndEffectorPoseAndInsertionInput::clearInsertions() {
 	insertions_.clear();
+}
+
+SingleArmEndEffectorPoseInput::SingleArmEndEffectorPoseInput(Arm::IdType id) : EndEffectorPoseInput(Arm::IdList(1,id)) {
+
+}
+SingleArmEndEffectorPoseInput::SingleArmEndEffectorPoseInput(Arm::IdType id, bool relative) : EndEffectorPoseInput(Arm::IdList(1,id),relative) {
+
+}
+
+void
+SingleArmEndEffectorPoseInput::setFrom(DevicePtr dev) {
+	relative_ = false;
+	data().value() = dev->getArmById(id())->kinematics().forwardPose();
+}
+
+SingleArmEndEffectorPoseAndInsertionInput::SingleArmEndEffectorPoseAndInsertionInput(Arm::IdType id) : EndEffectorPoseAndInsertionInput(Arm::IdList(1,id)), SingleArmEndEffectorPoseInput(id) {
+
+}
+
+bool
+SingleArmEndEffectorPoseAndInsertionInput::hasInsertion() const {
+	return EndEffectorPoseAndInsertionInput::hasInsertion(id());
+}
+
+float
+SingleArmEndEffectorPoseAndInsertionInput::getInsertion() const {
+	return EndEffectorPoseAndInsertionInput::getInsertion(id());
+}
+
+void
+SingleArmEndEffectorPoseAndInsertionInput::setInsertion(float velocity) {
+	setInsertion(id(),velocity);
+}
+void
+SingleArmEndEffectorPoseAndInsertionInput::clearInsertion() {
+	clearInsertions();
+}
+
+void
+SingleArmEndEffectorPoseAndInsertionInput::setInsertion(Arm::IdType armId,float velocity) {
+	if (armId != id()) {
+		throw std::out_of_range("Can't set insertion for any other arm");
+	}
+	insertions_[armId] = velocity;
 }

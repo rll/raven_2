@@ -8,6 +8,7 @@
 #include <raven/control/controllers/end_effector_control.h>
 
 #include "log.h"
+#include <algorithm>
 
 EndEffectorController::EndEffectorController() : Controller(1) {
 	
@@ -15,7 +16,7 @@ EndEffectorController::EndEffectorController() : Controller(1) {
 
 ControllerStatePtr
 EndEffectorController::internalApplyControl(DevicePtr device) {
-	static MotorPositionInputPtr motorInput(new MotorPositionInput());
+	static MotorPositionInputPtr motorInput;
 	static DevicePtr internalDevice;
 	TRACER_ENTER("MotorPositionPID::internalApplyControl");
 
@@ -27,13 +28,30 @@ EndEffectorController::internalApplyControl(DevicePtr device) {
 
 	DevicePtr devTmp;
 
-	EndEffectorPoseInputPtr poseInput = getInput<EndEffectorPoseInput>();
-	EndEffectorGraspInputPtr graspInput = getInput<EndEffectorGraspInput>();
+	EndEffectorPoseInputPtr poseInput;
+	EndEffectorGraspInputPtr graspInput;
 	OldControlInputPtr oldControlInput;
+
+	MultipleControlInputPtr multiInput = getInput<MultipleControlInput>();
+	if (multiInput) {
+		poseInput = multiInput->getInput<EndEffectorPoseInput>("pose");
+		graspInput = multiInput->getInput<EndEffectorGraspInput>("grasp");
+
+		if (!poseInput && !graspInput) {
+			//TODO: complain
+		}
+	} else {
+		poseInput = getInput<EndEffectorPoseInput>();
+		graspInput = getInput<EndEffectorGraspInput>();
+
+		if (!poseInput && !graspInput) {
+			oldControlInput = ControlInput::getOldControlInput();
+		}
+	}
 
 	if (graspInput) {
 		device->cloneInto(internalDevice);
-		FOREACH_ARM_IN_DEVICE(arm,internalDevice) {
+		FOREACH_ARM_IN_DEVICE_AND_ID_LIST(arm,internalDevice,graspInput->ids()) {
 			arm->getJointByType(Joint::Type::GRASP_)->setPosition(graspInput->armById(arm->id()).value());
 		}
 		devTmp = internalDevice;
@@ -49,7 +67,7 @@ EndEffectorController::internalApplyControl(DevicePtr device) {
 
 	FOREACH_ARM_IN_DEVICE(arm,devTmp) {
 		btTransform pose;
-		if (poseInput) {
+		if (poseInput and poseInput->hasId(arm->id())) {
 			if (poseInput->absolute()) {
 				pose = poseInput->armById(arm->id()).value();
 			} else {

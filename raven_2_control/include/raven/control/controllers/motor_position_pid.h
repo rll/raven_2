@@ -40,7 +40,6 @@ private:
 	Eigen::VectorXf KP_;
 	Eigen::VectorXf KI_;
 	Eigen::VectorXf KD_;
-	bool reset_;
 
 	virtual ControllerStatePtr internalApplyControl(DevicePtr device);
 public:
@@ -49,8 +48,6 @@ public:
 
 	virtual std::string name() const { return "motor/position/pid"; }
 	virtual std::string type() const { return "motor/position"; }
-
-	void resetIntegrator() { reset_ = true; }
 };
 
 

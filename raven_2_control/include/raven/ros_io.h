@@ -18,5 +18,10 @@
 void init_ros_topics(ros::NodeHandle &n,struct robot_device* device0);
 void publish_ros(struct robot_device* dev,param_pass currParams);
 
+#include <raven_2_msgs/RavenCommand.h>
+
+void processRavenCmd(const raven_2_msgs::RavenCommand& cmd);
+void cmd_callback(const raven_2_msgs::RavenCommand& cmd); //FIXME: remove
+
 
 #endif /* ROS_IO_H_ */

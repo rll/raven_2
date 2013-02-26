@@ -6,6 +6,7 @@ from numpy import *
 import tf
 import tf.transformations as tft
 from sixense.msg import Calib, CalibPaddle
+#from sixense.hydra import Hydra
 from raven_2_msgs.msg import *
 from geometry_msgs.msg import Pose, Point, Quaternion
 from raven_2_trajectory.srv import RecordTrajectory, RecordTrajectoryResponse
@@ -49,13 +50,14 @@ class HydraTeleop:
 	joystick_active = [True,True]
 	recorder = None
 
-	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False):
+	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False, force_pedal_down=False):
 		self.scale = scale
 		self.scale_increment = scale / 20
 		self.scale_adjusting_mode = False
 		
+		self.force_pedal_down = force_pedal_down
+		
 		self.grasp_while_inactive = grasp_while_inactive
-	
 		
 		self.pub = rospy.Publisher('raven_command', RavenCommand)
 
@@ -81,11 +83,59 @@ class HydraTeleop:
 		print "subscribing to hydra"
 		self.hydra_sub = rospy.Subscriber("hydra_calib", Calib, self.callback)
 		
+#		self.hydra = Hydra(callback=self.callback_new)
+#		
+#		self.hydra.add_named_button("activate",Hydra.BUMPER)
+#		self.hydra.add_named_button("check side",Hydra.JOYSTICK_CLICK)
+#		
+#		self.hydra.add_named_button("grip close",2,mirror_to=Hydra.LEFT)
+#		self.hydra.add_named_button("grip open",4,mirror_to=Hydra.LEFT)
+#		
+#		self.hydra.add_named_button("insertion",Hydra.X)
+#		
+#		self.hydra.add_named_button("scale adjust", Hydra.START)
+#		self.hydra.add_named_button("scale reset",Hydra.JOYSTICK_CLICK)
+#		self.hydra.add_named_button("scale up",4,mirror_to=Hydra.LEFT)
+#		self.hydra.add_named_button("scale up",2,mirror_to=Hydra.LEFT)
+		
 		if record:
 			self.recorder = rospy.ServiceProxy("record_trajectory",RecordTrajectory)
+			
+#			self.hydra.add_named_button("start recording",1,mirror_to=Hydra.LEFT)
+#			self.hydra.add_named_button("stop recording",2,mirror_to=Hydra.LEFT)
 
 		print "ready for action"
 
+#	def callback_new(self,state):
+#		#scale adjustment
+#		if self.scale_adjusting_mode:
+#			curr_scale = self.scale
+#			for side in Hydra.SIDES:
+#				paddle = msg.paddles[i]
+#				if paddle.buttons[SCALE_ADJUST_BUTTON] and not self.last_msg.paddles[i].buttons[SCALE_ADJUST_BUTTON]:
+#					self.scale_adjusting_mode = False
+#					print "Done adjusting scale!"
+#					self.last_msg = msg
+#					return
+#				
+#				if paddle.buttons[SCALE_RESET_BUTTON] and not self.last_msg.paddles[i].buttons[SCALE_RESET_BUTTON]:
+#					self.scale = DEFAULT_SCALE
+#				elif paddle.buttons[SCALE_UP_BUTTON[i]] and not self.last_msg.paddles[i].buttons[SCALE_UP_BUTTON[i]]:
+#					self.scale += self.scale_increment
+#				elif paddle.buttons[SCALE_DOWN_BUTTON[i]] and not self.last_msg.paddles[i].buttons[SCALE_DOWN_BUTTON[i]]:
+#					self.scale -= self.scale_increment
+#				else:
+#					time_diff = (msg.header.stamp - self.last_msg.header.stamp).to_sec()
+#					time_per_increment = 0.4
+#					#print time_diff / time_per_increment, time_diff
+#					increment = self.scale_increment * time_diff / time_per_increment
+#					self.scale += increment * paddle.joy[1]
+#			if self.scale < 0:
+#				self.scale = 0;
+#			if curr_scale != self.scale:
+#				print "Scale is now %1.4f" % self.scale 
+#			self.last_msg = msg
+#			return
 
 	def callback(self,msg):
 		if self.last_msg is None: 
@@ -139,10 +189,13 @@ class HydraTeleop:
 		grip = [0,0]
 
 		for i in xrange(2):
+			
+			if not SIDE_ACTIVE[i]:
+				continue
 				
 			arm_cmd = ArmCommand()
 			tool_cmd = ToolCommand()
-			tool_cmd.relative = True
+			tool_cmd.pose_option = ToolCommand.POSE_OFF
 			paddle = msg.paddles[i]
 			
 			if (not active[i]) and paddle.buttons[SCALE_ADJUST_BUTTON] and not self.last_msg.paddles[i].buttons[SCALE_ADJUST_BUTTON]:
@@ -233,10 +286,13 @@ class HydraTeleop:
 			tool_cmd.grasp_option = ToolCommand.GRASP_INCREMENT_SIGN
 			if arm_cmd.active:
 				tool_cmd.grasp = grip[i]
-			elif SIDE_ACTIVE[i] and grip[i] and self.grasp_while_inactive:
-				arm_cmd.active = True
-				tool_cmd.grasp = grip[i]
-				tool_cmd.tool_pose = Pose(Point(0,0,0),Quaternion(0,0,0,1))
+			elif SIDE_ACTIVE[i] and self.grasp_while_inactive:
+				if paddle.buttons[GRIP_OPEN_BUTTON[i]]: grip[i] = 1
+				if paddle.buttons[GRIP_CLOSE_BUTTON[i]]: grip[i] = -1
+				if grip[i]:
+					arm_cmd.active = True
+					tool_cmd.grasp = grip[i]
+					tool_cmd.pose_option = ToolCommand.POSE_OFF
 				
 			arm_cmd.tool_command = tool_cmd
 			raven_command.arm_names.append(SIDE_NAMES[i])
@@ -263,7 +319,10 @@ class HydraTeleop:
 				
 
 		#publish RavenCommand
-		raven_command.pedal_down = active[0] or active[1]
+		if self.force_pedal_down:
+			raven_command.pedal_down = True
+		else:
+			raven_command.pedal_down = any([arm.active for arm in raven_command.arms])
 
 		self.pub.publish(raven_command)
 		
@@ -282,11 +341,21 @@ if __name__ == "__main__":
 	
 	parser.add_option('-r','--record',action='store_true',default=False)
 	
+	parser.add_option('--force-pedal-down',action='store_true',default=False)
+	
+	parser.add_option('--disable-left',action='store_true',default=False)
+	parser.add_option('--disable-right',action='store_true',default=False)
+	
 	(options,args) = parser.parse_args()
+	
+	if options.disable_left:
+		SIDE_ACTIVE[0] = False
+	if options.disable_right:
+		SIDE_ACTIVE[1] = False
 
 	listener = tf.TransformListener()
 
-	HT = HydraTeleop(listener,record=options.record,scale=options.scale,grasp_while_inactive=options.grasp_while_inactive)
+	HT = HydraTeleop(listener,record=options.record,scale=options.scale,grasp_while_inactive=options.grasp_while_inactive,force_pedal_down=options.force_pedal_down)
 	rospy.spin()
 	
 	rospy.loginfo('shutting down')

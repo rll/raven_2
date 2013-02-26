@@ -66,7 +66,7 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 	Eigen::VectorXf vel_err = vel_d - vel;
 
 	Eigen::VectorXf int_err(pos_err.rows());
-	if (!lastState || reset_) {
+	if (!lastState || getResetState()) {
 		int_err.setZero();
 	} else {
 		int_err = lastState->positionErrorIntegral + pos_err * (lastState->device->timestamp() - device->timestamp()).toSec();
@@ -104,7 +104,7 @@ MotorPositionPID::internalApplyControl(DevicePtr device) {
 	return state;
 }
 
-MotorPositionPID::MotorPositionPID() : Controller(1), reset_(false) {
+MotorPositionPID::MotorPositionPID() : Controller(1) {
 	static DevicePtr dev;
 	size_t totalSize = 0;
 	FOREACH_ARM_IN_CURRENT_DEVICE(arm,dev) {

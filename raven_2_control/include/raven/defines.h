@@ -39,6 +39,12 @@ inline int armIdFromSerial(int arm_serial) {
 	return -1;
 }
 
+inline int armSerialFromID(int arm_id) {
+	if (arm_id == GOLD_ARM_ID) { return GOLD_ARM_SERIAL; }
+	if (arm_id == GREEN_ARM_ID) { return GREEN_ARM_SERIAL; }
+	return -1;
+}
+
 inline int armIdFromMechType(int mech_type) {
 	if (mech_type == GOLD_ARM) { return GOLD_ARM_ID; }
 	if (mech_type == GREEN_ARM) { return GREEN_ARM_ID; }
@@ -409,7 +415,7 @@ const float A12  = 1.30899694;    /*Link1 - 75deg in RAD*/
 #define WD_PERIOD      50
 
 //Master connection timeout (time to trigger pedal up)
-#define MASTER_CONN_TIMEOUT 5000
+#define MASTER_CONN_TIMEOUT 500 //5000
 
 
 #endif

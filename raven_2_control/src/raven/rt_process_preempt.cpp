@@ -81,6 +81,8 @@ pthread_t console_thread;
 //Global Variables from globals.c
 extern struct DOF_type DOF_types[];
 
+extern bool omni_to_ros;
+
 /**
 *From PREEMPT_RT Dynamic memory allocation tips page.
 *This function creates a pool of memory in ram for use with any malloc or new calls so that they do not cause page faults.
@@ -225,6 +227,7 @@ static void *rt_process(void* )
         /// SLEEP until next timer shot
         clock_nanosleep(0, TIMER_ABSTIME, &t, NULL);
         gTime++;
+        //RunLevel::LOOP_NUMBER++;
 
         TimingInfo t_info;
         t_info.mark_overall_start();
@@ -389,9 +392,11 @@ int init_ros(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	for (int i=0;i<argc;i++) {
-		//printf("%s\n",argv[i]);
-	}
+//	printf("num args %i\n",argc);
+//	for (int i=0;i<argc;i++) {
+//		printf("%s\n",argv[i]);
+//	}
+	omni_to_ros = false;
 	if (argc > 1) {
 		if (strcmp(argv[1],"gold")==0) {
 			printf("**** GOLD ARM ONLY ****\n");
@@ -403,6 +408,10 @@ int main(int argc, char **argv)
 			printf("**** BOTH ARMS ****\n");
 			disable_arm_id[GOLD_ARM_ID] = false;
 			disable_arm_id[GREEN_ARM_ID] = false;
+		}
+		if (strcmp(argv[1],"--omni-to-ros")==0 || (argc > 2 && strcmp(argv[2],"--omni-to-ros")==0)) {
+			printf("Omni to ros\n");
+			omni_to_ros = true;
 		}
 	}
     //signal( SIGINT,&sigTrap);                // catch ^C for graceful close.  Unused under ROS

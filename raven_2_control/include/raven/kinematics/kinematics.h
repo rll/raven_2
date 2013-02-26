@@ -10,6 +10,8 @@
 
 #include <ros/ros.h>
 
+#include <raven/state/dof.h>
+
 #include <LinearMath/btTransform.h>
 
 #include <Eigen/Core>
@@ -17,7 +19,40 @@
 #include <boost/shared_ptr.hpp>
 #include <raven/util/pointers.h>
 
+#include <map>
+#include <limits>
+
 class Arm;
+
+class InverseKinematicsOptions {
+	friend class KinematicSolver;
+private:
+	bool checkJointLimits_;
+	bool truncateJointsAtLimits_;
+
+	bool truncateJointDifferences_;
+	std::map<Joint::Type,float> maxJointDifferences_;
+public:
+	InverseKinematicsOptions() : checkJointLimits_(true), truncateJointsAtLimits_(true), truncateJointDifferences_(false) {}
+
+	bool checkJointLimits() const;
+	void setCheckJointLimits(bool on);
+
+	bool truncateJointsAtLimits() const;
+	void setTruncateJointsAtLimits(bool on);
+
+	bool truncateJointDifferences() const;
+	void setTruncateJointDifferences(bool on);
+
+	std::map<Joint::Type,float> maxJointDifferences() const;
+	float getMaxJointDifference(Joint::Type type) const;
+
+	void setMaxJointDifferences(const std::map<Joint::Type,float>& diffs);
+	void setMaxJointDifference(Joint::Type type, float diff);
+
+	void clearMaxJointDifference(Joint::Type type);
+	void clearMaxJointDifferences();
+};
 
 class InverseKinematicsReport {
 	friend class KinematicSolver;
@@ -39,8 +74,7 @@ class KinematicSolver {
 private:
 	Arm* arm_;
 
-	bool checkJointLimits_;
-	bool truncateJointsAtLimits_;
+	InverseKinematicsOptions defaultIKOptions_;
 
 	btTransform forwardKinCached_;
 	ros::Time forwardKinTimestamp_;
@@ -49,22 +83,21 @@ private:
 	InverseKinematicsReportPtr invKinReport_;
 	ros::Time invKinTimestamp_;
 
-	virtual InverseKinematicsReportPtr internalInverseSoln(const btTransform& pose, Arm* soln) const;
+	virtual InverseKinematicsReportPtr internalInverseSoln(const btTransform& pose, Arm* soln,const InverseKinematicsOptions& options) const;
 public:
 	KinematicSolver(Arm* arm);
 	virtual void cloneInto(KinematicSolverPtr& other,Arm* arm) const;
 	virtual ~KinematicSolver();
 
-	bool checkJointLimits() const { return checkJointLimits_; }
-	void setCheckJointLimits(bool on) { checkJointLimits_ = on; }
-
-	bool truncateJointsAtLimits() const { return truncateJointsAtLimits_; }
-	void setTruncateJointsAtLimits(bool on) { truncateJointsAtLimits_ = on; }
+	InverseKinematicsOptions getDefaultIKOptions() const { return defaultIKOptions_; }
+	void setDefaultIKOptions(const InverseKinematicsOptions& options){ defaultIKOptions_ = options; }
 
 	virtual int forward(btTransform& pose) const;
 	btTransform forwardPose() const;
 	InverseKinematicsReportPtr inverse(const btTransform& pose);
-	virtual InverseKinematicsReportPtr inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln) const;
+	InverseKinematicsReportPtr inverse(const btTransform& pose,const InverseKinematicsOptions& options);
+	InverseKinematicsReportPtr inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln) const;
+	virtual InverseKinematicsReportPtr inverseSoln(const btTransform& pose, boost::shared_ptr<Arm>& soln,const InverseKinematicsOptions& options) const;
 
 	Eigen::VectorXf jointVector() const { return jointPositionVector(); }
 	Eigen::VectorXf jointPositionVector() const;

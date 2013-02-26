@@ -1,6 +1,7 @@
 <launch>
   <arg name="arm" default="both"/>
   <arg name="model" default="$(find raven_2_params)/data/ravenII_$(arg arm)_arm.urdf"/>
+  <arg name="omni_to_ros" default="false"/> 
   <include file="$(find raven_2_control)/launch/raven_2.pub.launch">
     <arg name="arm" value="$(arg arm)"/>
     <arg name="model" value="$(arg model)"/>
@@ -8,6 +9,7 @@
 
   <!-- rosparam file="$(find raven_2_params)/params/r2params.yaml" command="load" output="screen" / -->
   <rosparam file="$(find raven_2_params)/params/r2params.yaml" command="load" />
-  <node name ="r2_control" pkg="raven_2_control" type="r2_control" output="screen" args="$(arg arm)"/>
+  <node name ="r2_control" pkg="raven_2_control" type="r2_control" output="screen" args="$(arg arm)" unless="$(arg omni_to_ros)"/>
+  <node name ="r2_control" pkg="raven_2_control" type="r2_control" output="screen" args="$(arg arm) --omni-to-ros" if="$(arg omni_to_ros)"/>
 
 </launch>

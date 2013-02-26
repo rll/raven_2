@@ -182,21 +182,13 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd);
 void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params);
 
 void cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
-#ifdef MASTER_MODE_STRING
 	if (!checkMasterMode(RAVEN_COMMAND_TOPIC)) { return; }
-#else
-	if (!checkMasterMode(MasterMode::ROS_RAVEN_CMD)) { return; }
-#endif
 	processRavenCmd(cmd);
 }
 
 void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId) {
 	//printf("cmd pose callback\n");
-#ifdef MASTER_MODE_STRING
 	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
-#else
-	if (!checkMasterMode(MasterMode::ROS_POSE)) { return; }
-#endif
 
 	raven_2_msgs::RavenCommand cmd;
 	cmd.header = pose->header;
@@ -245,7 +237,13 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 	} else {
 		params.surgeon_mode = SURGEON_ENGAGED;
 	}
-	RunLevel::setPedal(cmd.pedal_down);
+
+	//RunLevel::setPedal(cmd.pedal_down);
+	for (size_t i=0;i<cmd.arms.size();i++) {
+		Arm::IdType armId = Device::getArmIdByName(cmd.arm_names[i]);
+		RunLevel::setArmActive(armId,cmd.arms[i].active);
+	}
+
 	if (cmd.pedal_down) {
 		switch (cmd.controller) {
 		case raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR:
@@ -438,11 +436,7 @@ void processCartesianSpaceControl(const raven_2_msgs::RavenCommand& cmd,param_pa
 
 void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_msg) {
 	log_msg("trajectory callback!\n");
-#ifdef MASTER_MODE_STRING
 	if (!checkMasterMode(RAVEN_COMMAND_TRAJECTORY_TOPIC)) { return; }
-#else
-	if (!checkMasterMode(MasterMode::ROS_TRAJECTORY)) { return; }
-#endif
 	if (!checkControlMode(trajectory_control)) { return; }
 
 	t_controlmode controlmode = (t_controlmode)traj_msg.controller;

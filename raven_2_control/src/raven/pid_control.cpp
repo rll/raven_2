@@ -281,6 +281,9 @@ inline float cappedPositionError(DOF* joint) {
 		case ELBOW:
 			maxErr = DOF_types[joint->type].TR * 10 DEG2RAD;
 			break;
+		case SHOULDER:
+			maxErr = DOF_types[joint->type].TR * 10 DEG2RAD;
+			break;
     }
 	if (err > maxErr) {
 		err_msg("Capping joint %s pos error %1.4f at +%f\n",jointIndexAndArmName(joint->type).c_str(),err,maxErr);

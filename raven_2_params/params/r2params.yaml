@@ -61,6 +61,13 @@ gains_green_ki:
 - 0.02
 
 max_position:
+  shoulder:
+    gold: 10
+  elbow:
+    gold: 0
+    green: 5
+  insertion:
+    gold: 0.058
   rotation:
     gold: 160
     green: 60
@@ -68,3 +75,12 @@ max_position:
     green: -10
   grasp:
     gold: 20
+
+ik_INACTIVE:
+  max_diff:
+    shoulder: 10
+    elbow: 10
+    insertion: 0.005
+    rotation: 10
+    wrist: 10
+    grasp: 100

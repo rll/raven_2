@@ -23,9 +23,24 @@ public:
 
 class EndEffectorGraspInput : public SeparateArmControlInput<EndEffectorGraspData> {
 public:
+	EndEffectorGraspInput(const Arm::IdList& ids) : SeparateArmControlInput<EndEffectorGraspData>(ids) {}
+
 	std::vector<float> values() const;
+
+	virtual void setFrom(DevicePtr dev);
 };
 POINTER_TYPES(EndEffectorGraspInput)
 
+class SingleArmEndEffectorGraspInput : public EndEffectorGraspInput, public SingleArmControlInput<EndEffectorGraspData> {
+public:
+	SingleArmEndEffectorGraspInput(Arm::IdType id) : EndEffectorGraspInput(Arm::IdList(1,id)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(EndEffectorGraspData)
+
+	float& value() { return data().value(); }
+	const float& value() const { return data().value(); }
+
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmEndEffectorGraspInput)
 
 #endif /* END_EFFECTOR_GRASP_H_ */

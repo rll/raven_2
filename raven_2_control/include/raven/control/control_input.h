@@ -12,16 +12,60 @@
 #include <sstream>
 #include <stdexcept>
 #include <map>
+#include <algorithm>
+#include <set>
 
 POINTER_TYPES(ControlInput)
 POINTER_TYPES(OldControlInput)
 
+class MasterModeStatus;
+
+typedef std::map<Arm::IdType,MasterModeStatus> MasterModeStatusMap;
+
+class MasterMode2 {
+private:
+	std::string str_;
+
+	static std::map<Arm::IdType,MasterMode2> MASTER_MODES;
+	static std::map<Arm::IdType,std::set<MasterMode2> > MASTER_MODE_CONFLICTS;
+	static std::map<Arm::IdType,ros::Time> LAST_CHECK_TIMES;
+public:
+	MasterMode2() : str_("") {}
+	MasterMode2(const std::string& str) : str_(str) {}
+	MasterMode2(const char*& str) : str_(str) {}
+
+	bool isNone() const { return str_.empty(); }
+
+	std::string str() const { return str_; }
+	bool operator==(const MasterMode2& other) const { return str_ == other.str_; }
+	bool operator<(const MasterMode2& other) const { return str_ < other.str_; }
+	std::ostream& operator<<(std::ostream& o) const { o << str_; return o; }
+
+	static MasterMode2 NONE;
+
+	static MasterMode2 getMasterMode(Arm::IdType armId);
+
+	static bool checkMasterMode(Arm::IdType armId, const MasterMode2& mode);
+
+	static bool resetMasterMode(Arm::IdType armId);
+
+	static bool getMasterModeStatus(MasterModeStatusMap& status);
+
+	static const ros::Duration TIMEOUT;
+	static void checkTimeout();
+};
+
+struct MasterModeStatus {
+	MasterMode2 mode;
+	std::set<MasterMode2> conflicts;
+};
+
 class ControlInput {
 	friend class Controller;
 private:
-	static std::map<std::string,ControlInputPtr> CONTROL_INPUT;
+	static std::map<std::pair<Arm::IdType,std::string>,ControlInputPtr> CONTROL_INPUT;
 	static OldControlInputPtr OLD_CONTROL_INPUT;
-	static ControlInputPtr getControlInput(const std::string& type);
+	static ControlInputPtr getControlInput(Arm::IdType armId, const std::string& type);
 protected:
 	ros::Time timestamp_;
 public:
@@ -33,16 +77,17 @@ public:
 
 	virtual void setFrom(DevicePtr dev) = 0;
 
-	static void setControlInput(const std::string& type,ControlInputPtr input);
+	static void setControlInput(Arm::IdType armId, const std::string& type, ControlInputPtr input);
 
 	template<class C>
-	static boost::shared_ptr<C> getControlInput(const std::string& type) {
-		return boost::dynamic_pointer_cast<C,ControlInput>(getControlInput(type));
+	static boost::shared_ptr<C> getControlInput(Arm::IdType armId, const std::string& type) {
+		return boost::dynamic_pointer_cast<C,ControlInput>(getControlInput(armId, type));
 	}
 
 	static OldControlInputPtr getOldControlInput();
 	static OldControlInputPtr oldControlInputUpdateBegin();
 	static void oldControlInputUpdateEnd();
+
 };
 
 class MultipleControlInput : public ControlInput {
@@ -96,18 +141,29 @@ POINTER_TYPES(MultipleControlInput)
 
 template<typename T>
 class SeparateArmControlInput : public ControlInput {
-protected:
-	std::vector<Arm::IdType> armIds_;
-	std::vector<T> arms_;
-public:
-	SeparateArmControlInput() {
-		static DevicePtr device;
-		FOREACH_ARM_IN_CURRENT_DEVICE(arm,device) {
-			Arm::IdType id = arm->id();
-			armIds_.push_back(id);
-			arms_.push_back(T(id,arm->motors().size(),arm->joints().size()));
+private:
+	void init() {
+		for (size_t i=0;i<armIds_.size();i++) {
+			Arm::IdType id = armIds_.at(i);
+			arms_.push_back(T(id,Device::numMotorsOnArmById(id),Device::numJointsOnArmById(id)));
 		}
 	}
+protected:
+	Arm::IdList armIds_;
+	std::vector<T> arms_;
+
+	SeparateArmControlInput(const Arm::IdList& armIds) {
+		armIds_ = armIds;
+		init();
+	}
+public:
+
+
+	typedef boost::shared_ptr<SeparateArmControlInput<T> > Ptr;
+
+	size_t numArms() const { return arms_.size(); }
+	const std::vector<Arm::IdType>& ids() const { return armIds_; }
+	bool hasId(Arm::IdType id) const { return std::find(armIds_.begin(),armIds_.end(),id) != armIds_.end(); }
 
 	T& arm(size_t i) { return arms_.at(i); }
 	const T& arm(size_t i) const { return arms_.at(i); }
@@ -133,6 +189,49 @@ public:
 		throw std::out_of_range(ss.str());
 	}
 };
+
+template<typename SeparateArmControlInputSubClass>
+static boost::shared_ptr<SeparateArmControlInputSubClass> createSeparateArmControlInput() {
+	boost::shared_ptr<SeparateArmControlInputSubClass> newPtr(new SeparateArmControlInputSubClass(Device::armIds()));
+	return newPtr;
+}
+
+template<typename SeparateArmControlInputSubClass>
+static boost::shared_ptr<SeparateArmControlInputSubClass> createSeparateArmControlInput(Arm::IdType armId) {
+	Arm::IdList ids;
+	ids.push_back(armId);
+	boost::shared_ptr<SeparateArmControlInputSubClass> newPtr(new SeparateArmControlInputSubClass(ids));
+	return newPtr;
+}
+
+template<typename SeparateArmControlInputSubClass>
+static boost::shared_ptr<SeparateArmControlInputSubClass> createSeparateArmControlInput(const Arm::IdList& armIds) {
+	boost::shared_ptr<SeparateArmControlInputSubClass> newPtr(new SeparateArmControlInputSubClass(armIds));
+	return newPtr;
+}
+
+template<typename T>
+class SingleArmControlInput {
+protected:
+	SingleArmControlInput() {}
+public:
+	virtual ~SingleArmControlInput() {}
+
+	virtual Arm::IdType id() const=0;
+
+	virtual T& data()=0;
+	virtual const T& data() const=0;
+
+	#define SINGLE_ARM_CONTROL_INPUT_METHODS(TypeName) \
+		virtual Arm::IdType id() const { return this->ids().at(0); }\
+		virtual TypeName& data() { return this->arm(0); } \
+		virtual const TypeName& data() const { return this->arm(0); }
+};
+template<typename SingleArmControlInputSubClass>
+static boost::shared_ptr<SingleArmControlInputSubClass> createSingleArmControlInput(Arm::IdType armId) {
+	boost::shared_ptr<SingleArmControlInputSubClass> newPtr(new SingleArmControlInputSubClass(armId));
+	return newPtr;
+}
 
 #include <memory>
 #include <LinearMath/btTransform.h>

@@ -12,9 +12,10 @@
 
 float&
 JointValuesInput::valueByOldType(int type) {
-	int arm_id;
+	int arm_ind;
 	int joint_ind;
-	getArmAndJointIndices(type,arm_id,joint_ind);
+	getArmAndJointIndices(type,arm_ind,joint_ind);
+	int arm_id = armSerialFromID(arm_ind);
 
 	if (joint_ind == 3) {
 		throw std::out_of_range("JVI::vBOT bad ind!");
@@ -27,9 +28,10 @@ JointValuesInput::valueByOldType(int type) {
 
 const float&
 JointValuesInput::valueByOldType(int type) const {
-	int arm_id;
+	int arm_ind;
 	int joint_ind;
-	getArmAndJointIndices(type,arm_id,joint_ind);
+	getArmAndJointIndices(type,arm_ind,joint_ind);
+	int arm_id = armSerialFromID(arm_ind);
 
 	if (joint_ind == 3) {
 		throw std::out_of_range("JVI::vBOT bad ind!");
@@ -74,4 +76,26 @@ JointVelocityInput::setFrom(DevicePtr dev) {
 				arm_curr.values()[i]= arm_in->joint(i)->velocity();
 			}
 		}
+}
+
+/************ single arm ***********************/
+
+void
+SingleArmJointPositionInput::setFrom(DevicePtr dev) {
+	ArmPtr arm = dev->getArmById(id());
+	size_t numJoints = Device::numJointsOnArmById(id());
+	data().values().resize(numJoints);
+	for (size_t i=0;i<numJoints;i++) {
+		data().values()[i]= arm->joint(i)->position();
+	}
+}
+
+void
+SingleArmJointVelocityInput::setFrom(DevicePtr dev) {
+	ArmPtr arm = dev->getArmById(id());
+	size_t numJoints = Device::numJointsOnArmById(id());
+	data().values().resize(numJoints);
+	for (size_t i=0;i<numJoints;i++) {
+		data().values()[i]= arm->joint(i)->velocity();
+	}
 }

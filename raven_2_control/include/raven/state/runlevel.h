@@ -9,6 +9,8 @@
 #define RUNLEVEL_H_
 
 #include <string>
+#include <map>
+//#include <atomic>
 
 #define USE_NEW_RUNLEVEL
 
@@ -19,17 +21,24 @@ class RunLevel {
 private:
 	runlevel_t value_;
 	runlevel_t sublevel_;
+	std::map<int,bool> armsActive_;
 
 	static bool IS_INITED;
 	static bool HAS_HOMED;
 	static RunLevel* INSTANCE;
 	static bool PEDAL;
 	static bool SOFTWARE_ESTOP;
+	static std::map<int,bool> ARMS_ACTIVE;
 public:
+	//static std::atomic_uint_least32_t LOOP_NUMBER;
+
 	static RunLevel get();
-	static void eStop();
-	static void setPedal(bool down);
 	static bool hasHomed();
+
+	static void eStop();
+
+	//static void setPedal(bool down);
+	static void setArmActive(int armId,bool active=true);
 
 	bool isEstop() const;
 	bool isHardwareEstop() const;
@@ -40,7 +49,8 @@ public:
 	bool isPedalDown() const;
 	bool isPedalUpOrDown() const { return isPedalDown() || isPedalUp(); }
 
-	bool isActive() const;
+	//bool isActive() const;
+	bool isArmActive(int armId) const;
 
 	std::string str() const;
 

@@ -29,6 +29,8 @@ public:
 };
 
 class JointValuesInput : public SeparateArmControlInput<JointArmData> {
+protected:
+	JointValuesInput(const Arm::IdList& ids) : SeparateArmControlInput<JointArmData>(ids) {}
 public:
 	float& valueByOldType(int type);
 	const float& valueByOldType(int type) const;
@@ -38,15 +40,46 @@ public:
 
 class JointPositionInput : public JointValuesInput {
 public:
+	JointPositionInput(const Arm::IdList& ids) : JointValuesInput(ids) {}
 	virtual void setFrom(DevicePtr dev);
 };
-typedef boost::shared_ptr<JointPositionInput> JointPositionInputPtr;
+POINTER_TYPES(JointPositionInput)
 
 class JointVelocityInput : public JointValuesInput {
 public:
+	JointVelocityInput(const Arm::IdList& ids) : JointValuesInput(ids) {}
 	virtual void setFrom(DevicePtr dev);
 };
 POINTER_TYPES(JointVelocityInput)
+
+/************ single arm ***********************/
+
+class SingleArmJointValuesInput : public SingleArmControlInput<JointArmData> {
+protected:
+	SingleArmJointValuesInput() {}
+public:
+	float& valueByOldType(int type);
+	const float& valueByOldType(int type) const;
+
+	Eigen::VectorXf& values() { return data().values(); }
+	const Eigen::VectorXf& values() const { return data().values(); }
+};
+
+class SingleArmJointPositionInput : public JointPositionInput, public SingleArmJointValuesInput {
+public:
+	SingleArmJointPositionInput(Arm::IdType armId) : JointPositionInput(Arm::IdList(1,armId)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(JointArmData)
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmJointPositionInput)
+
+class SingleArmJointVelocityInput : public JointVelocityInput, public SingleArmJointValuesInput {
+public:
+	SingleArmJointVelocityInput(Arm::IdType armId) : JointVelocityInput(Arm::IdList(1,armId)) {}
+	SINGLE_ARM_CONTROL_INPUT_METHODS(JointArmData)
+	virtual void setFrom(DevicePtr dev);
+};
+POINTER_TYPES(SingleArmJointVelocityInput)
 
 
 #endif /* JOINT_INPUT_H_ */

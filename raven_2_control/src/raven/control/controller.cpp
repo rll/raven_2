@@ -7,6 +7,10 @@
 
 #include <raven/control/controller.h>
 #include <raven/state/runlevel.h>
+#include <raven/control/controllers/motor_position_pid.h>
+#include <raven/control/input/motor_input.h>
+
+#include <set>
 
 #include "log.h"
 
@@ -15,13 +19,34 @@
 boost::mutex controllerMutex;
 boost::mutex controlOutputMutex;
 
-std::string Controller::CURRENT_CONTROLLER;
-std::map<std::string,ControllerPtr> Controller::CONTROLLERS;
-DevicePtr Controller::CONTROL_OUTPUT;
+std::map<Arm::IdType,std::string> Controller::CURRENT_CONTROLLERS;
+std::map<std::pair<Arm::IdType,std::string>,ControllerPtr> Controller::CONTROLLERS;
+std::map<Arm::IdType,DevicePtr> Controller::CONTROL_OUTPUT;
+
+ControllerPtr Controller::HOLD_POSITION_CONTROLLER;
+ControllerPtr Controller::getHoldPositionController() {
+	if (!HOLD_POSITION_CONTROLLER) {
+		HOLD_POSITION_CONTROLLER.reset(new MotorPositionPID());
+	}
+	return HOLD_POSITION_CONTROLLER;
+}
+
 
 #define CONTROL_OUTPUT_HISTORY_SIZE 50
-std::map<std::string,History<Device>::Type> Controller::CONTROL_OUTPUT_HISTORY;
+std::map<std::pair<Arm::IdType,std::string>,History<Device>::Type> Controller::CONTROL_OUTPUT_HISTORY;
 
+ControllerMap
+Controller::getControllers() {
+	boost::mutex::scoped_lock(controllerMutex);
+	ControllerMap controllers;
+	std::map<Arm::IdType,std::string>::iterator itr;
+	for (itr=CURRENT_CONTROLLERS.begin();itr!=CURRENT_CONTROLLERS.end();itr++) {
+		controllers[itr->first] = std::pair<std::string,ControllerPtr>(itr->second,CONTROLLERS[*itr]);
+	}
+	return controllers;
+}
+
+/*
 ControllerPtr
 Controller::getController() {
 	boost::mutex::scoped_lock(controllerMutex);
@@ -38,12 +63,13 @@ Controller::getControllerAndType(std::string& type) {
 	c = CONTROLLERS[CURRENT_CONTROLLER];
 	return c;
 }
+*/
 
 int
-Controller::internalExecuteControl(ControllerPtr controller,const std::string& type) {
+Controller::internalExecuteControl(std::pair<Arm::IdType,std::string> type, ControllerPtr controller) {
 	static DevicePtr dev;
 	controller->clearInput();
-	ControlInputPtr input = ControlInput::getControlInput(controller->type());
+	ControlInputPtr input = ControlInput::getControlInput(type.first,controller->type());
 	if (input) {
 		controller->setInput(input);
 	}
@@ -53,28 +79,54 @@ Controller::internalExecuteControl(ControllerPtr controller,const std::string& t
 	int ret = controller->applyControl(dev);
 	dev->finishUpdate();
 	CONTROL_OUTPUT_HISTORY[type].push_front(CloningWrapper<Device>(dev));
-	setControlOutput(dev);
+	setControlOutput(type.first,dev);
 	return ret;
 }
 
 int
 Controller::executeInProcessControl() {
+	//static MotorPositionInputPtr holdPosInput = createSeparateArmControlInput<MotorPositionInput>();
+	static DevicePtr holdPosDev;
+	Arm::IdList holdPosIds = Device::disabledArmIds();
 	std::string type;
-	ControllerPtr controller = getControllerAndType(type);
-	if (!controller) {
-		return -1;
+	ControllerMap controllers = getControllers();
+	if (controllers.find(Arm::ALL_ARMS) != controllers.end()) {
+		//FIXME: all-arm control
+	} else {
+		Arm::IdList armIds = Device::armIds();
+		Arm::IdList::iterator armItr;
+		for (armItr = armIds.begin();armItr != armIds.end(); armItr++) {
+			ControllerMap::iterator ctrlItr = controllers.find(*armItr);
+			if (ctrlItr == controllers.end()) {
+				holdPosIds.push_back(*armItr);
+			} else {
+				std::pair<Arm::IdType,std::string> pair_type(*armItr,ctrlItr->second.first);
+				int ctrl_ret = internalExecuteControl(pair_type,ctrlItr->second.second);
+			}
+		}
 	}
-	if (!controller->inProcess()) {
-		return -2;
+	if (!holdPosIds.empty()) {
+		MotorPositionInputPtr holdPosInput(new MotorPositionInput(holdPosIds));
+		holdPosInput->setFrom(Device::currentNoClone());
+		getHoldPositionController()->setInput(holdPosInput);
+		Device::current(holdPosDev);
+		holdPosDev->beginUpdate();
+		int ret = getHoldPositionController()->applyControl(holdPosDev);
+		holdPosDev->finishUpdate();
+		Arm::IdList::iterator armItr;
+		for (armItr = holdPosIds.begin();armItr != holdPosIds.end(); armItr++) {
+			setControlOutput(*armItr,holdPosDev);
+		}
 	}
-	int ret = internalExecuteControl(controller,type);
-	return ret;
+	return 0;
 }
 
 int
 Controller::executeOutOfProcessControl() {
 	static std::string type;
 	while (ros::ok()) {
+		//FIXME: how to do this?
+		/*
 		ControllerPtr controller = getControllerAndType(type);
 		if (controller->inProcess()) {
 			ros::Duration(0.01).sleep();
@@ -82,38 +134,72 @@ Controller::executeOutOfProcessControl() {
 		}
 		int ret = internalExecuteControl(controller,type);
 		controller->rate().sleep();
+		*/
+		ros::Duration(0.01).sleep();
 	}
 	return 0;
 }
 
-DevicePtr
+std::map<Arm::IdType,DevicePtr>
 Controller::getControlOutput() {
 	boost::mutex::scoped_lock(controlOutputMutex);
-	DevicePtr dev;
-	dev = CONTROL_OUTPUT;
-	return dev;
+	return CONTROL_OUTPUT;
 }
 
-void
-Controller::setControlOutput(DevicePtr dev) {
+DevicePtr
+Controller::getControlOutput(Arm::IdType armId) {
 	boost::mutex::scoped_lock(controlOutputMutex);
-	CONTROL_OUTPUT = dev;
+	return CONTROL_OUTPUT[armId];
 }
 
 void
-Controller::registerController(const std::string& type,ControllerPtr controller) {
+Controller::setControlOutput(Arm::IdType armId,DevicePtr dev) {
+	boost::mutex::scoped_lock(controlOutputMutex);
+	if (armId == Arm::ALL_ARMS) {
+		FOREACH_ARM_ID_IN_LIST(armId,Device::armIds()) {
+			CONTROL_OUTPUT[armId] = dev;
+		}
+	} else {
+		CONTROL_OUTPUT[armId] = dev;
+	}
+}
+
+void
+Controller::registerController(Arm::IdType armId, const std::string& type,ControllerPtr controller) {
 	boost::mutex::scoped_lock(controllerMutex);
-	CONTROLLERS[type] = controller;
-	CONTROL_OUTPUT_HISTORY[type] = History<Device>::Type(CONTROL_OUTPUT_HISTORY_SIZE,0,CloningWrapper<Device>());
+	std::pair<Arm::IdType,std::string> pair_type(armId,type);
+	CONTROLLERS[pair_type] = controller;
+	CONTROL_OUTPUT_HISTORY[pair_type] = History<Device>::Type(CONTROL_OUTPUT_HISTORY_SIZE,0,CloningWrapper<Device>());
 }
 
 bool
-Controller::setController(const std::string& type) {
+Controller::setController(Arm::IdType armId, const std::string& type) {
 	if (RunLevel::get().isPedalDown() && RunLevel::get().isInit()) {
 		return false;
 	}
 	boost::mutex::scoped_lock(controllerMutex);
-	Controller::CURRENT_CONTROLLER = type;
+	if (armId == Arm::ALL_ARMS) {
+		CURRENT_CONTROLLERS.clear();
+		CURRENT_CONTROLLERS[armId] = type;
+		if (!type.empty()) {
+			HOLD_POSITION_CONTROLLER->resetState();
+//			FOREACH_ARM_ID(armId) {
+//				getHoldPositionController(armId)->resetState();
+//			}
+		}
+
+		return true;
+	} else {
+		CURRENT_CONTROLLERS.erase(Arm::ALL_ARMS);
+	}
+	std::map<Arm::IdType,std::string>::iterator itr = CURRENT_CONTROLLERS.find(armId);
+	if (type.empty() && itr!=CURRENT_CONTROLLERS.end()) {
+		CURRENT_CONTROLLERS.erase(itr);
+	} else if (itr->second != type){
+		itr->second = type;
+		HOLD_POSITION_CONTROLLER->resetState();
+//		getHoldPositionController(armId)->resetState();
+	}
 	return true;
 }
 
@@ -127,7 +213,7 @@ Controller::saveState(ControllerStatePtr state) {
 }
 
 
-Controller::Controller(size_t historySize) : history_(historySize,0,ControllerStatePtr()), rate_(new ros::Rate(0)) {
+Controller::Controller(size_t historySize) : history_(historySize,0,ControllerStatePtr()), reset_(false) {
 
 }
 

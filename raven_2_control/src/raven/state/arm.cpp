@@ -12,12 +12,14 @@
 
 #include <algorithm>
 
+const Arm::IdType Arm::ALL_ARMS = -1;
+
 static int numA = 0;
-Arm::Arm(int id, Type type, const std::string& name, ToolType toolType) : Updateable(), id_(id), type_(type), name_(name), toolType_(toolType),
+Arm::Arm(int id, Type type, const std::string& name, ToolType toolType) : Updateable(), id_(id), type_(type), name_(name), enabled_(true), toolType_(toolType),
 	basePose_(btTransform::getIdentity()), cableCoupler_(), kinematicSolver_(new KinematicSolver(this)) {
 	//printf("+A  %i %p\n",++numA,this);
 }
-Arm::Arm(const Arm& other) : Updateable(other), id_(other.id_), type_(other.type_), name_(other.name_), toolType_(other.toolType_),
+Arm::Arm(const Arm& other) : Updateable(other), id_(other.id_), type_(other.type_), name_(other.name_), enabled_(other.enabled_), toolType_(other.toolType_),
 		basePose_(other.basePose_) {
 	for (MotorList::const_iterator itr=other.motors_.begin();itr!=other.motors_.end();itr++) {
 		motors_.push_back((*itr)->clone());
