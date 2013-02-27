@@ -73,11 +73,7 @@ void invKin(struct device *device0, struct param_pass* currParams)
   _prev_rl = _curr_rl;
   _curr_rl = runlevel;
 
-#ifdef USE_NEW_RUNLEVEL
   if (RunLevel::get().isPedalDown()) {
-#else
-  if (runlevel == RL_PEDAL_DN) {
-#endif
 	  PRINT_EVERY = PRINT_EVERY_PEDAL_DOWN;
   } else {
 	  PRINT_EVERY = PRINT_EVERY_PEDAL_UP;

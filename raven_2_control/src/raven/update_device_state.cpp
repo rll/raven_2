@@ -62,13 +62,8 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     */
 
     // set desired mech position in pedal_down runlevel
-#ifdef USE_NEW_RUNLEVEL
     RunLevel rl = RunLevel::get();
-    if (rl.isPedalDown())
-#else
-    if (currParams->runlevel == RL_PEDAL_DN)
-#endif
-    {
+    if (rl.isPedalDown()) {
         for (int i = 0; i < NUM_MECH; i++)
         {
             device0->mech[i].pos_d.x = rcvdParams->xd[i].x;
@@ -100,11 +95,7 @@ int updateDeviceState(struct param_pass *currParams, struct param_pass *rcvdPara
     	t_controlmode currRobotControlMode = getControlMode();
         //log_msg("Current control mode: %d",(int)currRobotControlMode);
         newRobotControlMode = currRobotControlMode;
-#ifdef USE_NEW_RUNLEVEL
     } else if (!rl.isPedalDown()) {
-#else
-    } else if ( currParams->runlevel != RL_PEDAL_DN) {
-#endif
         bool changed = setControlMode(newRobotControlMode);
         if (changed) {
         	log_msg("Control mode updated: %s",controlModeToString(newRobotControlMode).c_str());

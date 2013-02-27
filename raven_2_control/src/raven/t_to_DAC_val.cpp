@@ -42,13 +42,7 @@ int TorqueToDAC(struct device *device0)
     		continue;
     	_joint->current_cmd = tToDACVal( _joint );  // Convert torque to DAC value
 
-#ifdef USE_NEW_RUNLEVEL
-    	if (RunLevel::get().isSoftwareEstop())
-    		//printf("SES T2D\n");
-#else
-    	if ( soft_estopped )
-#endif
-		{
+    	if (RunLevel::get().isSoftwareEstop()) {
     		_joint->current_cmd = 0;
     	}
 

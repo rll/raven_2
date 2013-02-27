@@ -50,11 +50,7 @@ bool checkMasterMode(const MasterMode& mode) {
 	if (mode.empty())
 	{
 		return false;
-#ifdef USE_NEW_RUNLEVEL
 	} else if (!RunLevel::hasHomed()) {
-#else
-	} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
-#endif
 		return false;
 	}
 	bool succeeded = false;

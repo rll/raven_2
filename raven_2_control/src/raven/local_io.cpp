@@ -340,11 +340,7 @@ int checkLocalUpdates()
     {
         lastUpdated = gTime;
     }
-#ifdef USE_NEW_RUNLEVEL
     else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && RunLevel::getPedal() && !hasTrajectory())
-#else
-	else if (((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
-#endif
     {
         // if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
         log_msg("Master connection timeout.  surgeon_mode -> up.\n");
@@ -388,11 +384,7 @@ bool getRcvdParams(struct param_pass* d1)
 	{
 		lastUpdated = gTime;
 	}
-#ifdef USE_NEW_RUNLEVEL
 	else if (everUpdated && ((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && RunLevel::getPedal() && !hasTrajectory())
-#else
-	else if (everUpdated && ((gTime-lastUpdated) > MASTER_CONN_TIMEOUT) && data1.surgeon_mode && !hasTrajectory())
-#endif
 	{
 		// if timeout period is expired, set surgeon_mode "DISENGAGED" if currently "ENGAGED"
 		log_msg("Master connection timeout.  surgeon_mode -> up.\n");

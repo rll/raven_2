@@ -39,11 +39,7 @@ bool
 MasterMode2::check(Arm::IdType armId, const MasterMode2& mode) {
 	if (mode.isNone()) {
 			return false;
-	#ifdef USE_NEW_RUNLEVEL
 		} else if (!RunLevel::hasHomed()) {
-	#else
-		} else if (device0.runlevel == RL_E_STOP || device0.runlevel == RL_INIT) {
-	#endif
 			return false;
 		}
 		bool succeeded = false;

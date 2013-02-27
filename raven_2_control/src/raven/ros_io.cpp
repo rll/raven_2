@@ -714,23 +714,14 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 
 	u_08 runlevel;
 	u_08 sublevel;
-#ifdef USE_NEW_RUNLEVEL
 	RunLevel currRunlevel = RunLevel::get();
 	currRunlevel.getNumbers<u_08>(runlevel,sublevel);
-#else
-	runlevel = currParams.runlevel;
-	sublevel = currParams.sublevel;
-#endif
 	static bool hasHomed = false;
 	static raven_2_msgs::RavenState raven_state;
 	raven_state.arms.clear();
 
 	if (
-#ifdef USE_NEW_RUNLEVEL
 			RunLevel::isInitialized()
-#else
-			runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP
-#endif
 			) {
 		hasHomed = true;
 	}
@@ -747,11 +738,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		publish_joints(device0);
 		//publish_marker(device0);
 		if (
-#ifdef USE_NEW_RUNLEVEL
 				!currRunlevel.isEstop()
-#else
-				runlevel != RL_E_STOP
-#endif
 				) {
 			publish_command_pose(device0);
 		}
@@ -769,15 +756,9 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	raven_state.header.stamp = ros::Time::now();
 #endif
 	raven_state.header.frame_id = "/0_link";
-#ifdef USE_NEW_RUNLEVEL
 	RunLevel rl = RunLevel::get();
 	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
 	raven_state.pedal_down = RunLevel::getPedal();
-#else
-	raven_state.runlevel = runlevel;
-	raven_state.sublevel = sublevel;
-	raven_state.pedal_down = device0->surgeon_mode;
-#endif
 
 	raven_state.master = getMasterModeString();
 
@@ -899,12 +880,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			joint_state.integrated_position_error = _joint->perror_int;
 
 			raven_2_msgs::JointCommand joint_cmd;
-#ifdef USE_NEW_RUNLEVEL
-			if (currRunlevel.isPedalDown())
-#else
-			if (runlevel == RL_PEDAL_DN)
-#endif
-			{
+			if (currRunlevel.isPedalDown()) {
 					joint_cmd = joint_commands[arm_state.name][joint_state.type];
 			} else {
 				joint_commands.clear();
@@ -1107,37 +1083,22 @@ raven_2_msgs::RavenState publish_new_device() {
 
 	u_08 runlevel;
 	u_08 sublevel;
-#ifdef USE_NEW_RUNLEVEL
 	RunLevel currRunlevel = RunLevel::get();
 	currRunlevel.getNumbers<u_08>(runlevel,sublevel);
-#else
-	runlevel = currParams.runlevel;
-	sublevel = currParams.sublevel;
-#endif
 	static bool hasHomed = false;
 	raven_state.arms.clear();
 
 	if (
-#ifdef USE_NEW_RUNLEVEL
 			RunLevel::isInitialized()
-#else
-	runlevel == RL_PEDAL_DN || runlevel == RL_PEDAL_UP
-#endif
 	) {
 		hasHomed = true;
 	}
 
 	raven_state.header.stamp = dev->timestamp();
 	raven_state.header.frame_id = "/0_link";
-#ifdef USE_NEW_RUNLEVEL
 	RunLevel rl = RunLevel::get();
 	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
 	raven_state.pedal_down = RunLevel::getPedal();
-#else
-	raven_state.runlevel = runlevel;
-	raven_state.sublevel = sublevel;
-	raven_state.pedal_down = device0->surgeon_mode;
-#endif
 
 	raven_state.master = getMasterModeString();
 

@@ -18,8 +18,6 @@
 #define STRINGIFY_HELPER(s) #s
 #endif
 
-#define USE_NEW_RUNLEVEL
-
 typedef unsigned char runlevel_t;
 
 class RunLevel {

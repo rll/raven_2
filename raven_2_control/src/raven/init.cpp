@@ -50,38 +50,21 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     //log_msg_throttle(0.25,"rl %s",rl.str().c_str());
 
     //In ESTOP reset initialization
-#ifdef USE_NEW_RUNLEVEL
     if (rl.isEstop()) {
     	RunLevel::setInitialized(false);
     }
-#else
-    if (runlevel == RL_E_STOP) {
-    	initialized = FALSE;
-    }
-#endif
 
-#ifdef USE_NEW_RUNLEVEL
     if (rl.isSoftwareEstop()) {
-#else
-    if (soft_estopped) {
-#endif
     	//printf("SOFT ESTOPPED iRD\n");
         device0->mech[0].joint[0].state=jstate_pos_unknown;
-#ifdef USE_NEW_RUNLEVEL
         return;
-#endif
     }
 
     //Do nothing if we are not in the init runlevel
-#ifdef USE_NEW_RUNLEVEL
     if (!rl.isInit()) {
-#else
-    if (runlevel != RL_INIT) {
-#endif
         return;
     }
 
-#ifdef USE_NEW_RUNLEVEL
     if (rl.isInitSublevel(0)) {
     	//printf("init 0\n");
     	RunLevel::setSublevel(1);
@@ -109,48 +92,6 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     }
 
     return;
-#else
-    switch (currParams->sublevel)
-    {
-    case 0:
-        {
-            currParams->sublevel = 1;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
-            RunLevel::setSublevel(1);
-        }
-    case 1:     // Initialization off all joint variables
-        if (initialized)     //If already initialized do nothing
-        {
-            break;
-        }
-
-        initDOFs(device0);
-        setStartXYZ(device0);      // Set pos_d = current position
-
-        currParams->sublevel = 2;     // Goto sublevel 1 to allow initial jpos_d setup by inv_kin.
-        RunLevel::setSublevel(2);
-        log_msg("    -> sublevel %d", currParams->sublevel);
-        break;
-
-    case 2:
-        // Automatically jump to next sublevel after small delay
-        init_wait_loop++;
-        setStartXYZ(device0);                 // set cartesian pos_d = current position
-
-        if ( init_wait_loop > 10)
-        {
-            // Go to auto init sublevel
-            currParams->sublevel = SL_AUTO_INIT;
-            RunLevel::setSublevel(SL_AUTO_INIT);
-            init_wait_loop=0;
-        }
-        break;
-
-    case SL_AUTO_INIT:
-        initialized = TRUE;                  // Set initialized flag
-    }
-
-    return;
-#endif
 }
 
 /**

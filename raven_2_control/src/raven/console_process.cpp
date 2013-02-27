@@ -132,11 +132,7 @@ void *console_process(void *)
             case '0':
             {
                 output_robot = 0;
-#ifdef USE_NEW_RUNLEVEL
                 RunLevel::eStop();
-#else
-                soft_estopped=TRUE;
-#endif
                 print_msg=1;
                 log_msg("Soft estopped");
                 break;

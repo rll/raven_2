@@ -48,12 +48,8 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
     int i=0,j=0;
 
     // Only run in init mode
-#ifdef USE_NEW_RUNLEVEL
     RunLevel rl = RunLevel::get();
     if (!rl.isInitSublevel(3))
-#else
-    if ( ! (currParams->runlevel == RL_INIT && currParams->sublevel == SL_AUTO_INIT ))
-#endif
     {
         homing_inited = 0;
         delay = gTime;

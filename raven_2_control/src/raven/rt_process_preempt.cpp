@@ -150,11 +150,6 @@ static void *rt_process(void* )
         exit(-1);
     }
 
-#ifndef USE_NEW_RUNLEVEL
-    currParams.runlevel = STOP;
-    currParams.sublevel = 0;
-#endif
-
     log_msg("Starting RT Process...");
 
 //#define TEST_USB_READ
@@ -543,11 +538,7 @@ static void *rt_process(void* )
         // Check for overcurrent and impose safe torque limits
         if (overdriveDetect(&device0,currParams.runlevel)) {
             log_warn("Setting soft e stop");
-#ifdef USE_NEW_RUNLEVEL
             RunLevel::eStop();
-#else
-        	soft_estopped = TRUE;
-#endif
         }
 
         t_info.mark_control_end();
