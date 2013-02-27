@@ -367,7 +367,6 @@ static void *rt_process(void* )
         //Publish current raven state
         publish_ros(&device0,currParams);   // from local_io
 
-        ros::spinOnce();
         t_info.mark_ros_end();
 
         t.tv_nsec+=interval; //Update timer count for next clock interrupt
@@ -477,6 +476,9 @@ int main(int argc, char **argv)
     pthread_create(&console_thread, NULL, console_process, NULL); //Start the     thread
     //pthread_create(&control_thread, NULL, control_process, NULL);
     pthread_create(&rt_thread, NULL, rt_process, NULL); //Start the   thread
+
+    ros::spin();
+
     pthread_join(rt_thread,NULL); //Suspend main until rt thread terminates
 
     log_msg("\n\n\nI'm shutting down now... Please close the USB!\n\n\n");
