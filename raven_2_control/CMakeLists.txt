@@ -49,11 +49,14 @@ include_directories(include/raven)
 #set some compiler flags
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result -Wno-missing-field-initializers")
 
+if (CMAKE_COMPILER_IS_GNUCXX)
+    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+endif()
+
+
 #find_package(OpenRAVE REQUIRED)
 #include_directories(${OpenRAVE_INCLUDE_DIRS})
 #link_directories(${OpenRAVE_LIBRARY_DIRS})
-#rosbuild_add_library(raven_numerical_ik src/raven/GeneralIK.cpp)
-#target_link_libraries(raven_numerical_ik openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so)
 
 rosbuild_add_boost_directories()
 
@@ -158,6 +161,3 @@ src/raven/saveload.cpp
 rosbuild_link_boost(r2_control filesystem system)
 
 target_link_libraries(r2_control r2_state r2_controllers r2_utils)
-
-#target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so raven_numerical_ik )
-#target_link_libraries(r2_control openrave0.6 openrave-core0.6 /usr/lib/libnewmat.so )

@@ -116,6 +116,11 @@ int initialize_rt_memory_pool()
     return 0;
 }
 
+void _outputTiming();
+void _outputLoopTiming(const TimingInfo& t_info);
+void _testUSBRead();
+void _testClone();
+
 /**
  * This is the real time thread.
  *
@@ -154,107 +159,7 @@ static void *rt_process(void* )
 
 //#define TEST_USB_READ
 #ifdef TEST_USB_READ
-    {
-    	log_warn("Testing USB board reading");
-
-    	std::vector<int> intervals;
-    	intervals.push_back(250 * 1000);
-    	intervals.push_back(500 * 1000);
-    	intervals.push_back(750 * 1000);
-    	intervals.push_back(1000 * 1000);
-    	intervals.push_back(1250 * 1000);
-    	intervals.push_back(1500 * 1000);
-    	intervals.push_back(1750 * 1000);
-    	intervals.push_back(2000 * 1000);
-
-    	std::vector<int64_t> avgs(intervals.size());
-    	std::vector<int64_t> mins(intervals.size());
-    	std::vector<int64_t> maxs(intervals.size());
-
-    	for (size_t intervalIdx=0;intervalIdx<intervals.size();intervalIdx++) {
-    		unsigned char buffer[512];
-    		struct timespec testBegin;
-    		struct timespec testEnd;
-    		struct timespec singleTestBegin;
-    		struct timespec singleTestEnd;
-
-    		//int interval = 1500 * 1000;
-    		int interval = intervals[intervalIdx];
-
-    		int boardId = USBBoards.boards[0];
-    		std::cout << "Testing board " << boardId << " with interval " << interval << std::endl;
-    		double cumulativeTime_s = 0;
-    		int64_t cumulativeTime_ns = 0;
-    		int64_t minTime_ns = 10 * (int64_t)NSEC_PER_SEC;
-    		int64_t maxTime_ns = 0;
-    		int numTests = 500;
-
-    		std::vector<int64_t> times(numTests,0);
-
-    		clock_gettime(CLOCK_REALTIME,&testBegin);
-    		struct timespec sleepUntil = singleTestBegin;
-    		sleepUntil.tv_sec += 1;
-    		clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
-    		clock_gettime(CLOCK_REALTIME,&testBegin);
-    		for (int i = 0;i<numTests;i++) {
-    			clock_gettime(CLOCK_REALTIME,&singleTestBegin);
-    			usb_read(boardId,buffer,27);
-    			clock_gettime(CLOCK_REALTIME,&singleTestEnd);
-    			int64_t t1 = ((int64_t)singleTestBegin.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestBegin.tv_nsec;
-    			int64_t t2 = ((int64_t)singleTestEnd.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestEnd.tv_nsec;
-    			double d_s = ((double)t2-t1) / NSEC_PER_SEC;
-    			cumulativeTime_s += d_s;
-
-    			int64_t d = (t2-t1);
-    			cumulativeTime_ns += d;
-
-    			times[i] = d;
-
-    			if (d < minTime_ns) {
-    				minTime_ns = d;
-    			}
-    			if (d > maxTime_ns) {
-    				maxTime_ns = d;
-    			}
-
-    			write_zeros_to_board(boardId);
-
-    			//std::cout << i << std::endl;
-    			if (interval) {
-    				struct timespec sleepUntil = singleTestBegin;
-    				sleepUntil.tv_nsec += interval;
-    				clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
-    			}
-    		}
-    		clock_gettime(CLOCK_REALTIME,&testEnd);
-
-    		double avg_s = cumulativeTime_s / numTests;
-    		int64_t avg_ns = (int64_t) (((double)cumulativeTime_ns) / numTests);
-
-    		int64_t t1 = ((int64_t)testBegin.tv_sec) * NSEC_PER_SEC + (int64_t)testBegin.tv_nsec;
-    		int64_t t2 = ((int64_t)testEnd.tv_sec) * NSEC_PER_SEC + (int64_t)testEnd.tv_nsec;
-    		double totalTime_s = ((double)t2-t1) / NSEC_PER_SEC;
-    		int64_t totalTime_ns = t2-t1;
-
-    		avgs[intervalIdx] = avg_ns;
-    		mins[intervalIdx] = minTime_ns;
-    		maxs[intervalIdx] = maxTime_ns;
-
-    		for (int i = 0;i<numTests;i++) {
-    			printf("%8lli\n",(long long int)times[i]);
-    		}
-
-    		std::cout << "Total time: " << totalTime_s << std::endl;
-    		std::cout << "Average: " << avg_s << " (" << avg_ns << " ns)" << std::endl;
-    		std::cout << "Min: " << minTime_ns << " max: " << maxTime_ns << std::endl;
-    		//printf("%5.3f: %8lli / %8lli / %8lli\n",((double)interval)/NSEC_PER_SEC,(long long int)avg_ns,(long long int)minTime_ns,(long long int)maxTime_ns);
-    	}
-
-    	for (size_t i=0;i<intervals.size();i++) {
-    		printf("%8i: %8lli / %8lli / %8lli\n",intervals[i],(long long int)avgs[i],(long long int)mins[i],(long long int)maxs[i]);
-    	}
-    	//ros::shutdown();
-    }
+    _testUSBRead();
 #endif
 
     // Initializations (run here and again in init.cpp)
@@ -288,32 +193,7 @@ static void *rt_process(void* )
 #endif
 #endif
 
-    /*{
-    	int numIter=50000;
-    	{
-    		std::cout << "beginning test 1" << std::endl;
-    		ros::Time start = ros::Time::now();
-    		for (int i=0;i<numIter;i++) {
-    			Device::currentNoClone()->arms()[0]->clone();
-    		}
-    		ros::Time finish = ros::Time::now();
-    		ros::Duration span = finish-start;
-    		std::cout << numIter << " iterations of clone took     " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
-    		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
-    	}
-    	{
-    		std::cout << "beginning test 2" << std::endl;
-    		ros::Time start = ros::Time::now();
-    		ArmPtr arm;
-    		for (int i=0;i<numIter;i++) {
-    			Device::currentNoClone()->arms()[0]->cloneInto(arm);
-    		}
-    		ros::Time finish = ros::Time::now();
-    		ros::Duration span = finish-start;
-    		std::cout << numIter << " iterations of cloneInto took " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
-    		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
-    	}
-    }*/
+    //testClone();
 
     // initialize global loop count
     gTime=0;
@@ -371,41 +251,7 @@ static void *rt_process(void* )
 
 #ifdef USE_NEW_DEVICE
         if (Device::DEBUG_OUTPUT_TIMING) {
-        	printf("arm_gold:\t\t\t%7lli\n",(long long int)TempTiming::arm_gold.toNSec());
-        	printf("\tarm_smf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_smf_gold.toNSec());
-        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_gold.toNSec());
-        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_gold.toNSec());
-        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_gold.toNSec());
-        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_gold.toNSec());
-        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_gold.toNSec());
-
-        	printf("\tarm_cmf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_gold.toNSec());
-        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_gold.toNSec());
-        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_gold.toNSec());
-        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_gold.toNSec());
-        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_gold.toNSec());
-        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_gold.toNSec());
-
-        	printf("\tarm_hue_gold:\t\t%7lli\n",(long long int)TempTiming::arm_hue_gold.toNSec());
-
-        	printf("arm_green:\t\t\t%7lli\n",(long long int)TempTiming::arm_green.toNSec());
-        	printf("\tarm_smf_green:\t\t%7lli\n",(long long int)TempTiming::arm_smf_green.toNSec());
-        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_green.toNSec());
-        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_green.toNSec());
-        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_green.toNSec());
-        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_green.toNSec());
-        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_green.toNSec());
-
-        	printf("\tarm_cmf_green:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_green.toNSec());
-        	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_green.toNSec());
-        	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_green.toNSec());
-        	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_green.toNSec());
-        	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_green.toNSec());
-        	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_green.toNSec());
-
-        	printf("\tarm_hue_green:\t\t%7lli\n",(long long int)TempTiming::arm_hue_green.toNSec());
-
-        	printf("dev_ifu:\t\t\t%7lli\n",(long long int)TempTiming::dev_ifu.toNSec());
+        	_outputTiming();
         }
 
         Device::DEBUG_OUTPUT_TIMING = false;
@@ -458,41 +304,7 @@ static void *rt_process(void* )
         	}
         	int ctrl_ret = Controller::executeInProcessControl();
         	if (Device::DEBUG_OUTPUT_TIMING) {
-        		printf("arm_gold:\t\t\t%7lli\n",(long long int)TempTiming::arm_gold.toNSec());
-        		printf("\tarm_smf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_smf_gold.toNSec());
-        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_gold.toNSec());
-        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_gold.toNSec());
-        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_gold.toNSec());
-        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_gold.toNSec());
-        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_gold.toNSec());
-
-        		printf("\tarm_cmf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_gold.toNSec());
-        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_gold.toNSec());
-        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_gold.toNSec());
-        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_gold.toNSec());
-        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_gold.toNSec());
-        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_gold.toNSec());
-
-        		printf("\tarm_hue_gold:\t\t%7lli\n",(long long int)TempTiming::arm_hue_gold.toNSec());
-
-        		printf("arm_green:\t\t\t%7lli\n",(long long int)TempTiming::arm_green.toNSec());
-        		printf("\tarm_smf_green:\t\t%7lli\n",(long long int)TempTiming::arm_smf_green.toNSec());
-        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_green.toNSec());
-        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_green.toNSec());
-        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_green.toNSec());
-        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_green.toNSec());
-        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_green.toNSec());
-
-        		printf("\tarm_cmf_green:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_green.toNSec());
-        		printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_green.toNSec());
-        		printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_green.toNSec());
-        		printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_green.toNSec());
-        		printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_green.toNSec());
-        		printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_green.toNSec());
-
-        		printf("\tarm_hue_green:\t\t%7lli\n",(long long int)TempTiming::arm_hue_green.toNSec());
-
-        		printf("dev_ifu:\t\t\t%7lli\n",(long long int)TempTiming::dev_ifu.toNSec());
+        		outputTiming();
         	}
         	Device::DEBUG_OUTPUT_TIMING = false;
         	LOOP_NUMBER_ONCE(__FILE__,__LINE__) {
@@ -576,93 +388,7 @@ static void *rt_process(void* )
         TimingInfo::mark_loop_end();
         TRACER_OFF();
 
-
-
-        /*
-        bool printTiming =
-        		LoopNumber::only("rt_proc print timing",2)
-        		|| RunLevel::newlyHomed()
-        		|| (TimingInfo::cn_overall_max_all > ros::Duration(0.001) && LoopNumber::once("ctrl max'd"))
-        		|| t_info.cn_overall() > ros::Duration(0.001);
-
-        if (printTiming) {
-        	cout << "TIMING FOR LOOP " << LoopNumber::get() << endl;
-
-        	cout << TimingInfo::usb_read_str_padded() << ":\t" << t_info.usb_read().toNSec() << endl;
-        	cout << TimingInfo::state_machine_str_padded() << ":\t" << t_info.state_machine().toNSec() << endl;
-        	cout << TimingInfo::update_state_str_padded() << ":\t" << t_info.update_state().toNSec() << endl;
-        	cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
-
-        	cout << endl;
-
-        	cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
-        	cout << TimingInfo::cn_set_input_str_padded() << ":\t" << t_info.cn_set_input().toNSec() << endl;
-			cout << TimingInfo::cn_copy_device_str_padded() << ":\t" << t_info.cn_copy_device().toNSec() << endl;
-
-			cout << TimingInfo::cn_ctrl_begin_str_padded() << ":\t" << t_info.cn_ctrl_begin().toNSec() << endl;
-			cout << TimingInfo::cn_apply_ctrl_str_padded() << ":\t" << t_info.cn_apply_ctrl().toNSec() << endl;
-			cout << TimingInfo::cn_ctrl_finish_str_padded() << ":\t" << t_info.cn_ctrl_finish().toNSec() << endl;
-			cout << TimingInfo::cn_ctrl_overall_str_padded() << ":\t" << t_info.cn_ctrl_overall().toNSec() << endl;
-
-			cout << TimingInfo::cn_set_output_str_padded() << ":\t" << t_info.cn_set_output().toNSec() << endl;
-
-			cout << TimingInfo::cn_overall_str_padded() << ":\t" << t_info.cn_overall().toNSec() << endl;
-
-			cout << endl;
-
-        	cout << TimingInfo::control_str_padded() << ":\t" << t_info.control().toNSec() << endl;
-
-			cout << TimingInfo::usb_write_str_padded() << ":\t" << t_info.usb_write().toNSec() << endl;
-			cout << TimingInfo::ros_str_padded() << ":\t" << t_info.ros().toNSec() << endl;
-
-			cout << endl;
-
-			cout << TimingInfo::overall_str_padded() << ":\t" << t_info.overall().toNSec() << endl;
-
-			cout << endl;
-
-//			cout << TIMING_STATS(TimingInfo,cn_get_input) << endl;
-//			cout << TIMING_STATS(TimingInfo,cn_set_input) << endl;
-//			cout << TIMING_STATS(TimingInfo,cn_copy_device) << endl;
-//
-//			cout << TIMING_STATS(TimingInfo,cn_ctrl_begin) << endl;
-//			cout << TIMING_STATS(TimingInfo,cn_apply_ctrl) << endl;
-//			cout << TIMING_STATS(TimingInfo,cn_ctrl_finish) << endl;
-//			cout << TIMING_STATS(TimingInfo,cn_ctrl_overall) << endl;
-//
-//			cout << TIMING_STATS(TimingInfo,cn_set_output) << endl;
-//
-//			cout << TIMING_STATS(TimingInfo,cn_overall) << endl;
-//
-//			cout << endl;
-//
-//			cout << TIMING_STATS(USBTimingInfo,get_packet) << endl;
-//			cout << TIMING_STATS(USBTimingInfo,process_packet) << endl;
-//
-//			cout << endl;
-//
-//			cout << TIMING_STATS(ControlTiming,overall) << endl;
-//
-//			cout << TIMING_STATS(TimingInfo,overall) << endl;
-//
-//			cout << endl;
-        }
-        */
-
-        /*
-        static bool test_done = false;
-        if (!test_done &&  TimingInfo::NUM_LOOPS_ALL >= 50) {
-        	History<Device>::Type hist = Device::HISTORY;
-        	printf("ptrs equal? %p %p %i\n",hist.front().value.get(),Device::HISTORY.front().value.get(),hist.front().value.get()==Device::HISTORY.front().value.get());
-        	if (hist.front().value->timestamp() == hist.back().value->timestamp()) {
-        		printf("Timestamps equal!\n");
-        	} else {
-        		hist.push_front(CloningWrapper<Device>(Device::HISTORY.back().value));
-        		printf("timestamps equal? %i\n",hist.front().value->timestamp() == Device::HISTORY.front().value->timestamp());
-        	}
-        	test_done = true;
-        }
-        */
+        //_outputLoopTiming(t_info);
 
         //Done for this cycle
     }
@@ -677,7 +403,7 @@ int init_module(void)
 {
     log_msg("Initializing USB I/O...");
 
-    //Initiailze USB Board
+    //Initialize USB Board
     if (USBInit(&device0) == FALSE)
     {
         log_msg("\nERROR: Could not init USB. Boards on?");
@@ -709,10 +435,6 @@ int init_ros(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-//	printf("num args %i\n",argc);
-//	for (int i=0;i<argc;i++) {
-//		printf("%s\n",argv[i]);
-//	}
 	omni_to_ros = false;
 	if (argc > 1) {
 		if (strcmp(argv[1],"gold")==0) {
@@ -761,4 +483,244 @@ int main(int argc, char **argv)
     usleep(1e6); //Sleep for 1 second
 
     exit(0);
+}
+
+/********************* Utility functions *************************/
+
+void _outputTiming() {
+	printf("arm_gold:\t\t\t%7lli\n",(long long int)TempTiming::arm_gold.toNSec());
+	printf("\tarm_smf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_smf_gold.toNSec());
+	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_gold.toNSec());
+	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_gold.toNSec());
+	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_gold.toNSec());
+	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_gold.toNSec());
+	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_gold.toNSec());
+
+	printf("\tarm_cmf_gold:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_gold.toNSec());
+	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_gold.toNSec());
+	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_gold.toNSec());
+	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_gold.toNSec());
+	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_gold.toNSec());
+	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_gold.toNSec());
+
+	printf("\tarm_hue_gold:\t\t%7lli\n",(long long int)TempTiming::arm_hue_gold.toNSec());
+
+	printf("arm_green:\t\t\t%7lli\n",(long long int)TempTiming::arm_green.toNSec());
+	printf("\tarm_smf_green:\t\t%7lli\n",(long long int)TempTiming::arm_smf_green.toNSec());
+	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::s_nmf_iau_green.toNSec());
+	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::s_mf_iau_green.toNSec());
+	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::s_mf_mu_green.toNSec());
+	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::s_mf_mu_avg_green.toNSec());
+	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::s_mf_au_green.toNSec());
+
+	printf("\tarm_cmf_green:\t\t%7lli\n",(long long int)TempTiming::arm_cmf_green.toNSec());
+	printf("\t\tnmf_iau:\t%7lli\n",(long long int)TempTiming::c_nmf_iau_green.toNSec());
+	printf("\t\tmf_iau:\t\t%7lli\n",(long long int)TempTiming::c_mf_iau_green.toNSec());
+	printf("\t\tmf_mu:\t\t%7lli\n",(long long int)TempTiming::c_mf_mu_green.toNSec());
+	printf("\t\tmf_mu_avg:\t%7lli\n",(long long int)TempTiming::c_mf_mu_avg_green.toNSec());
+	printf("\t\tmf_au:\t\t%7lli\n",(long long int)TempTiming::c_mf_au_green.toNSec());
+
+	printf("\tarm_hue_green:\t\t%7lli\n",(long long int)TempTiming::arm_hue_green.toNSec());
+
+	printf("dev_ifu:\t\t\t%7lli\n",(long long int)TempTiming::dev_ifu.toNSec());
+}
+
+void _testUSBRead() {
+	log_warn("Testing USB board reading");
+
+	std::vector<int> intervals;
+	intervals.push_back(250 * 1000);
+	intervals.push_back(500 * 1000);
+	intervals.push_back(750 * 1000);
+	intervals.push_back(1000 * 1000);
+	intervals.push_back(1250 * 1000);
+	intervals.push_back(1500 * 1000);
+	intervals.push_back(1750 * 1000);
+	intervals.push_back(2000 * 1000);
+
+	std::vector<int64_t> avgs(intervals.size());
+	std::vector<int64_t> mins(intervals.size());
+	std::vector<int64_t> maxs(intervals.size());
+
+	for (size_t intervalIdx=0;intervalIdx<intervals.size();intervalIdx++) {
+		unsigned char buffer[512];
+		struct timespec testBegin;
+		struct timespec testEnd;
+		struct timespec singleTestBegin;
+		struct timespec singleTestEnd;
+
+		//int interval = 1500 * 1000;
+		int interval = intervals[intervalIdx];
+
+		int boardId = USBBoards.boards[0];
+		std::cout << "Testing board " << boardId << " with interval " << interval << std::endl;
+		double cumulativeTime_s = 0;
+		int64_t cumulativeTime_ns = 0;
+		int64_t minTime_ns = 10 * (int64_t)NSEC_PER_SEC;
+		int64_t maxTime_ns = 0;
+		int numTests = 500;
+
+		std::vector<int64_t> times(numTests,0);
+
+		clock_gettime(CLOCK_REALTIME,&testBegin);
+		struct timespec sleepUntil = singleTestBegin;
+		sleepUntil.tv_sec += 1;
+		clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
+		clock_gettime(CLOCK_REALTIME,&testBegin);
+		for (int i = 0;i<numTests;i++) {
+			clock_gettime(CLOCK_REALTIME,&singleTestBegin);
+			usb_read(boardId,buffer,27);
+			clock_gettime(CLOCK_REALTIME,&singleTestEnd);
+			int64_t t1 = ((int64_t)singleTestBegin.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestBegin.tv_nsec;
+			int64_t t2 = ((int64_t)singleTestEnd.tv_sec) * NSEC_PER_SEC + (int64_t)singleTestEnd.tv_nsec;
+			double d_s = ((double)t2-t1) / NSEC_PER_SEC;
+			cumulativeTime_s += d_s;
+
+			int64_t d = (t2-t1);
+			cumulativeTime_ns += d;
+
+			times[i] = d;
+
+			if (d < minTime_ns) {
+				minTime_ns = d;
+			}
+			if (d > maxTime_ns) {
+				maxTime_ns = d;
+			}
+
+			write_zeros_to_board(boardId);
+
+			//std::cout << i << std::endl;
+			if (interval) {
+				struct timespec sleepUntil = singleTestBegin;
+				sleepUntil.tv_nsec += interval;
+				clock_nanosleep(0, TIMER_ABSTIME, &sleepUntil, NULL);
+			}
+		}
+		clock_gettime(CLOCK_REALTIME,&testEnd);
+
+		double avg_s = cumulativeTime_s / numTests;
+		int64_t avg_ns = (int64_t) (((double)cumulativeTime_ns) / numTests);
+
+		int64_t t1 = ((int64_t)testBegin.tv_sec) * NSEC_PER_SEC + (int64_t)testBegin.tv_nsec;
+		int64_t t2 = ((int64_t)testEnd.tv_sec) * NSEC_PER_SEC + (int64_t)testEnd.tv_nsec;
+		double totalTime_s = ((double)t2-t1) / NSEC_PER_SEC;
+		int64_t totalTime_ns = t2-t1;
+
+		avgs[intervalIdx] = avg_ns;
+		mins[intervalIdx] = minTime_ns;
+		maxs[intervalIdx] = maxTime_ns;
+
+		for (int i = 0;i<numTests;i++) {
+			printf("%8lli\n",(long long int)times[i]);
+		}
+
+		std::cout << "Total time: " << totalTime_s << std::endl;
+		std::cout << "Average: " << avg_s << " (" << avg_ns << " ns)" << std::endl;
+		std::cout << "Min: " << minTime_ns << " max: " << maxTime_ns << std::endl;
+		//printf("%5.3f: %8lli / %8lli / %8lli\n",((double)interval)/NSEC_PER_SEC,(long long int)avg_ns,(long long int)minTime_ns,(long long int)maxTime_ns);
+	}
+
+	for (size_t i=0;i<intervals.size();i++) {
+		printf("%8i: %8lli / %8lli / %8lli\n",intervals[i],(long long int)avgs[i],(long long int)mins[i],(long long int)maxs[i]);
+	}
+	//ros::shutdown();
+}
+
+void _testClone() {
+	int numIter=50000;
+	{
+		std::cout << "beginning test 1" << std::endl;
+		ros::Time start = ros::Time::now();
+		for (int i=0;i<numIter;i++) {
+			Device::currentNoClone()->arms()[0]->clone();
+		}
+		ros::Time finish = ros::Time::now();
+		ros::Duration span = finish-start;
+		std::cout << numIter << " iterations of clone took     " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
+		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
+	}
+	{
+		std::cout << "beginning test 2" << std::endl;
+		ros::Time start = ros::Time::now();
+		ArmPtr arm;
+		for (int i=0;i<numIter;i++) {
+			Device::currentNoClone()->arms()[0]->cloneInto(arm);
+		}
+		ros::Time finish = ros::Time::now();
+		ros::Duration span = finish-start;
+		std::cout << numIter << " iterations of cloneInto took " << span.toSec() << "s, avg=" << 1000*span.toSec()/numIter << "ms" << std::endl;
+		std::cout << 0.001 / (span.toSec()/numIter) << " per ms" << std::endl;
+	}
+}
+
+void _outputLoopTiming(const TimingInfo& t_info) {
+	bool printTiming =
+			LoopNumber::only("rt_proc print timing",2)
+	|| RunLevel::newlyHomed()
+	|| (TimingInfo::cn_overall_max_all() > ros::Duration(0.001) && LoopNumber::once("ctrl max'd"))
+	|| t_info.cn_overall() > ros::Duration(0.001);
+
+	if (printTiming) {
+		cout << "TIMING FOR LOOP " << LoopNumber::get() << endl;
+
+		cout << TimingInfo::usb_read_str_padded() << ":\t" << t_info.usb_read().toNSec() << endl;
+		cout << TimingInfo::state_machine_str_padded() << ":\t" << t_info.state_machine().toNSec() << endl;
+		cout << TimingInfo::update_state_str_padded() << ":\t" << t_info.update_state().toNSec() << endl;
+		cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
+
+		cout << endl;
+
+		cout << TimingInfo::cn_get_input_str_padded() << ":\t" << t_info.cn_get_input().toNSec() << endl;
+		cout << TimingInfo::cn_set_input_str_padded() << ":\t" << t_info.cn_set_input().toNSec() << endl;
+		cout << TimingInfo::cn_copy_device_str_padded() << ":\t" << t_info.cn_copy_device().toNSec() << endl;
+
+		cout << TimingInfo::cn_ctrl_begin_str_padded() << ":\t" << t_info.cn_ctrl_begin().toNSec() << endl;
+		cout << TimingInfo::cn_apply_ctrl_str_padded() << ":\t" << t_info.cn_apply_ctrl().toNSec() << endl;
+		cout << TimingInfo::cn_ctrl_finish_str_padded() << ":\t" << t_info.cn_ctrl_finish().toNSec() << endl;
+		cout << TimingInfo::cn_ctrl_overall_str_padded() << ":\t" << t_info.cn_ctrl_overall().toNSec() << endl;
+
+		cout << TimingInfo::cn_set_output_str_padded() << ":\t" << t_info.cn_set_output().toNSec() << endl;
+
+		cout << TimingInfo::cn_overall_str_padded() << ":\t" << t_info.cn_overall().toNSec() << endl;
+
+		cout << endl;
+
+		cout << TimingInfo::control_str_padded() << ":\t" << t_info.control().toNSec() << endl;
+
+		cout << TimingInfo::usb_write_str_padded() << ":\t" << t_info.usb_write().toNSec() << endl;
+		cout << TimingInfo::ros_str_padded() << ":\t" << t_info.ros().toNSec() << endl;
+
+		cout << endl;
+
+		cout << TimingInfo::overall_str_padded() << ":\t" << t_info.overall().toNSec() << endl;
+
+		cout << endl;
+
+		//			cout << TIMING_STATS(TimingInfo,cn_get_input) << endl;
+		//			cout << TIMING_STATS(TimingInfo,cn_set_input) << endl;
+		//			cout << TIMING_STATS(TimingInfo,cn_copy_device) << endl;
+		//
+		//			cout << TIMING_STATS(TimingInfo,cn_ctrl_begin) << endl;
+		//			cout << TIMING_STATS(TimingInfo,cn_apply_ctrl) << endl;
+		//			cout << TIMING_STATS(TimingInfo,cn_ctrl_finish) << endl;
+		//			cout << TIMING_STATS(TimingInfo,cn_ctrl_overall) << endl;
+		//
+		//			cout << TIMING_STATS(TimingInfo,cn_set_output) << endl;
+		//
+		//			cout << TIMING_STATS(TimingInfo,cn_overall) << endl;
+		//
+		//			cout << endl;
+		//
+		//			cout << TIMING_STATS(USBTimingInfo,get_packet) << endl;
+		//			cout << TIMING_STATS(USBTimingInfo,process_packet) << endl;
+		//
+		//			cout << endl;
+		//
+		//			cout << TIMING_STATS(ControlTiming,overall) << endl;
+		//
+		//			cout << TIMING_STATS(TimingInfo,overall) << endl;
+		//
+		//			cout << endl;
+	}
 }

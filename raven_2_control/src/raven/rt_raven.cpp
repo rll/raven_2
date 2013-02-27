@@ -62,16 +62,18 @@ int raven_joint_torque_command    (struct device *device0, struct param_pass *cu
 
 extern int initialized;
 
-void turnOffSpeedyJoints(device& dev) {
+void turnOffSpeedyJoints(device* device0) {
 	return;
+
 	extern DOF_type DOF_types[];
-	for (int iMech = 0; iMech < 2; iMech++) {
-		for (int iJoint = 0; iJoint < 8; iJoint++) {
-			DOF& dof = dev.mech[iMech].joint[iJoint];
-			if (fabs(dof.mvel) > 10) {
-				log_msg("Turning off speedy joint %d on mech %d",iJoint,iMech);
-				dof.current_cmd = 0;
-			}
+	struct DOF *_joint = NULL;
+	struct mechanism* _mech = NULL;
+	int i=0, j=0;
+
+	while (loop_over_joints(device0, _mech, _joint, i,j) ) {
+		if (fabs(_joint->mvel) > 10) {
+				log_msg("Turning off speedy joint %d on mech %d",j,i);
+				_joint->current_cmd = 0;
 		}
 	}
 }
@@ -178,6 +180,8 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     	bool skip = false;
     	bool traj_ctrl = false;
     	TrajectoryStatus param_status;
+
+    	//If we're in trajectory control, get the trajectory controller and use that below
     	if (controlmode == trajectory_control) {
     		traj_ctrl = true;
 
@@ -233,7 +237,7 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     }
 
      if (controlmode != homing_mode) {
-    	turnOffSpeedyJoints(*device0);
+    	turnOffSpeedyJoints(device0);
     }
 
     return ret;
@@ -264,6 +268,7 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     }
 
     /*
+    // get max errors for joints
     while (loop_over_joints(device0, _mech, _joint, i,j) ) {
     	static double* smd = 0;
     	static double* emd = 0;
