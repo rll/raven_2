@@ -44,6 +44,7 @@
 #include <sensor_msgs/JointState.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
+#include <std_msgs/Float32.h>
 
 #include <raven/util/stringify.h>
 
@@ -90,6 +91,7 @@ ros::Publisher pub_ravenstate_old;
 ros::Subscriber cmd_sub;
 ros::Subscriber cmd_traj_sub;
 ros::Subscriber cmd_pose_sub[2];
+ros::Subscriber cmd_grasp_sub[2];
 ros::Subscriber torque_sub1;
 ros::Subscriber torque_sub2;
 ros::Subscriber joint_sub;
@@ -116,15 +118,20 @@ void publish_marker(struct robot_device*);
 #define TOOL_POSE_COMMAND_TOPIC APPEND_TOPIC(TOOL_POSE_TOPIC,"command")
 #define TOOL_POSE_COMMAND_SIDE_TOPIC(side) APPEND_TOPIC(TOOL_POSE_COMMAND_TOPIC,side)
 
-#define MASTER_POSE_TOPIC "master_pose"
-#define MASTER_POSE_SIDE_TOPIC(side) APPEND_TOPIC(MASTER_POSE_TOPIC,side)
+#define MASTER_POSE_TOPIC_BASE "master_pose"
+#define MASTER_POSE_TOPIC(side) APPEND_TOPIC(MASTER_POSE_TOPIC_BASE,side)
 
-#define MASTER_POSE_RAW_TOPIC APPEND_TOPIC(MASTER_POSE_TOPIC,"raw")
-#define MASTER_POSE_RAW_SIDE_TOPIC(side) APPEND_TOPIC(MASTER_POSE_RAW_TOPIC,side)
+#define MASTER_POSE_RAW_TOPIC_BASE APPEND_TOPIC(MASTER_POSE_TOPIC_BASE,"raw")
+#define MASTER_POSE_RAW_TOPIC(side) APPEND_TOPIC(MASTER_POSE_RAW_TOPIC_BASE,side)
 
 #define RAVEN_COMMAND_TOPIC "raven_command"
 #define RAVEN_COMMAND_TRAJECTORY_TOPIC APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"trajectory")
-#define RAVEN_COMMAND_POSE_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_TOPIC,side)
+
+#define RAVEN_COMMAND_POSE_TOPIC_BASE APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"pose")
+#define RAVEN_COMMAND_POSE_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_POSE_TOPIC_BASE,side)
+
+#define RAVEN_COMMAND_GRASP_TOPIC_BASE APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"grasp")
+#define RAVEN_COMMAND_GRASP_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_GRASP_TOPIC_BASE,side)
 
 bool checkRate(ros::Time& last_pub,ros::Duration interval,ros::Duration& since_last_pub) {
 	ros::Time now = ros::Time::now();
@@ -233,6 +240,28 @@ void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId)
 	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_OFF;
 
 	arm_cmd.tool_command.grasp = 0;
+	cmd.arm_names.push_back(armNameFromId(armId));
+	cmd.arms.push_back(arm_cmd);
+	//cmd.arms[armId] = arm_cmd;
+	processRavenCmd(cmd);
+}
+
+void cmd_grasp_callback(const std_msgs::Float32& grasp,int armId) {
+	//printf("cmd pose callback\n");
+	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
+
+	raven_2_msgs::RavenCommand cmd;
+	cmd.header.stamp = ros::Time::now();
+	cmd.header.frame_id = "";
+	cmd.pedal_down = true;
+	cmd.controller = raven_2_msgs::Constants::CONTROLLER_NONE;
+	raven_2_msgs::ArmCommand arm_cmd;
+	arm_cmd.active = true;
+	arm_cmd.tool_command.pose_option = raven_2_msgs::ToolCommand::POSE_OFF;
+
+	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_SET;
+
+	arm_cmd.tool_command.grasp = grasp.data;
 	cmd.arm_names.push_back(armNameFromId(armId));
 	cmd.arms.push_back(arm_cmd);
 	//cmd.arms[armId] = arm_cmd;
@@ -1488,8 +1517,8 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 		pub_tool_pose_command_array = n.advertise<geometry_msgs::PoseArray>(TOOL_POSE_COMMAND_TOPIC,1);
 		pub_tool_pose_command[armId] = n.advertise<geometry_msgs::PoseStamped>( TOOL_POSE_COMMAND_SIDE_TOPIC(armName), 1);
 
-		pub_master_pose[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_SIDE_TOPIC(armName), 1);
-		pub_master_pose_raw[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_RAW_SIDE_TOPIC(armName), 1);
+		pub_master_pose[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_TOPIC(armName), 1);
+		pub_master_pose_raw[armId] = n.advertise<geometry_msgs::PoseStamped>( MASTER_POSE_RAW_TOPIC(armName), 1);
 	}
 
 	vis_pub1 = n.advertise<visualization_msgs::Marker>( "visualization_marker1", 0 );
