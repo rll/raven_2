@@ -211,7 +211,7 @@ static void *rt_process(void* )
     //Only run while USB board is attached
     while (ros::ok()) {
         /// SLEEP until next timer shot
-        clock_nanosleep(0, TIMER_ABSTIME, &t, NULL);
+        clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t, NULL);
         gTime++;
         LoopNumber::incrementMain();
         int loopNumber = LoopNumber::get();
@@ -369,20 +369,22 @@ static void *rt_process(void* )
 
         t_info.mark_ros_end();
 
-        t.tv_nsec+=interval; //Update timer count for next clock interrupt
-        tsnorm(&t);
-
         t_info.mark_overall_end();
-
-        clock_gettime(CLOCK_REALTIME,&end);
 
         int64_t start_ns = start.tv_sec * (int64_t)1000000000 + start.tv_nsec;
         int64_t end_ns = end.tv_sec * (int64_t)1000000000 + end.tv_nsec;
 
-        if ((end_ns-start_ns) > 1000000) {
+        bool over_time = (end_ns-start_ns) > 1000000;
+        if (over_time) {
         	TimingInfo::NUM_OVER_TIME += 1;
         }
         TimingInfo::PCT_OVER_TIME = ((float)TimingInfo::NUM_OVER_TIME) / loopNumber;
+
+        //TODO: if over time, this should change
+        t.tv_nsec+=interval; //Update timer count for next clock interrupt
+        tsnorm(&t);
+
+        clock_gettime(CLOCK_REALTIME,&end);
 
         TimingInfo::mark_loop_end();
         TRACER_OFF();
