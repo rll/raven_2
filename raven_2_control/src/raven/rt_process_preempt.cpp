@@ -367,6 +367,8 @@ static void *rt_process(void* )
         //Publish current raven state
         publish_ros(&device0,currParams);   // from local_io
 
+        ros::spinOnce();
+
         t_info.mark_ros_end();
 
         t_info.mark_overall_end();
@@ -479,7 +481,7 @@ int main(int argc, char **argv)
     //pthread_create(&control_thread, NULL, control_process, NULL);
     pthread_create(&rt_thread, NULL, rt_process, NULL); //Start the   thread
 
-    ros::spin();
+    //ros::spin();
 
     pthread_join(rt_thread,NULL); //Suspend main until rt thread terminates
 
