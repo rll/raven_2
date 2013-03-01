@@ -49,6 +49,11 @@ class StatePrinter(object):
 		self.options = options
 		self.enabled = enabled
 		
+		if options.degrees:
+			self.conv = 180. / math.pi
+		else:
+			self.conv = 1.
+		
 		self.duration = rospy.Duration(1./options.rate)
 		self.last_print_time = None
 		
@@ -236,30 +241,32 @@ class StatePrinter(object):
 				self.fields['joint_states'].append(JointState.STATE_STRINGS.split(',')[joint.state])
 				
 				#    float32 position
-				self.fields['joint_positions'].append(joint.position)
+				self.fields['joint_positions'].append(joint.position * self.conv)
 				#    float32 velocity
-				self.fields['joint_velocities'].append(joint.velocity)
+				self.fields['joint_velocities'].append(joint.velocity * self.conv)
 				
 				
 				#    raven_2_msgs/JointCommand command
 				#      uint8 command_type
 				#      float32 value
 				self.fields['joint_command_types'].append(JointCommand.COMMAND_TYPE_STRINGS.split(',')[joint.command.command_type])
-				self.fields['joint_command_values'].append(joint.command.value)
-				
+				if joint.command.command_type == JointCommand.COMMAND_TYPE_TORQUE:
+					self.fields['joint_command_values'].append(joint.command.value)
+				else:
+					self.fields['joint_command_values'].append(joint.command.value * self.conv)
 				#    raven_2_msgs/DOFSetPoint set_point
 				#      float32 position
 				#      float32 velocity
-				self.fields['joint_set_point_positions'].append(joint.set_point.position)
-				self.fields['joint_set_point_velocities'].append(joint.set_point.velocity)
+				self.fields['joint_set_point_positions'].append(joint.set_point.position * self.conv)
+				self.fields['joint_set_point_velocities'].append(joint.set_point.velocity * self.conv)
 				
 				if joint.type not in (Constants.JOINT_TYPE_GRASP,Constants.JOINT_TYPE_YAW):
 					self.fields['motor_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
 					
 					#    float32 motor_position
-					self.fields['motor_positions'].append(joint.motor_position)
+					self.fields['motor_positions'].append(joint.motor_position * self.conv)
 					#    float32 motor_velocity
-					self.fields['motor_velocities'].append(joint.motor_velocity)
+					self.fields['motor_velocities'].append(joint.motor_velocity * self.conv)
 					#    float32 torque
 					self.fields['motor_torques'].append(joint.torque)
 					
@@ -269,8 +276,8 @@ class StatePrinter(object):
 					#    raven_2_msgs/DOFSetPoint set_point
 					#      float32 motor_position
 					#      float32 motor_velocity
-					self.fields['motor_set_point_positions'].append(joint.set_point.motor_position)
-					self.fields['motor_set_point_velocities'].append(joint.set_point.motor_velocity)
+					self.fields['motor_set_point_positions'].append(joint.set_point.motor_position * self.conv)
+					self.fields['motor_set_point_velocities'].append(joint.set_point.motor_velocity * self.conv)
 					
 					#    int32 encoder_value
 					self.fields['motor_enc_vals'].append(joint.encoder_value)
@@ -305,14 +312,19 @@ class StatePrinter(object):
 				self.add_line(header_fmt.format(*(self.fields['joint_types']),field_name=''))
 				add_str_line('joint_states',7)
 				
-				add_line('joint_positions',3)
-				add_line('joint_velocities',3)
+				if self.options.degrees:
+					precision = 1
+				else:
+					precision = 3
+				
+				add_line('joint_positions',precision)
+				add_line('joint_velocities',precision)
 				add_str_line('joint_command_types',3)
-				add_line('joint_command_values',3)
+				add_line('joint_command_values',1)
 				
 				
-				add_line('joint_set_point_positions',3)
-				add_line('joint_set_point_velocities',3)
+				add_line('joint_set_point_positions',precision)
+				add_line('joint_set_point_velocities',precision)
 			
 			header_fmt = ' '.join([header_field_name_format] + ([header_field_format.format(field_num=i) for i in xrange(len(self.fields['motor_types']))]))
 			line_fmt = lambda field_format,precision: ' '.join([field_name_format] + ([field_format.format(field_num=i,precision=precision) for i in xrange(len(self.fields['motor_types']))]))
@@ -346,7 +358,10 @@ if __name__ == '__main__':
 	
 	parser = optparse.OptionParser()
 	
-	parser.add_option('-r','--rate',type='float',default=10.)
+	parser.add_option('-d','--degrees',action='store_true',default=True)
+	parser.add_option('-r','--radians',action='store_false',dest='degrees')
+	
+	parser.add_option('--rate',type='float',default=10.)
 	
 	parser.add_option('-j','--joints',action='store_true',default=None)
 	parser.add_option('-m','--motors',action='store_true',default=None)
