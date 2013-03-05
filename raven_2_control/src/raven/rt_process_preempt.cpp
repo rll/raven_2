@@ -373,20 +373,25 @@ static void *rt_process(void* )
 
         t_info.mark_overall_end();
 
+        clock_gettime(CLOCK_REALTIME,&end);
+
         int64_t start_ns = start.tv_sec * (int64_t)1000000000 + start.tv_nsec;
         int64_t end_ns = end.tv_sec * (int64_t)1000000000 + end.tv_nsec;
 
         bool over_time = (end_ns-start_ns) > 1000000;
+        //bool over_time = t_info.overall() > ros::Duration(1./1000);
         if (over_time) {
         	TimingInfo::NUM_OVER_TIME += 1;
         }
         TimingInfo::PCT_OVER_TIME = ((float)TimingInfo::NUM_OVER_TIME) / loopNumber;
 
-        //TODO: if over time, this should change
-        t.tv_nsec+=interval; //Update timer count for next clock interrupt
+        //clock interrupt on 1ms boundaries
+        int64_t t_ns;
+        do {
+        	t.tv_nsec+=interval; //Update timer count for next clock interrupt
+        	t_ns = t.tv_sec * (int64_t)1000000000 + t.tv_nsec;
+        } while (false && t_ns <= end_ns);
         tsnorm(&t);
-
-        clock_gettime(CLOCK_REALTIME,&end);
 
         TimingInfo::mark_loop_end();
         TRACER_OFF();

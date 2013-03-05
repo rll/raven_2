@@ -21,6 +21,14 @@ extern USBStruct USBBoards;
 
 //std::atomic<unsigned int> RunLevel::LOOP_NUMBER(0);
 
+#define NSEC_PER_SEC    1000000000          // nanoseconds per sec
+static inline void tsnorm(timespec& ts) {
+	while (ts.tv_nsec >= NSEC_PER_SEC) {
+		ts.tv_nsec -= NSEC_PER_SEC;
+		ts.tv_sec++;
+	}
+}
+
 #define USE_RUNLEVEL_MUTEX
 boost::recursive_mutex runlevelMutex;
 RunLevel* RunLevel::PREVIOUS_RUNLEVEL = new RunLevel(RunLevel::_E_STOP_HARDWARE_());
@@ -247,6 +255,12 @@ boost::thread_specific_ptr< std::map<std::string,LoopNumber::CountInfo> > LoopNu
 boost::thread_specific_ptr<int> LoopNumber::LOOP_NUMBER;
 int LoopNumber::MAIN_LOOP_NUMBER = -1;
 
+boost::thread_specific_ptr<timespec> LoopNumber::LOOP_TIME;
+timespec LoopNumber::MAIN_LOOP_TIME = {0};
+
+boost::thread_specific_ptr<timespec> LoopNumber::LOOP_TIME_DELTA;
+timespec LoopNumber::MAIN_LOOP_TIME_DELTA = {0};
+
 //#define USE_LOOP_MUTEX_FOR_ALL
 #define USE_LOOP_MUTEX_FOR_NAMED_INTERVALS
 
@@ -256,6 +270,26 @@ LoopNumber::internalGet() {
 		LOOP_NUMBER.reset(new int(-1));
 	}
 	return *LOOP_NUMBER;
+}
+
+timespec
+LoopNumber::internalGetTime() {
+	if (ROS_LIKELY(!LOOP_TIME.get())) {
+		LOOP_TIME.reset(new timespec());
+		clock_gettime(CLOCK_REALTIME,LOOP_TIME.get());
+
+	}
+	return *LOOP_TIME;
+}
+
+timespec
+LoopNumber::internalGetTimeDelta() {
+	if (ROS_LIKELY(!LOOP_TIME_DELTA.get())) {
+		LOOP_TIME_DELTA.reset(new timespec());
+		LOOP_TIME_DELTA->tv_sec = 0;
+		LOOP_TIME_DELTA->tv_nsec = 0;
+	}
+	return *LOOP_TIME_DELTA;
 }
 
 int
@@ -272,25 +306,72 @@ LoopNumber::getMain() {
 	return MAIN_LOOP_NUMBER;
 }
 
+timespec
+LoopNumber::getTime() {
+#ifdef USE_LOOP_MUTEX_FOR_ALL
+	boost::mutex::scoped_lock _l(loopNumberMutex);
+#endif
+	return internalGetTime();
+}
+
+timespec
+LoopNumber::getMainTime() {
+	boost::mutex::scoped_lock _l(loopNumberMutex);
+	return MAIN_LOOP_TIME;
+}
+
+timespec
+LoopNumber::getTimeDelta() {
+#ifdef USE_LOOP_MUTEX_FOR_ALL
+	boost::mutex::scoped_lock _l(loopNumberMutex);
+#endif
+	return internalGetTimeDelta();
+}
+
+timespec
+LoopNumber::getMainTimeDelta() {
+	boost::mutex::scoped_lock _l(loopNumberMutex);
+	return MAIN_LOOP_TIME_DELTA;
+}
+
+void
+LoopNumber::internalIncrement(int amt) {
+	if (ROS_UNLIKELY(!LOOP_NUMBER.get())) {
+		LOOP_NUMBER.reset(new int(-1));
+		*LOOP_NUMBER += amt;
+		LOOP_TIME.reset(new timespec());
+		clock_gettime(CLOCK_REALTIME,LOOP_TIME.get());
+		LOOP_TIME_DELTA.reset(new timespec());
+		LOOP_TIME_DELTA->tv_sec = 0;
+		LOOP_TIME_DELTA->tv_nsec = 0;
+		return;
+	}
+	*LOOP_NUMBER += amt;
+	timespec t_old = *LOOP_TIME;
+	clock_gettime(CLOCK_REALTIME,LOOP_TIME.get());
+	timespec delta;
+	delta.tv_sec = (LOOP_TIME->tv_sec - t_old.tv_sec) / amt;
+	delta.tv_nsec = (LOOP_TIME->tv_nsec - t_old.tv_nsec) / amt;
+	tsnorm(delta);
+	*LOOP_TIME_DELTA = delta;
+}
+
 void
 LoopNumber::increment(int amt) {
 #ifdef USE_LOOP_MUTEX_FOR_ALL
 	boost::mutex::scoped_lock _l(loopNumberMutex);
 #endif
-	if (ROS_UNLIKELY(!LOOP_NUMBER.get())) {
-		LOOP_NUMBER.reset(new int(-1));
-	}
-	*LOOP_NUMBER += amt;
+	internalIncrement(amt);
 }
 
 void
 LoopNumber::incrementMain(int amt) {
 	boost::mutex::scoped_lock _l(loopNumberMutex);
-	if (ROS_UNLIKELY(!LOOP_NUMBER.get())) {
-		LOOP_NUMBER.reset(new int(-1));
-	}
-	*LOOP_NUMBER += amt;
-	MAIN_LOOP_NUMBER += amt;
+	internalIncrement(amt);
+
+	MAIN_LOOP_NUMBER = *LOOP_NUMBER;
+	MAIN_LOOP_TIME = *LOOP_TIME;
+	MAIN_LOOP_TIME_DELTA = *LOOP_TIME_DELTA;
 }
 
 

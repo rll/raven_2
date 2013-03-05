@@ -98,16 +98,33 @@ private:
 	static boost::thread_specific_ptr<int> LOOP_NUMBER;
 	static int MAIN_LOOP_NUMBER;
 
+	static boost::thread_specific_ptr<timespec> LOOP_TIME;
+	static timespec MAIN_LOOP_TIME;
+
+	static boost::thread_specific_ptr<timespec> LOOP_TIME_DELTA;
+	static timespec MAIN_LOOP_TIME_DELTA;
+
 	static int internalGet();
+	static timespec internalGetTime();
+	static timespec internalGetTimeDelta();
+
 	static int internalGetNamedInterval(const std::string& name);
 	static bool internalOnlyEvery(const std::string& name, int limit, int interval);
 	static bool internalOnlyEveryAfter(const std::string& name, int min, int interval);
 	static CountInfo internalGetNamedCount(const std::string& name);
 
+	static void internalIncrement(int amt);
+
 	LoopNumber() {}
 public:
 	static int get();
 	static int getMain();
+
+	static timespec getTime();
+	static timespec getMainTime();
+
+	static timespec getTimeDelta();
+	static timespec getMainTimeDelta();
 
 	static void increment(int amt=1);
 	static void incrementMain(int amt=1);
