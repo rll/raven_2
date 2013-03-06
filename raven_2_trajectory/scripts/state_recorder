@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest('raven_2_trajectory')
+import rospy
+
+import sys
+import os, subprocess, signal
+from argparse import ArgumentParser
+import time
+
+def run(*args,**kwargs):
+	proc = subprocess.Popen(*args,**kwargs)
+	try:
+		proc.communicate();
+	except KeyboardInterrupt:
+		proc.send_signal(signal.SIGINT);
+		proc.wait();
+	return proc.returncode
+
+def main():
+	#rospy.init_node("raven_2_trajectory_recorder",anonymous=True)
+	
+	
+	parser = ArgumentParser()
+	
+	parser.add_argument('prefix',nargs='?')
+	
+	dir_group = parser.add_mutually_exclusive_group()
+	dir_group.add_argument('-d','--dir',help='Directory to save to')
+	dir_group.add_argument('-p','--save-in-package',help='Save to raven_2_trajectory/trajectories', \
+						action='store_const',dest='dir',const=roslib.packages.get_pkg_subdir('raven_2_trajectory','trajectories'))
+	
+	parser.add_argument('--tf',action='store_true',default=False,help='Record tf')
+	
+	type_group = parser.add_mutually_exclusive_group()
+	type_group.add_argument('-a','--array',action='store_true',default=False,help='Record array state')
+	type_group.add_argument('--fast','--1000',action='store_true',default=False,help='Record 1000Hz state')
+	
+	parser.add_argument('-c','--command',action='store_true',default=False,help='Record command')
+	
+	a = rospy.myargv()
+	del a[0]
+	
+	args = parser.parse_args(a)
+	
+	if args.dir:
+		if not os.path.exists(args.dir):
+			os.mkdir(args.dir)
+		os.chdir(args.dir)
+	
+	now_str = time.strftime('%Y-%m-%d-T%H-%M-%S')
+	
+	filename_base = now_str
+	if args.prefix:
+		filename_base = args.prefix + '_' + filename_base
+	
+	filename = filename_base + '.bag'
+	
+	bag_cmd = ['rosbag','record']
+	
+	bag_cmd += ['-O',filename]
+	
+	if args.tf:
+		bag_cmd.append('/tf')
+	
+	if args.command:
+		bag_cmd.append('raven_command')
+	
+	if args.array:
+		bag_cmd.append('raven_state/array')
+	elif args.fast:
+		bag_cmd.append('raven_state/1000Hz')
+	else:
+		bag_cmd.append('raven_state')
+	
+	ret = run(bag_cmd)
+	
+	if ret == 0:
+		bag_compress_cmd = ['rosbag','compress',filename]
+		bag_compress_cmd.append('-q')
+		
+		print 'Compressing...'
+		ret = run(bag_compress_cmd)
+		
+		if ret == 0:
+			orig_filename = filename_base + '.orig.bag'
+			bag_remove_cmd = ['rm',orig_filename]
+			if os.path.exists(orig_filename):
+				ret = run(bag_remove_cmd)
+
+if __name__ == '__main__':
+	main()
