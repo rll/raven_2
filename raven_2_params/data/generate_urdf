@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 DEFAULT_FILENAME = 'ravenII_source.urdf'
 
-if __name__ == '__main__':
+def main():
     parser = optparse.OptionParser()
     parser.add_option('--both-bases',action='store_true',default=False,help='Put both bases in the single arm URDFs')
     
@@ -20,7 +20,11 @@ if __name__ == '__main__':
     else:
         mydir = os.path.dirname(sys.argv[0]) + '/'
         filename = mydir + DEFAULT_FILENAME
-        print 'Generating URDF from %s' % DEFAULT_FILENAME
+    
+    if abs(os.path.getmtime(filename) - os.path.getmtime(mydir + 'ravenII_both_arm.urdf')) < .1:
+        return
+    
+    print 'Generating URDF from %s' % os.path.basename(filename)
 
 
     tree = ET.parse(filename)
@@ -44,3 +48,11 @@ if __name__ == '__main__':
     tree.write( mydir + 'ravenII_both_arm.urdf')
     treeL.write(mydir + 'ravenII_gold_arm.urdf')
     treeR.write(mydir + 'ravenII_green_arm.urdf')
+    
+    atime = os.path.getatime(filename)
+    mtime = os.path.getmtime(filename)
+    for f in ['both','gold','green']:
+        os.utime('%sravenII_%s_arm.urdf' %(mydir,f),(atime,mtime))
+
+if __name__ == '__main__':
+    main()
