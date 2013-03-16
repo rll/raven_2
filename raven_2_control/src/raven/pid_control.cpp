@@ -23,6 +23,7 @@
 #include <raven/state/runlevel.h>
 
 #include <iostream>
+#include <fstream>
 using namespace std;
 
 extern struct DOF_type DOF_types[];
@@ -157,85 +158,147 @@ void mpos_PD_control(struct DOF *joint, int reset_I)
     	cerr << "mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;
     	cerr << "jpos " << joint->jpos << " jpos_d " << joint->jpos_d << endl;
     	cerr << "kp " << kp << " kd " << kd << " ki " << ki << endl;
-    	cerr << "DAC hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastDACs[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "Tau hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastTau[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "err hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastErr[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "p term hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastP[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "errVel hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastErrVel[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "d term hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastP[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "errInt hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastErrInt[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "i term hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastP[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "mpos hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastAct[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "mpos_d hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastDes[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "mvel hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastActVel[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "mvel_d hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastDesVel[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "jpos hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastJpos[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "jpos_d hist:" << endl;
-    	for (int i=0;i<HIST_SIZE;i++) {
-    		cerr << lastJposD[joint->type][i] << " ";
-    	}
-    	cerr << endl;
-    	cerr << "tau " << tau_d << " = " << endl;
-    	cerr << "  p " << pTerm << endl;
-    	cerr << " +d " << dTerm << endl;
-    	cerr << " +i " << iTerm << endl;
-    	cerr << "err " << err << " errV " << errVel << " errInt " << errInt[joint->type] << endl;
-    	cerr << "mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;
-    	cerr << "jpos " << joint->jpos << " jpos_d " << joint->jpos_d << endl;
-    	cerr << "kp " << kp << " kd " << kd << " ki " << ki << endl;
     	cerr << "^^^^^^ DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ^^^^^^" << endl;
+
+    	static bool opened = false;
+    	ios_base::openmode mode = fstream::out;
+    	if (opened) {
+    		mode |= fstream::app;
+    	}
+    	std::string filename = "overcurrent.yaml";
+    	std::string path = "/home/biorobotics/.ros/log/" + filename;
+    	//std::string path = filename;
+    	fstream ferr(path.c_str(), mode);
+    	opened = true;
+    	ferr << "---\n";
+    	ferr << "#****** DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ******" << endl;
+    	ferr << "joint: " << jointIndexAndArmName(joint->type) << endl;
+    	ferr << "dac: " << DACVal << endl;
+    	ferr << "max_dac: " << MAX_INST_DAC << endl;
+    	ferr << "loop number: " << LoopNumber::getMain() << endl;
+    	timespec tm = LoopNumber::getMainTime();
+    	double t = ((double)tm.tv_sec) + ((double)tm.tv_nsec) / 1e9;
+    	char t_str[30];
+    	sprintf(t_str,"%.9f",t);
+    	ferr << "time: " << t_str << endl;
+		ferr << "tau: " << endl;
+		ferr << "  val: " << tau_d << endl;
+		ferr << "  p " << pTerm << endl;
+		ferr << "  d " << dTerm << endl;
+		ferr << "  i " << iTerm << endl;
+		ferr << "err: " << endl;
+		ferr << "  p: " << err << endl;
+		ferr << "  d: " << errVel << endl;
+		ferr << "  i: " << errInt[joint->type] << endl;
+		ferr << "mpos:   " << joint->mpos << endl;
+		ferr << "mpos_d: " << joint->mpos_d << endl;
+		ferr << "mvel:   " << joint->mvel << endl;
+		ferr << "mvel_d: " << joint->mvel_d << endl;
+		ferr << "jpos:   " << joint->jpos << endl;
+		ferr << "jpos_d: " << joint->jpos_d << endl;
+		ferr << "gains:" << endl;
+		ferr << "  kp: " << kp << endl;
+		ferr << "  kd: " << kd << endl;
+		ferr << "  ki: " << ki << endl;
+
+
+		ferr << "DAC_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastDACs[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "tau_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastTau[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "err_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastErr[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "p_term_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastP[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "errVel_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastErrVel[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "d_term_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastP[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "errInt_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastErrInt[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "i_term_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastP[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "mpos_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastAct[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "mpos_d_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastDes[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "mvel hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastActVel[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "mvel_d_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastDesVel[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "jpos_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastJpos[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+		ferr << "jpos_d_hist:" << "\t";
+		ferr << "  [";
+		for (int i=0;i<HIST_SIZE;i++) {
+			ferr << lastJposD[joint->type][i] << ", ";
+		}
+		ferr << "]" << endl;
+
+    	ferr << "# tau " << tau_d << " = " << endl;
+    	ferr << "#   p " << pTerm << endl;
+    	ferr << "#  +d " << dTerm << endl;
+    	ferr << "#  +i " << iTerm << endl;
+    	ferr << "# err " << err << " errV " << errVel << " errInt " << errInt[joint->type] << endl;
+    	ferr << "# mpos " << joint->mpos << " mpos_d " << joint->mpos_d << " mvel " << joint->mvel << " mvel_d " << joint->mvel_d << endl;
+    	ferr << "# jpos " << joint->jpos << " jpos_d " << joint->jpos_d << endl;
+    	ferr << "# kp " << kp << " kd " << kd << " ki " << ki << endl;
+
+    	ferr << "#^^^^^^ DAC error on " << jointIndexAndArmName(joint->type) << " DACVal " << DACVal << " over " << MAX_INST_DAC << " with tau " << tau_d << " ^^^^^^" << endl;
+
+    	ferr.close();
     }
 
 }
