@@ -11,7 +11,7 @@ import copy
 import sys,optparse
 
 import tf
-from tfx.canonical_tf import *
+from tfx.canonical import *
 from tfx.tb_angles import tb_angles
 
 pub_cmd = None
@@ -20,7 +20,7 @@ start_time = None
 init_pose_left = None
 init_pose_right = None
 
-left_tool_orientation = canonical_rotation_tb(164.2, 20.4, -9.5)
+left_tool_orientation = rotation_tb(164.2, 20.4, -9.5)
 
 approach_start = 0.06
 approach_end = 0.00
@@ -126,23 +126,23 @@ class Foo:
 	
 	def set_r_pose(self,cmd,t):
 		init_pos = init_pose_right.position
-		#end_pos = canonical_point(-0.088616,-0.02029,-0.11908)
-		end_pos = canonical_point(-0.088616,-0.02029,-0.1408)
+		#end_pos = point(-0.088616,-0.02029,-0.11908)
+		end_pos = point(-0.088616,-0.02029,-0.1408)
 		
 		right_tool_pose = Pose()
 		#right_tool_pose.position = Point(-0.088616,-0.02029,-0.11908)
-		pt = canonical_point((end_pos - init_pos)*t + init_pos,copy=True)
+		pt = point((end_pos - init_pos)*t + init_pos,copy=True)
 		right_tool_pose.position = pt.msg.Point()
 		right_tool_pose.orientation = Quaternion(-0.0755253242185,0.119749733944,-0.0597663058206,0.988121407172)
 		
 		add_arm_cmd(cmd,'R',right_tool_pose)
 	
 	def initial_l_pose(self,cmd,t):
-		r_pose = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+		r_pose = transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 		
 		end_pos1 = init_pose_left.position
 		end_pos1.x = r_pose.position.x + approach_start
-		end_pos2 = canonical_point(end_pos1,copy=True)
+		end_pos2 = point(end_pos1,copy=True)
 		end_pos2.y = r_pose.position.y
 		end_pos2.z = r_pose.position.z - circle_radius
 		
@@ -159,7 +159,7 @@ class Foo:
 			start_pt = end_pos1
 			end_pt = end_pos2
 			t = (t-change_over)/(1-change_over)
-		pt = canonical_point((end_pt - start_pt)*t + start_pt,copy=True)
+		pt = point((end_pt - start_pt)*t + start_pt,copy=True)
 		init_pose.position = pt.msg.Point()
 		
 		
@@ -196,7 +196,7 @@ class Foo:
 		cmd.arms.append(arm_cmd)
 	
 	def approach(self,cmd,t):
-		r_pose = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+		r_pose = transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 		
 		pose = Pose()
 		pose.orientation = left_tool_orientation.msg.Quaternion()
@@ -209,7 +209,7 @@ class Foo:
 		add_arm_cmd(cmd,'L',pose)
 	
 	def circle(self,cmd,t):
-		r_pose = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+		r_pose = transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 		
 		pose = Pose()
 		pose.orientation = left_tool_orientation.msg.Quaternion()
@@ -220,12 +220,12 @@ class Foo:
 		pose.position.y = r_pose.position.y - circle_radius * sin(circle_around * t)
 		pose.position.z = r_pose.position.z - circle_radius * cos(circle_around * t)
 		
-		self.circle_end_pose = canonical_tf(pose)
+		self.circle_end_pose = transform(pose)
 		
 		add_arm_cmd(cmd,'L',pose)
 	
 	def retract(self,cmd,t):
-		r_pose = init_pose_right #canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+		r_pose = init_pose_right #transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 		
 		pose = Pose()
 		pose.orientation = left_tool_orientation.msg.Quaternion()
@@ -251,8 +251,8 @@ if __name__ == '__main__':
 	tf_listener.waitForTransform('/0_link','/tool_R',rospy.Time(0),rospy.Duration(5))
 	rospy.loginfo('got it')
 	
-	init_pose_left = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
-	init_pose_right = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+	init_pose_left = transform(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
+	init_pose_right = transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 	
 	pub_cmd = rospy.Publisher('/raven_command', RavenCommand)
 	

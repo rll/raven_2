@@ -19,37 +19,42 @@ def run(*args,**kwargs):
 	return proc.returncode
 
 def main():
-	#rospy.init_node("raven_2_trajectory_recorder",anonymous=True)
-	
-	
 	parser = ArgumentParser()
 	
 	parser.add_argument('prefix',nargs='?')
 	
-	dir_group = parser.add_mutually_exclusive_group()
-	dir_group.add_argument('-d','--dir',help='Directory to save to')
-	dir_group.add_argument('-p','--save-in-package',help='Save to raven_2_trajectory/trajectories', \
-						action='store_const',dest='dir',const=roslib.packages.get_pkg_subdir('raven_2_trajectory','trajectories'))
+	parser.add_argument('--node',action='store_true',default=False,help='Run as ROS node')
+	
+	parser.add_argument('-d','--dir',help='Subdirectory to save to')
+	parser.add_argument('-p','--save-in-package',help='Save to raven_2_trajectory/trajectories', \
+						action='store_true',default=False)
 	
 	parser.add_argument('--tf',action='store_true',default=False,help='Record tf')
 	
+	parser.add_argument('-a','--array',action='store_true',default=False,help='Record array state')
+	
 	type_group = parser.add_mutually_exclusive_group()
-	type_group.add_argument('-a','--array',action='store_true',default=False,help='Record array state')
-	type_group.add_argument('--fast','--1000',action='store_true',default=False,help='Record 1000Hz state')
+	type_group.add_argument('--fast','--1000',action='store_true',default=False,help='Additionally record 1000Hz state')
+	type_group.add_argument('--fast-only',action='store_true',default=False,help='Record only 1000Hz state')
 	
 	parser.add_argument('-c','--command',action='store_true',default=False,help='Record command')
 	
-	a = rospy.myargv()
-	del a[0]
+	args = parser.parse_args(rospy.myargv()[1:])
 	
-	args = parser.parse_args(a)
+	if args.node:
+		rospy.init_node("state_recorder")
 	
-	if args.dir:
-		if not os.path.exists(args.dir):
-			os.mkdir(args.dir)
-		os.chdir(args.dir)
+	if args.dir or args.save_in_package:
+		dir = '.'
+		if args.save_in_package:
+			dir = roslib.packages.get_pkg_subdir('raven_2_trajectory','trajectories')
+		if args.dir:
+			dir = os.path.join(dir,args.dir)
+		if not os.path.exists(dir):
+			os.mkdir(dir)
+		os.chdir(dir)
 	
-	now_str = time.strftime('%Y-%m-%d-T%H-%M-%S')
+	now_str = time.strftime('%Y-%m-%d-%H-%M-%S')
 	
 	filename_base = now_str
 	if args.prefix:
@@ -67,12 +72,16 @@ def main():
 	if args.command:
 		bag_cmd.append('raven_command')
 	
-	if args.array:
-		bag_cmd.append('raven_state/array')
-	elif args.fast:
+	if args.fast_only:
 		bag_cmd.append('raven_state/1000Hz')
 	else:
-		bag_cmd.append('raven_state')
+		if args.array:
+			bag_cmd.append('raven_state/array')
+		else:
+			bag_cmd.append('raven_state')
+		if args.fast:
+			bag_cmd.append('raven_state/1000Hz')
+	
 	
 	ret = run(bag_cmd)
 	

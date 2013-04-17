@@ -11,7 +11,7 @@ import copy
 import sys,argparse, os.path
 
 import tf
-from tfx.canonical_tf import *
+from tfx.canonical import *
 from tfx.tb_angles import tb_angles
 
 pub_cmd = None
@@ -20,7 +20,7 @@ start_time = None
 init_pose_left = None
 init_pose_right = None
 
-tool_orientation = canonical_rotation_tb(0, 90, 0)
+tool_orientation = rotation_tb(0, 90, 0)
 
 approach_start = 0.06
 approach_end = 0.00
@@ -122,12 +122,12 @@ def add_arm_cmd(cmd,arm_name,tool_pose,pose_option=ToolCommand.POSE_ABSOLUTE,gra
 
 class Foo:
 	def __init__(self,height,center,radius):
-		#self.init_pos = canonical_point(-0.108616,-0.02029,-0.1408) #canonical_point(-0.088616,-0.02029,-0.11908)
-		#self.init_pos = canonical_point(-0.148616,-0.02029,-0.1408)
-		self.init_pos = canonical_point(center[0],center[1],-0.1408)
+		#self.init_pos = point(-0.108616,-0.02029,-0.1408) #point(-0.088616,-0.02029,-0.11908)
+		#self.init_pos = point(-0.148616,-0.02029,-0.1408)
+		self.init_pos = point(center[0],center[1],-0.1408)
 		self.height = height
 		self.radius = radius
-		self.center = canonical_point(center[0],center[1],height)
+		self.center = point(center[0],center[1],height)
 		
 		self.first_pos = self.center + [self.radius*cos(0),self.radius*sin(0),0]
 	
@@ -136,7 +136,7 @@ class Foo:
 		end_pos = end_pos
 		
 		right_tool_pose = Pose()
-		pt = canonical_point((end_pos - init_pos)*t + init_pos,copy=True)
+		pt = point((end_pos - init_pos)*t + init_pos,copy=True)
 		right_tool_pose.position = pt.msg.Point()
 		right_tool_pose.orientation = orientation.msg.Quaternion()
 		
@@ -144,11 +144,11 @@ class Foo:
 	
 	def goto_init_pose(self,cmd,t):
 		init_pos = init_pose_right.position
-		#end_pos = canonical_point(-0.088616,-0.02029,-0.11908)
+		#end_pos = point(-0.088616,-0.02029,-0.11908)
 		end_pos = self.init_pos
 		
 		right_tool_pose = Pose()
-		pt = canonical_point((end_pos - init_pos)*t + init_pos,copy=True)
+		pt = point((end_pos - init_pos)*t + init_pos,copy=True)
 		right_tool_pose.position = pt.msg.Point()
 		right_tool_pose.orientation = tool_orientation.slerp(init_pose_right.orientation,t).msg.Quaternion()
 		
@@ -176,7 +176,7 @@ class Foo:
 		end_pos = self.first_pos
 		
 		right_tool_pose = Pose()
-		pt = canonical_point((end_pos - init_pos)*t + init_pos,copy=True)
+		pt = point((end_pos - init_pos)*t + init_pos,copy=True)
 		right_tool_pose.position = pt.msg.Point()
 		right_tool_pose.orientation = tool_orientation.msg.Quaternion()
 		
@@ -184,7 +184,7 @@ class Foo:
 	
 	def circle(self,cmd,t):
 		right_tool_pose = Pose()
-		#pt = canonical_point(self.center,copy=True)
+		#pt = point(self.center,copy=True)
 		#pt.x += self.radius*cos(2.*pi*t)
 		#pt.y += self.radius*sin(2.*pi*t)
 		pt = self.center + [self.radius*cos(3*2.*pi*t),self.radius*sin(3*2.*pi*t),0]
@@ -206,17 +206,15 @@ if __name__ == '__main__':
 	parser.add_argument('-c','--center',type=float,nargs=2,default=(-0.148616,-0.02029))
 	parser.add_argument('-r','--radius',type=float,default=0.05)
 	
-	a = rospy.myargv()
-	del a[0]
-	args = parser.parse_args(a)
+	args = parser.parse_args(rospy.myargv()[1:])
 	
 	tf_listener = tf.TransformListener()
 	rospy.loginfo('waiting for transform')
 	tf_listener.waitForTransform('/0_link','/tool_R',rospy.Time(0),rospy.Duration(5))
 	rospy.loginfo('got it')
 	
-	#init_pose_left = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
-	init_pose_right = canonical_tf(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
+	#init_pose_left = transform(tf_listener.lookupTransform('/0_link','/tool_L',rospy.Time(0)))
+	init_pose_right = transform(tf_listener.lookupTransform('/0_link','/tool_R',rospy.Time(0)))
 	print init_pose_right
 	
 	pub_cmd = rospy.Publisher('/raven_command', RavenCommand)

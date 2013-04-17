@@ -6,11 +6,11 @@ roslib.load_manifest('tfx')
 import rospy
 
 from raven_2_msgs.msg import *
-from tfx.canonical_tf import *
+from tfx.canonical import *
 
 import optparse
 from collections import defaultdict
-import os
+import os, math
 
 
 #Runlevel: PEDAL_UP
@@ -165,8 +165,9 @@ class StatePrinter(object):
 #		self.output = add_line('Timestamp:  {stamp:f} [{loop_number:d}]')
 #		self.output = add_line('Master:     {master}')
 #		self.output = add_line('Controller: {controller}')
-		self.add_line('Runlevel:   {runlevel:10.10s}')
 		self.add_line('Timestamp:  {stamp:f} [{loop_number:d}]')
+		self.add_line('Frame:      {frame_id:s}')
+		self.add_line('Runlevel:   {runlevel:10.10s}')
 		self.add_line('Master:     {_master}')
 		self.add_line('Controller: {controller}')
 					
@@ -184,7 +185,7 @@ class StatePrinter(object):
 			self.output = add_line('\n****Arm {arm_name} [{arm_type}]****')
 			
 			#  geometry_msgs/Pose base_pose
-			base_pose = canonical_tf(arm.base_pose)
+			base_pose = transform(arm.base_pose)
 			self.fields['base_pose'] = base_pose
 			
 			#  uint8 tool_type
@@ -193,22 +194,29 @@ class StatePrinter(object):
 			#  raven_2_msgs/ToolState tool
 			#    geometry_msgs/Pose pose
 			#    float32 grasp
-			tool_pose = canonical_tf(arm.tool.pose)
+			tool_pose = transform(arm.tool.pose)
 			self.fields['tool_pose'] = tool_pose
 			self.fields['grasp'] = arm.tool.grasp
+			
+			tool_pose_desired = transform(arm.tool_set_point.pose)
+			self.fields['tool_pose_desired'] = tool_pose_desired
+			self.fields['grasp_desired'] = arm.tool_set_point.grasp
 			
 #			self.output = add_line('Pose: ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})')
 #			self.output = add_line('      {tool_pose.tb_angles}')
 #			self.output = add_line('Grasp: {grasp:.3f}')
 			self.add_line('','tool_pose','grasp')
-			self.add_line('Pose: ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})','tool_pose')
-			self.add_line('      {tool_pose.tb_angles}','tool_pose')
-			self.add_line('Grasp: {grasp:.3f}','grasp')
+			self.add_line('Pose:         ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})','tool_pose')
+			self.add_line('              {tool_pose.tb_angles}','tool_pose')
+			self.add_line('Pose command: ({tool_pose_desired.position.x:.3f}, {tool_pose_desired.position.y:.3f}, {tool_pose_desired.position.z:.3f})','tool_pose_desired')
+			self.add_line('              {tool_pose_desired.tb_angles}','tool_pose_desired')
+			self.add_line('Grasp:         {grasp:.3f}','grasp')
+			self.add_line('Grasp command: {grasp:.3f}','grasp_desired')
 			
 			#  raven_2_msgs/ToolSetPoint tool_set_point
 			#    geometry_msgs/Pose pose
 			#    float32 grasp
-			tool_pose_desired = canonical_tf(arm.tool_set_point.pose)
+			tool_pose_desired = transform(arm.tool_set_point.pose)
 			self.fields['tool_pose_desired'] = tool_pose_desired
 			self.fields['grasp_desired'] = arm.tool_set_point.grasp
 			
@@ -235,15 +243,19 @@ class StatePrinter(object):
 			
 			#  raven_2_msgs/JointState[] joints
 			for joint in arm.joints:
+				conv = self.conv
+				if joint.type == Constants.JOINT_TYPE_INSERTION:
+					conv = 100.
+				
 				#    uint16 type
 				self.fields['joint_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
 				#    int16 state
 				self.fields['joint_states'].append(JointState.STATE_STRINGS.split(',')[joint.state])
 				
 				#    float32 position
-				self.fields['joint_positions'].append(joint.position * self.conv)
+				self.fields['joint_positions'].append(joint.position * conv)
 				#    float32 velocity
-				self.fields['joint_velocities'].append(joint.velocity * self.conv)
+				self.fields['joint_velocities'].append(joint.velocity * conv)
 				
 				
 				#    raven_2_msgs/JointCommand command
@@ -253,20 +265,20 @@ class StatePrinter(object):
 				if joint.command.command_type == JointCommand.COMMAND_TYPE_TORQUE:
 					self.fields['joint_command_values'].append(joint.command.value)
 				else:
-					self.fields['joint_command_values'].append(joint.command.value * self.conv)
+					self.fields['joint_command_values'].append(joint.command.value * conv)
 				#    raven_2_msgs/DOFSetPoint set_point
 				#      float32 position
 				#      float32 velocity
-				self.fields['joint_set_point_positions'].append(joint.set_point.position * self.conv)
-				self.fields['joint_set_point_velocities'].append(joint.set_point.velocity * self.conv)
+				self.fields['joint_set_point_positions'].append(joint.set_point.position * conv)
+				self.fields['joint_set_point_velocities'].append(joint.set_point.velocity * conv)
 				
 				if joint.type not in (Constants.JOINT_TYPE_GRASP,Constants.JOINT_TYPE_YAW):
 					self.fields['motor_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
 					
 					#    float32 motor_position
-					self.fields['motor_positions'].append(joint.motor_position * self.conv)
+					self.fields['motor_positions'].append(joint.motor_position * conv)
 					#    float32 motor_velocity
-					self.fields['motor_velocities'].append(joint.motor_velocity * self.conv)
+					self.fields['motor_velocities'].append(joint.motor_velocity * conv)
 					#    float32 torque
 					self.fields['motor_torques'].append(joint.torque)
 					
@@ -276,8 +288,8 @@ class StatePrinter(object):
 					#    raven_2_msgs/DOFSetPoint set_point
 					#      float32 motor_position
 					#      float32 motor_velocity
-					self.fields['motor_set_point_positions'].append(joint.set_point.motor_position * self.conv)
-					self.fields['motor_set_point_velocities'].append(joint.set_point.motor_velocity * self.conv)
+					self.fields['motor_set_point_positions'].append(joint.set_point.motor_position * conv)
+					self.fields['motor_set_point_velocities'].append(joint.set_point.motor_velocity * conv)
 					
 					#    int32 encoder_value
 					self.fields['motor_enc_vals'].append(joint.encoder_value)
