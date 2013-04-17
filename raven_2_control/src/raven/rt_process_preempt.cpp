@@ -38,6 +38,7 @@
 
 #include <raven/state/runlevel.h>
 #include <raven/util/timing.h>
+#include <raven/util/config.h>
 
 #include <raven/state/initializer.h>
 
@@ -425,7 +426,7 @@ int init_module(void)
     return 0;
 }
 
-int init_ros(int argc, char **argv)
+int init_ros(int& argc, char**& argv)
 {
     /**
     * Initialize ros and rosrt
@@ -443,24 +444,7 @@ int init_ros(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	omni_to_ros = false;
-	if (argc > 1) {
-		if (strcmp(argv[1],"gold")==0) {
-			printf("**** GOLD ARM ONLY ****\n");
-			disable_arm_id[GREEN_ARM_ID] = true;
-		} else if (strcmp(argv[1],"green")==0) {
-			printf("**** GREEN ARM ONLY ****\n");
-			disable_arm_id[GOLD_ARM_ID] = true;
-		} else if (strcmp(argv[1],"both")==0) {
-			printf("**** BOTH ARMS ****\n");
-			disable_arm_id[GOLD_ARM_ID] = false;
-			disable_arm_id[GREEN_ARM_ID] = false;
-		}
-		if (strcmp(argv[1],"--omni-to-ros")==0 || (argc > 2 && strcmp(argv[2],"--omni-to-ros")==0)) {
-			printf("Omni to ros\n");
-			omni_to_ros = true;
-		}
-	}
+
     //signal( SIGINT,&sigTrap);                // catch ^C for graceful close.  Unused under ROS
     ioperm(PORT,1,1);                        // set parallelport permissions
     if ( init_module() )
@@ -478,6 +462,34 @@ int main(int argc, char **argv)
         cerr << "ERROR! Failed to init memory_pool.  Exiting.\n";
         exit(1);
     }
+
+    rosx::Parser parser;
+	parser.addGroup(Config::Options);
+	parser.addArg<string>("arm");
+	parser.read(argc, argv);
+
+	omni_to_ros = false;
+	if (parser.hasArg("arm")) {
+
+		std::string arm = parser.getArg<std::string>("arm");
+		if (arm == "gold") {
+			printf("**** GOLD ARM ONLY ****\n");
+			disable_arm_id[GREEN_ARM_ID] = true;
+		} else if (arm == "green") {
+			printf("**** GREEN ARM ONLY ****\n");
+			disable_arm_id[GOLD_ARM_ID] = true;
+		} else if (arm == "both") {
+			printf("**** BOTH ARMS ****\n");
+			disable_arm_id[GOLD_ARM_ID] = false;
+			disable_arm_id[GREEN_ARM_ID] = false;
+		}
+		/*
+		if (strcmp(argv[1],"--omni-to-ros")==0 || (argc > 2 && strcmp(argv[2],"--omni-to-ros")==0)) {
+			printf("Omni to ros\n");
+			omni_to_ros = true;
+		}
+		*/
+	}
 
     pthread_create(&net_thread, NULL, network_process, NULL); //Start the network thread
 //    pthread_create(&fiforcv_thread, NULL, data_fifo_rcv_process, NULL); //Start the    thread

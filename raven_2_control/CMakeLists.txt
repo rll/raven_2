@@ -63,7 +63,10 @@ rosbuild_add_boost_directories()
 rosbuild_add_library(r2_utils
 src/raven/log.cpp
 src/raven/util/timing.cpp
+src/raven/util/config.cpp
 )
+
+rosbuild_link_boost(r2_utils program_options)
 
 rosbuild_add_library(r2_state 
 src/raven/state/runlevel.cpp
