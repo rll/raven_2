@@ -35,9 +35,11 @@
 #include <trajectory_msgs/JointTrajectory.h>
 
 #include <raven_2_msgs/Constants.h>
-#include <raven_2_msgs/RavenCommand.h>
 #include <raven_2_msgs/RavenState.h>
 #include <raven_2_msgs/RavenArrayState.h>
+#include <raven_2_msgs/Raven1000HzStateArray.h>
+
+#include <raven_2_msgs/RavenCommand.h>
 #include <raven_2_msgs/RavenTrajectoryCommand.h>
 
 #include <visualization_msgs/Marker.h>
@@ -70,6 +72,7 @@ using namespace raven_2_control;
 // Global publisher for raven data
 ros::Publisher pub_raven_state;
 ros::Publisher pub_raven_array_state;
+ros::Publisher pub_raven_1000hz_state;
 ros::Publisher joint_publisher;
 
 ros::Publisher pub_raven_state_test;
@@ -86,7 +89,11 @@ ros::Publisher pub_master_pose_raw[2];
 
 ros::Publisher vis_pub1;
 ros::Publisher vis_pub2;
+
+//#define PUBLISH_OLD_STATE
+#ifdef PUBLISH_OLD_STATE
 ros::Publisher pub_ravenstate_old;
+#endif
 
 ros::Subscriber cmd_sub;
 ros::Subscriber cmd_traj_sub;
@@ -108,6 +115,7 @@ void publish_marker(struct robot_device*);
 
 #define RAVEN_STATE_TOPIC "raven_state"
 #define RAVEN_ARRAY_STATE_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"array")
+#define RAVEN_1000HZ_STATE_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"1000Hz")
 
 #define RAVEN_STATE_TEST_TOPIC APPEND_TOPIC(RAVEN_STATE_TOPIC,"test")
 #define RAVEN_STATE_TEST_DIFF_TOPIC APPEND_TOPIC(RAVEN_STATE_TEST_TOPIC,"diff")
@@ -207,6 +215,19 @@ std::string rosJointName(int jointType) {
 	}
 }
 
+
+void getRosArmType(const u_16& type, uint8_t& ros) {
+	switch (type) {
+	case GOLD_ARM:
+		ros = raven_2_msgs::Constants::ARM_TYPE_GOLD;
+		return;
+	case GREEN_ARM:
+		ros = raven_2_msgs::Constants::ARM_TYPE_GREEN;
+		return;
+	}
+	ROS_ERROR_STREAM("Unknown mech type"<<type);
+}
+
 std::string rosArmName(int armId) {
 	switch(armId) {
 	case GOLD_ARM_ID: return "L";
@@ -259,7 +280,7 @@ void cmd_grasp_callback(const std_msgs::Float32& grasp,int armId) {
 	arm_cmd.active = true;
 	arm_cmd.tool_command.pose_option = raven_2_msgs::ToolCommand::POSE_OFF;
 
-	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_SET;
+	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_SET_NORMALIZED;
 
 	arm_cmd.tool_command.grasp = grasp.data;
 	cmd.arm_names.push_back(armNameFromId(armId));
@@ -447,19 +468,25 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 			}
 		}
 
-		const int graspmax = (M_PI/2 * 1000);
-		const int graspmin = (-20.0 * 1000.0 DEG2RAD);
-		if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_SET) {
-			if (arm_serial == GOLD_ARM_SERIAL) {
-				params.rd[mech_ind].grasp = saturate(1000*armCmd.tool_command.grasp,graspmin,graspmax);
+		const int graspmax = (1000. * TOOL_GRASP_COMMAND_MAX);
+		const int graspmin = (1000. * TOOL_GRASP_COMMAND_MIN);
+		if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_SET_NORMALIZED) {
+			int grasp;
+			if (armCmd.tool_command.grasp >= 0) {
+				grasp = armCmd.tool_command.grasp * graspmax;
 			} else {
-				params.rd[mech_ind].grasp = saturate(-1000*armCmd.tool_command.grasp,-graspmax,-graspmin);
+				grasp = armCmd.tool_command.grasp * -graspmin;
+			}
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				params.rd[mech_ind].grasp = saturate(grasp,graspmin,graspmax);
+			} else {
+				params.rd[mech_ind].grasp = saturate(-grasp,-graspmax,-graspmin);
 			}
 		} else if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_INCREMENT) {
 			if (arm_serial == GOLD_ARM_SERIAL) {
-				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + 1000*armCmd.tool_command.grasp,graspmin,graspmax);
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + 1000.*armCmd.tool_command.grasp,graspmin,graspmax);
 			} else {
-				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - 1000*armCmd.tool_command.grasp,-graspmax,-graspmin);
+				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - 1000.*armCmd.tool_command.grasp,-graspmax,-graspmin);
 			}
 		} else if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_INCREMENT_SIGN) {
 			float grasp_scale_factor = 500 * since_last_call.toSec();
@@ -470,6 +497,18 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp + grasp_scale_factor*armCmd.tool_command.grasp,graspmin,graspmax);
 			} else {
 				params.rd[mech_ind].grasp = saturate(params.rd[mech_ind].grasp - grasp_scale_factor*armCmd.tool_command.grasp,-graspmax,-graspmin);
+			}
+		} else if (armCmd.tool_command.grasp_option == raven_2_msgs::ToolCommand::GRASP_SET_ANGLE) {
+			int grasp;
+			if (armCmd.tool_command.grasp >= 0) {
+				grasp = 1000. * armCmd.tool_command.grasp;
+			} else {
+				grasp = armCmd.tool_command.grasp * -graspmin;
+			}
+			if (arm_serial == GOLD_ARM_SERIAL) {
+				params.rd[mech_ind].grasp = saturate(grasp,graspmin,graspmax);
+			} else {
+				params.rd[mech_ind].grasp = saturate(-grasp,-graspmax,-graspmin);
 			}
 		}
 
@@ -730,8 +769,10 @@ void cmd_trajectory_callback(const raven_2_msgs::RavenTrajectoryCommand& traj_ms
 
 	setTrajectory(traj);
 }
-
+#ifdef PUBLISH_OLD_STATE
 void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 sublevel,ros::Duration since_last_pub);
+#endif
+
 raven_2_msgs::RavenState publish_new_device();
 
 void publish_ros(struct robot_device *device0,param_pass currParams) {
@@ -740,20 +781,113 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	Device::current(dev);
 	OldControlInputPtr input = ControlInput::getOldControlInput();
 #endif
+	mechanism* _mech=NULL;
+	DOF* _joint=NULL;
+	int mechnum, jnum;
 
 	u_08 runlevel;
 	u_08 sublevel;
-	RunLevel currRunlevel = RunLevel::get();
-	currRunlevel.getNumbers<u_08>(runlevel,sublevel);
-	static bool hasHomed = false;
-	static raven_2_msgs::RavenState raven_state;
-	raven_state.arms.clear();
+	RunLevel rl = RunLevel::get();
+	rl.getNumbers<u_08>(runlevel,sublevel);
 
-	if (
-			RunLevel::isInitialized()
-			) {
+	static bool hasHomed = false;
+	if (RunLevel::isInitialized()) {
 		hasHomed = true;
 	}
+
+	timespec t = LoopNumber::getMainTime();
+	static std_msgs::Header header;
+	header.seq = LoopNumber::getMain();
+#ifdef USE_NEW_DEVICE
+	header.stamp = dev->timestamp();
+#else
+	//header.stamp = ros::Time::now();
+	header.stamp.sec = t.tv_sec;
+	header.stamp.nsec = t.tv_nsec;
+#endif
+	header.frame_id = "/0_link";
+
+
+	static raven_2_msgs::Raven1000HzStateArray fast_states;
+	static bool fast_states_inited = false;
+	if (!fast_states_inited) {
+		fast_states.arm_info.clear();
+		_mech=NULL;
+		while (loop_over_mechs(device0,_mech,mechnum)) {
+			raven_2_msgs::Raven1000HzArmInfo arm_info;
+			arm_info.name = armNameFromMechType(_mech->type);
+			getRosArmType(_mech->type,arm_info.type);
+			_joint=NULL;
+			while (loop_over_joints(_mech,_joint,jnum)) {
+				uint16_t ros_joint_type;
+				int joint_type = jointTypeFromCombinedType(_joint->type);
+				switch (joint_type) {
+				case SHOULDER: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_SHOULDER; break;
+				case ELBOW: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_ELBOW; break;
+				case Z_INS: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_INSERTION; break;
+				case TOOL_ROT: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_ROTATION; break;
+				case WRIST: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_PITCH; break;
+				case GRASP1: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_GRASP_FINGER1; break;
+				case GRASP2: ros_joint_type = raven_2_msgs::Constants::JOINT_TYPE_GRASP_FINGER2; break;
+				case NO_CONNECTION: continue;
+				}
+				arm_info.joint_types.push_back(ros_joint_type);
+			}
+			fast_states.arm_info.push_back(arm_info);
+		}
+	}
+
+	static raven_2_msgs::Raven1000HzState fast_state;
+	fast_state.arms.clear();
+	fast_state.header = header;
+
+	rl.getNumbers<uint8_t>(fast_state.runlevel,fast_state.sublevel);
+	fast_state.pedal_down = RunLevel::getPedal();
+
+	_mech=NULL;
+	while (loop_over_mechs(device0,_mech,mechnum)) {
+		raven_2_msgs::Raven1000HzArmState arm_state;
+
+		_joint=NULL;
+		while (loop_over_joints(_mech,_joint,jnum)) {
+			int16_t joint_state;
+			switch (_joint->state) {
+			case jstate_not_ready: joint_state = raven_2_msgs::JointState::STATE_NOT_READY; break;
+			case jstate_pos_unknown: joint_state = raven_2_msgs::JointState::STATE_POS_UNKNOWN; break;
+			case jstate_homing1: joint_state = raven_2_msgs::JointState::STATE_HOMING1; break;
+			case jstate_homing2: joint_state = raven_2_msgs::JointState::STATE_HOMING2; break;
+			case jstate_ready: joint_state = raven_2_msgs::JointState::STATE_READY; break;
+			case jstate_wait: joint_state = raven_2_msgs::JointState::STATE_WAIT; break;
+			case jstate_hard_stop: joint_state = raven_2_msgs::JointState::STATE_HARD_STOP; break;
+			default: joint_state = raven_2_msgs::JointState::STATE_LAST_TYPE; break;
+			}
+			arm_state.joint_states.push_back(joint_state);
+
+			arm_state.motor_encoder_values.push_back(_joint->enc_val);
+			arm_state.motor_encoder_offsets.push_back(_joint->enc_offset);
+
+			arm_state.motor_positions.push_back(_joint->mpos);
+			arm_state.motor_velocities.push_back(_joint->mvel);
+
+			arm_state.joint_positions.push_back(_joint->jpos);
+			arm_state.joint_velocities.push_back(_joint->jvel);
+
+			arm_state.torques.push_back(_joint->tau_d);
+			arm_state.dac_commands.push_back(_joint->current_cmd);
+
+			arm_state.gravity_estimates.push_back(_joint->tau_g);
+			arm_state.integrated_position_errors.push_back(_joint->perror_int);
+
+			arm_state.set_points.motor_positions.push_back(_joint->mpos_d);
+			arm_state.set_points.motor_velocities.push_back(_joint->mvel_d);
+
+			arm_state.set_points.joint_positions.push_back(_joint->jpos_d);
+			arm_state.set_points.joint_velocities.push_back(_joint->jvel_d);
+		}
+		fast_state.arms.push_back(arm_state);
+	}
+
+	fast_states.states.push_back(fast_state);
 
 	static ros::Time last_pub;
 	static ros::Duration interval(0.01);
@@ -767,25 +901,26 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		publish_joints(device0);
 		//publish_marker(device0);
 		if (
-				!currRunlevel.isEstop()
+				!rl.isEstop()
 				) {
 			publish_command_pose(device0);
 		}
 		publish_tool_pose(device0);
 	}
 
-	//publish_ravenstate_old(device0,runlevel,sublevel,since_last_pub);
+#ifdef PUBLISH_OLD_STATE
+	publish_ravenstate_old(device0,runlevel,sublevel,since_last_pub);
+#endif
+
+	//fast state
+	pub_raven_1000hz_state.publish(fast_states);
+	fast_states.states.clear();
 
 	//raven_state
+	static raven_2_msgs::RavenState raven_state;
+	raven_state.arms.clear();
 
-	raven_state.header.seq = LoopNumber::getMain();
-#ifdef USE_NEW_DEVICE
-	raven_state.header.stamp = dev->timestamp();
-#else
-	raven_state.header.stamp = ros::Time::now();
-#endif
-	raven_state.header.frame_id = "/0_link";
-	RunLevel rl = RunLevel::get();
+	raven_state.header = header;
 	rl.getNumbers<uint8_t>(raven_state.runlevel,raven_state.sublevel);
 	raven_state.pedal_down = RunLevel::getPedal();
 
@@ -795,9 +930,8 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 	t_controlmode controlMode = getControlMode();
 	raven_state.controller = (uint8_t) controlMode;
 
-	mechanism* _mech=NULL;
-	DOF* _joint=NULL;
-	int mechnum, jnum;
+	_mech=NULL;
+	_joint=NULL;
 
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		raven_2_msgs::ArmState arm_state;
@@ -805,11 +939,9 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 		btMatrix3x3 transform;
 		switch (_mech->type) {
 		case GOLD_ARM:
-			arm_type = raven_2_msgs::Constants::ARM_TYPE_GOLD;
 			transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
 			break;
 		case GREEN_ARM:
-			arm_type = raven_2_msgs::Constants::ARM_TYPE_GREEN;
 			transform = btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1);
 			break;
 		default:
@@ -817,7 +949,7 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			continue;
 		}
 		arm_state.name = armNameFromMechType(_mech->type);
-		arm_state.type = arm_type;
+		getRosArmType(_mech->type,arm_state.type);
 
 		arm_state.base_pose = toRos(_mech->base_pos,_mech->base_ori,transform);
 
@@ -904,12 +1036,12 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			joint_state.motor_velocity = _joint->mvel;
 
 			joint_state.torque = _joint->tau_d;
-			joint_state.gravitation_torque_estimate = _joint->tau_g;
+			joint_state.gravity_estimate = _joint->tau_g;
 
 			joint_state.integrated_position_error = _joint->perror_int;
 
 			raven_2_msgs::JointCommand joint_cmd;
-			if (currRunlevel.isPedalDown()) {
+			if (rl.isPedalDown()) {
 					joint_cmd = joint_commands[arm_state.name][joint_state.type];
 			} else {
 				joint_commands.clear();
@@ -1010,15 +1142,15 @@ void publish_ros(struct robot_device *device0,param_pass currParams) {
 			array_state.joint_arm_inds.push_back(i);
 			array_state.joint_types.push_back(joint.type);
 			array_state.joint_states.push_back(joint.state);
-			array_state.joint_encoder_values.push_back(joint.encoder_value);
-			array_state.joint_encoder_offsets.push_back(joint.encoder_offset);
-			array_state.joint_dac_commands.push_back(joint.dac_command);
+			array_state.motor_encoder_values.push_back(joint.encoder_value);
+			array_state.motor_encoder_offsets.push_back(joint.encoder_offset);
+			array_state.dac_commands.push_back(joint.dac_command);
 			array_state.joint_positions.push_back(joint.position);
 			array_state.joint_velocities.push_back(joint.velocity);
 			array_state.motor_positions.push_back(joint.motor_position);
 			array_state.motor_velocities.push_back(joint.motor_velocity);
 			array_state.torques.push_back(joint.torque);
-			array_state.gravitation_torque_estimates.push_back(joint.gravitation_torque_estimate);
+			array_state.gravity_estimates.push_back(joint.gravity_estimate);
 			array_state.joint_command_types.push_back(joint.command.command_type);
 			array_state.joint_commands.push_back(joint.command.value);
 			array_state.integrated_position_errors.push_back(joint.integrated_position_error);
@@ -1501,10 +1633,13 @@ void publish_joints(struct robot_device* device0){
 int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 	pub_raven_state = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TOPIC, 1000);
 	pub_raven_array_state = n.advertise<raven_2_msgs::RavenArrayState>(RAVEN_ARRAY_STATE_TOPIC, 1000);
+	pub_raven_1000hz_state = n.advertise<raven_2_msgs::Raven1000HzStateArray>(RAVEN_1000HZ_STATE_TOPIC, 1000);
 	joint_publisher = n.advertise<sensor_msgs::JointState>("joint_states", 1);
 
+#ifdef USE_NEW_DEVICE
 	pub_raven_state_test = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TEST_TOPIC, 1000);
 	pub_raven_state_test_diff = n.advertise<raven_2_msgs::RavenState>(RAVEN_STATE_TEST_DIFF_TOPIC, 1000);
+#endif
 
 	mechanism* _mech = NULL;
 	int mechnum = 0;
@@ -1524,7 +1659,9 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 	vis_pub1 = n.advertise<visualization_msgs::Marker>( "visualization_marker1", 0 );
 	vis_pub2 = n.advertise<visualization_msgs::Marker>( "visualization_marker2", 0 );
 
+#ifdef PUBLISH_OLD_STATE
 	pub_ravenstate_old = n.advertise<raven_state>("ravenstate_old", 1000);
+#endif
 
 	return 0;
 }
@@ -1566,7 +1703,7 @@ void jointCallback(const joint_command::ConstPtr& joint_cmd) {
 	}
 }
 
-
+#ifdef PUBLISH_OLD_STATE
 void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 sublevel,ros::Duration since_last_pub) {
 	static raven_state msg_ravenstate;  // static variables to minimize memory allocation calls
 	msg_ravenstate.dt = since_last_pub;
@@ -1601,6 +1738,7 @@ void publish_ravenstate_old(struct robot_device *device0,u_08 runlevel,u_08 subl
 	// Publish the raven data to ROS
 	pub_ravenstate_old.publish(msg_ravenstate);
 }
+#endif
 
 
 void publish_marker(struct robot_device* device0)

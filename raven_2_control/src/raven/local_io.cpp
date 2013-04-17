@@ -273,8 +273,8 @@ void teleopIntoDS1(struct u_struct *t)
         if (grasp_scale_factor < 1) {
         	grasp_scale_factor = 1;
         }
-        const int graspmax = (M_PI/2 * 1000);
-        const int graspmin = (-20.0 * 1000.0 DEG2RAD);
+        const int graspmax = (TOOL_GRASP_COMMAND_MAX * 1000.);
+		const int graspmin = (TOOL_GRASP_COMMAND_MIN * 1000.);
         if (armserial == GOLD_ARM_SERIAL) {
         	data1.rd[mechnum].grasp = saturate(data1.rd[mechnum].grasp + grasp_scale_factor*t->grasp[teleopArmId],graspmin,graspmax);
         } else {

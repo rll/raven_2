@@ -22,8 +22,8 @@ float32 velocity 		# actual DOF velocity(q-dot)
 float32 motor_position
 float32 motor_velocity
 
-float32 torque          # actual DOF force/torque
-float32 gravitation_torque_estimate	# Estimated gravity force/torque on joint.
+float32 torque           # commanded DOF force/torque
+float32 gravity_estimate # Estimated gravity force/torque on joint.
 
 JointCommand command
 
