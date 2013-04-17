@@ -74,6 +74,7 @@ src/raven/state/dof.cpp
 src/raven/state/arm.cpp
 src/raven/kinematics/kinematics.cpp
 src/raven/state/device.cpp
+src/raven/r2_kinematics.cpp
 )
 target_link_libraries(r2_state r2_utils)
 

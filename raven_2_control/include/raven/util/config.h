@@ -183,10 +183,12 @@ std::vector<T> parseVector(const std::string& str) {
 struct Config : public rosx::ConfigGroup {
 	bool disable_gold_grasp2;
 	bool use_new_cable_coupling;
+	bool use_new_kinematics;
 
 	Config() : rosx::ConfigGroup() {
 		ConfigGroup_flag(disable_gold_grasp2);
 		ConfigGroup_flag(use_new_cable_coupling);
+		ConfigGroup_flag(use_new_kinematics);
 //		ConfigGroup_option(param1,float);
 //		ConfigGroup_option(param2_has_default,std::string,"thedefault");
 //		ConfigGroup_options(param3,"v,param-number-three",int);

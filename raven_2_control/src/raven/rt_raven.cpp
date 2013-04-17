@@ -14,6 +14,7 @@
 #include "defines.h"
 
 #include "init.h"             // for initSurgicalArms()
+#include "r2_kinematics.h"
 #include "inv_kinematics.h"
 #include "inv_cable_coupling.h"
 #include "state_estimate.h"
@@ -26,6 +27,7 @@
 #include "homing.h"
 #include "local_io.h"
 #include "update_device_state.h"
+#include "util/config.h"
 #include <cmath>
 
 #include "shared_modes.h"
@@ -159,7 +161,14 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
 
 
     //Forward kinematics
-    fwdKin(device0, currParams->runlevel);
+    if (RavenConfig.use_new_kinematics) {
+        r2_fwd_kin(device0, currParams->runlevel);
+    } else {
+    	fwdKin(device0, currParams->runlevel);
+    }
+
+    // Gravity compensation calculation
+    //getGravityTorque(*device0);
 
     //log_msg("0 (%d,%d,%d)",device0->mech[0].pos.x,device0->mech[0].pos.y,device0->mech[0].pos.z);
     //log_msg("1 (%d,%d,%d)",device0->mech[1].pos.x,device0->mech[1].pos.y,device0->mech[1].pos.z);
@@ -261,7 +270,11 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
 
 
     //Inverse kinematics
-    invKin(device0, currParams);
+    if (RavenConfig.use_new_kinematics) {
+    	r2_inv_kin(device0, currParams->runlevel);
+    } else {
+    	invKin(device0, currParams);
+    }
 
     static ros::NodeHandle* nh = 0;
     if (!nh) {

@@ -515,6 +515,12 @@ void outputRobotState(){
         cout << endl;
 #endif
 
+        cout<<"tau_g:\t\t";
+        _joint = NULL; jnum=0;
+        while (loop_over_joints(_mech,_joint,jnum))
+        	cout<<fixed<<setprecision(3)<<_joint->tau_g<<"\t";
+        cout << endl;
+
         cout<<"DAC:\t\t";
         _joint = NULL; jnum=0;
         while (loop_over_joints(_mech,_joint,jnum))
