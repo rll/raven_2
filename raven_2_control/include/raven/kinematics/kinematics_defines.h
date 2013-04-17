@@ -23,7 +23,7 @@ const btTransform TOOL_POSE_AXES_TRANSFORM(btMatrix3x3(1,0,0,  0,-1,0,  0,0,-1))
 
 //TODO: these are probably incorrect
 #define SHOULDER_OFFSET_GREEN atan(0.3471/0.9014)//from original URDF
-#define TOOL_ROT_OFFSET_GREEN -M_PI
+#define TOOL_ROT_OFFSET_GREEN -M_PI_2
 #define WRIST_OFFSET_GREEN 0
 
 #define THETA_12 -A12

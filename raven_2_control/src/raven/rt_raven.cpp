@@ -34,6 +34,7 @@
 #include <raven/state/runlevel.h>
 #include <raven/state/device.h>
 #include <raven/control/control_input.h>
+#include <raven/util/config.h>
 
 using namespace std;
 
@@ -129,10 +130,10 @@ int controlRaven(struct device *device0, struct param_pass *currParams){
     //Foward Cable Coupling
     fwdCableCoupling(device0, currParams->runlevel);
 
-    {
+    if (RavenConfig.disable_gold_grasp2) {
     	static bool printed_warning = false;
     	if (!printed_warning) {
-    		log_err("************DISABLING GRASP2***************");
+    		log_err("************DISABLING GOLD GRASP2***************");
     		printed_warning = true;
     	}
     	struct mechanism* _mech = NULL;
@@ -348,10 +349,10 @@ int raven_cartesian_space_command(struct device *device0, struct param_pass *cur
     while (loop_over_joints(device0, _mech, _joint, i,j) )
     {
 
-    	static bool printed_warning = false;
-    	if (_joint->type == GRASP2_GOLD) {
+    	if (RavenConfig.disable_gold_grasp2 && _joint->type == GRASP2_GOLD) {
+    		static bool printed_warning = false;
     		if (!printed_warning) {
-    			log_err("************DISABLING GRASP2***************");
+    			log_err("************DISABLING GOLD GRASP2***************");
     			printed_warning = true;
     		}
     		_joint->mpos_d = _joint->mpos;
@@ -535,13 +536,13 @@ int raven_motor_position_control(struct device *device0, struct param_pass *curr
     // Do PD control on all the joints
     _mech = NULL;  _joint = NULL;
     while (loop_over_joints(device0, _mech, _joint, i,j) ) {
-    	static bool printed_warning = false;
-    	if (_joint->type == GRASP2_GOLD) {
-    		if (!printed_warning) {
-    			log_err("************DISABLING GRASP2***************");
-    			printed_warning = true;
-    		}
-    		_joint->mpos_d = _joint->mpos;
+    	if (RavenConfig.disable_gold_grasp2 && _joint->type == GRASP2_GOLD) {
+			static bool printed_warning = false;
+			if (!printed_warning) {
+				log_err("************DISABLING GOLD GRASP2***************");
+				printed_warning = true;
+			}
+			_joint->mpos_d = _joint->mpos;
     	}
 
     	if (!RunLevel::get().isPedalDown() || disable_arm_id[armIdFromMechType(_mech->type)]) {

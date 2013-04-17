@@ -181,8 +181,10 @@ std::vector<T> parseVector(const std::string& str) {
 } //namespace rosx
 
 struct Config : public rosx::ConfigGroup {
+	bool disable_gold_grasp2;
 
 	Config() : rosx::ConfigGroup() {
+		ConfigGroup_flag(disable_gold_grasp2);
 //		ConfigGroup_option(param1,float);
 //		ConfigGroup_option(param2_has_default,std::string,"thedefault");
 //		ConfigGroup_options(param3,"v,param-number-three",int);

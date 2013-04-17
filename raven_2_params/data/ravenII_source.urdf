@@ -304,7 +304,7 @@
     <axis xyz="0 0 1" />
     <limit effort="1000.0" lower="-3.1415" upper="3.1415" velocity="0.5" />
     <!--origin rpy="0 0 -0.37732519171346124" xyz="0 0 0" /-->
-    <origin rpy="0 0 -1.5707963267948966" xyz="0 0 0" />
+    <origin rpy="0 0 0" xyz="0 0 0" />
     <parent link="link3_R" />
     <child link="instrument_shaft_R" />
   </joint>

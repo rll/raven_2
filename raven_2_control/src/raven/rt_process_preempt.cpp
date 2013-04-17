@@ -35,6 +35,7 @@
 #include "network_layer.h"
 #include "control_process.h"
 #include "saveload.h"
+#include "homing.h"
 
 #include <raven/state/runlevel.h>
 #include <raven/util/timing.h>
@@ -465,6 +466,7 @@ int main(int argc, char **argv)
 
     rosx::Parser parser;
 	parser.addGroup(Config::Options);
+	parser.addGroup(Homing::Config);
 	parser.addArg<string>("arm");
 	parser.read(argc, argv);
 

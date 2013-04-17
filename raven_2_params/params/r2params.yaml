@@ -70,11 +70,11 @@ max_position:
     gold: 0.064
   rotation:
     gold: 160
-    green: 60
+    green: -35
   wrist:
     green: -10
   grasp:
-    gold: 20
+    green: -15
 
 ik_INACTIVE:
   max_diff:

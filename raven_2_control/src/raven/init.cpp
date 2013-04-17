@@ -210,6 +210,10 @@ void initDOFs(struct device *device0)
 		nh.getParam("max_position/grasp/gold",grasp1_max_adj_gold);
 		nh.getParam("max_position/grasp/gold",grasp2_max_adj_gold);
 	}
+	if (nh.hasParam("max_position/grasp/green")) {
+		nh.getParam("max_position/grasp/green",grasp1_max_adj_green);
+		nh.getParam("max_position/grasp/green",grasp2_max_adj_green);
+	}
 	if (nh.hasParam("max_position/grasp1/gold")) {
 		nh.getParam("max_position/grasp1/gold",grasp1_max_adj_gold);
 	}

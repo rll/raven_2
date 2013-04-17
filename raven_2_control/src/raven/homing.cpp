@@ -33,6 +33,8 @@ extern unsigned long int gTime;
 extern struct DOF_type DOF_types[];
 extern unsigned int soft_estopped;
 
+HomingConfig Homing::Config = HomingConfig();
+
 /*
 *  raven_homing()
 *    1- Discover joint position by running to hard stop
@@ -94,14 +96,25 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         }
     }
 
+    static bool printed_stop_at_tool_ready_warning = false;
+
     // Specify motion commands
     _mech = NULL;  _joint = NULL;
     while ( loop_over_joints(device0, _mech, _joint, i,j) )
     {
-        // Initialize tools first.
-        if ( is_toolDOF(_joint) || tools_ready( &(device0->mech[i]) ) )
+    	bool are_tools_ready = tools_ready( &(device0->mech[i]));
+    	if (Homing::Config.homing_stop_at_tool_ready) {
+
+			if (!printed_stop_at_tool_ready_warning) {
+				log_err("HOMING STOPPING AT TOOLS READY");
+				printed_stop_at_tool_ready_warning = true;
+			}
+			are_tools_ready = false;
+    	}
+    	// Initialize tools first.
+        if ( is_toolDOF(_joint) || are_tools_ready )
         {
-            homing(_joint);
+            Homing::homing(_joint);
         }
     }
 
@@ -110,17 +123,16 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
 
     // Do PD control on all joints
     _mech = NULL;  _joint = NULL;
-    while ( loop_over_joints(device0, _mech, _joint, i,j) )
-    {
-    	static bool printed_warning = false;
-		if (_joint->type == GRASP2_GOLD) {
-			if (!printed_warning) {
-				log_err("************DISABLING GRASP2***************");
-				printed_warning = true;
-			}
-			_joint->mpos_d = _joint->mpos;
-		}
-        mpos_PD_control( _joint );
+    while ( loop_over_joints(device0, _mech, _joint, i,j) ) {
+    	if (RavenConfig.disable_gold_grasp2 && _joint->type == GRASP2_GOLD) {
+    		static bool printed_warning = false;
+    		if (!printed_warning) {
+    			log_err("************DISABLING GOLD GRASP2***************");
+    			printed_warning = true;
+    		}
+    		_joint->mpos_d = _joint->mpos;
+    	}
+    	mpos_PD_control( _joint );
     }
 
     // Calculate output DAC values
@@ -133,7 +145,7 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         struct DOF * _joint =  &(_mech->joint[j]);
 
         // Check to see if we've reached the joint limit.
-        if( check_homing_condition(_joint) )
+        if( Homing::check_homing_condition(_joint) )
         {
             log_msg("Found limit on joint %s", jointIndexAndArmName(_joint->type).c_str(), _joint->current_cmd, DOF_types[_joint->type].DAC_max);
             _joint->state = jstate_hard_stop;
@@ -144,24 +156,35 @@ int raven_homing(struct device *device0, struct param_pass *currParams, int begi
         // For each mechanism, check to see if the mech is finished homing.
         if ( j == (MAX_DOF_PER_MECH-1) )
         {
+        	bool are_tools_ready = tools_ready(_mech);
+        	if (Homing::Config.homing_stop_at_tool_ready) {
+
+        		if (!printed_stop_at_tool_ready_warning) {
+        			log_err("HOMING STOPPING AT TOOLS READY");
+        			printed_stop_at_tool_ready_warning = true;
+        		}
+        		are_tools_ready = false;
+        	}
+
             /// if we're homing tools, wait for tools to be finished
-        	bool ready = (  !tools_ready(_mech) &&
+        	bool ready = (  !are_tools_ready &&
                     _mech->joint[TOOL_ROT].state==jstate_hard_stop &&
                     _mech->joint[WRIST   ].state==jstate_hard_stop &&
                     _mech->joint[GRASP1  ].state==jstate_hard_stop /*&&
                     _mech->joint[GRASP2  ].state==jstate_hard_stop*/)
                      ||
-                 (  tools_ready( _mech ) &&
+                 (  are_tools_ready &&
                     _mech->joint[SHOULDER].state==jstate_hard_stop &&
                     _mech->joint[ELBOW   ].state==jstate_hard_stop &&
                     _mech->joint[Z_INS   ].state==jstate_hard_stop );
+
             if (ready) {
                 if (delay2==0) {
                     delay2=gTime;
                 }
 
                 if (gTime > delay2 + 200) {
-                    set_joints_known_pos(_mech, !tools_ready(_mech) );
+                    set_joints_known_pos(_mech, !are_tools_ready );
                     delay2 = 0;
                 }
             }
@@ -205,7 +228,27 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
             _joint->jpos_d = DOF_types[ _joint->type ].max_position;
 
             // Initialize a trajectory to operating angle
-            _joint->state = jstate_homing1;
+            if (is_toolDOF( _joint->type)) {
+				if (!Homing::Config.homing_stop_at_tool_max) {
+					_joint->state = jstate_homing1;
+				} else {
+					static bool printed_warning = false;
+					if (!printed_warning) {
+						log_err("HOMING STOPPING AT TOOL MAX");
+						printed_warning = true;
+					}
+				}
+            } else {
+            	if (!Homing::Config.homing_stop_at_arm_max) {
+					_joint->state = jstate_homing1;
+				} else {
+					static bool printed_warning = false;
+					if (!printed_warning) {
+						log_err("HOMING STOPPING AT ARM MAX");
+						printed_warning = true;
+					}
+				}
+            }
         }
     }
 
@@ -274,7 +317,7 @@ int set_joints_known_pos(struct mechanism* _mech, int tool_only)
 *
 *   set trajectory behavior for each joint during the homing process.
 */
-void homing(struct DOF* _joint)
+void Homing::homing(struct DOF* _joint)
 {
     const float f_period[MAX_MECH*MAX_DOF_PER_MECH] = {1, 1, 1, 9999999, 1, 1, 1, 1,
                                                         1, 1, 1, 9999999, 1, 1, 1, 1};
@@ -304,6 +347,7 @@ void homing(struct DOF* _joint)
         case jstate_homing1:
             start_trajectory( _joint , DOF_types[_joint->type].home_position, 2.5 );
             _joint->state = jstate_homing2;
+            /* no break */
 
         case jstate_homing2:
             // Move to start position
@@ -336,7 +380,7 @@ const int homing_max_dac[8] = {2500,  //shoulder
                             1900};  // grasp2
 
 
-int check_homing_condition(struct DOF *_joint)
+int Homing::check_homing_condition(struct DOF *_joint)
 {
     if ( _joint->state != jstate_pos_unknown)
         return 0;
