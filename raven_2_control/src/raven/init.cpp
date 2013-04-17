@@ -94,6 +94,62 @@ void initRobotData(struct device *device0, int runlevel, struct param_pass *curr
     return;
 }
 
+bool getParam(ros::NodeHandle& nh,const std::string& prefix,const std::string& suffix,
+		const std::string& joint,const std::string& arm,double& val) {
+	std::string the_prefix = "/" + prefix;
+	std::string the_suffix;
+	if (!suffix.empty()) {
+		the_suffix = "/" + suffix;
+	}
+	std::string joint_arm_name = the_prefix + "/" + joint + "/" + arm + the_suffix;
+	if (nh.hasParam(joint_arm_name)) {
+		nh.getParam(joint_arm_name,val);
+		return true;
+	} else if (joint == "grasp1" || joint == "grasp2") {
+		joint_arm_name = the_prefix + "/grasp/" + arm + the_suffix;
+		if (nh.hasParam(joint_arm_name)) {
+			nh.getParam(joint_arm_name,val);
+			return true;
+		}
+	}
+	std::string joint_name = the_prefix + "/" + joint + the_suffix;
+	if (nh.hasParam(joint_name)) {
+		nh.getParam(joint_name,val);
+		return true;
+	} else if (joint == "grasp1" || joint == "grasp2") {
+		joint_name = the_prefix + "/grasp" + the_suffix;
+		if (nh.hasParam(joint_name)) {
+			nh.getParam(joint_name,val);
+			return true;
+		}
+	}
+	std::string base = the_prefix + the_suffix;
+	if (nh.hasParam(base)) {
+		nh.getParam(base,val);
+		return true;
+	}
+	return false;
+}
+
+bool getParam(ros::NodeHandle& nh,const std::string& prefix,
+		const std::string& joint,const std::string& arm,double& val) {
+	return getParam(nh,prefix,"",joint,arm,val);
+}
+
+bool getParamWithDefault(ros::NodeHandle& nh,const std::string& prefix,const std::string& suffix,
+		const std::string& joint,const std::string& arm,double& val,double default_val = 0) {
+	bool ret = getParam(nh,prefix,suffix,joint,arm,val);
+	if (!ret) {
+		val = default_val;
+	}
+	return ret;
+}
+
+bool getParamWithDefault(ros::NodeHandle& nh,const std::string& prefix,
+		const std::string& joint,const std::string& arm,double& val,double default_val = 0) {
+	return getParamWithDefault(nh,prefix,"",joint,arm,val,default_val);
+}
+
 /**
  * initDOFStructs() - intializes all structures which are not DOF specific
  *
@@ -155,79 +211,45 @@ void initDOFs(struct device *device0)
     double shoulder_max_adj_gold = 0;
     double shoulder_max_adj_green = 0;
 
-    if (nh.hasParam("max_position/shoulder/gold")) {
-    	nh.getParam("max_position/shoulder/gold",shoulder_max_adj_gold);
-    }
-    if (nh.hasParam("max_position/shoulder/green")) {
-    	nh.getParam("max_position/shoulder/green",shoulder_max_adj_green);
-    }
+    getParam(nh,"max_position","shoulder","gold",shoulder_max_adj_gold);
+    getParam(nh,"max_position","shoulder","green",shoulder_max_adj_green);
 
     double elbow_max_adj_gold = 0;
     double elbow_max_adj_green = 0;
 
-    if (nh.hasParam("max_position/elbow/gold")) {
-    	nh.getParam("max_position/elbow/gold",elbow_max_adj_gold);
-    }
-    if (nh.hasParam("max_position/elbow/green")) {
-    	nh.getParam("max_position/elbow/green",elbow_max_adj_green);
-    }
+    getParam(nh,"max_position","elbow","gold",elbow_max_adj_gold);
+    getParam(nh,"max_position","elbow","green",elbow_max_adj_green);
 
     double insertion_max_adj_gold = 0;
 	double insertion_max_adj_green = 0;
 
-	if (nh.hasParam("max_position/insertion/gold")) {
-		nh.getParam("max_position/insertion/gold",insertion_max_adj_gold);
-	}
-	if (nh.hasParam("max_position/insertion/green")) {
-		nh.getParam("max_position/insertion/green",insertion_max_adj_green);
-	}
+	getParam(nh,"max_position","insertion","gold",insertion_max_adj_gold);
+	getParam(nh,"max_position","insertion","green",insertion_max_adj_green);
 
 
     double rotation_max_adj_gold = 0;
     double rotation_max_adj_green = 0;
 
-    if (nh.hasParam("max_position/rotation/gold")) {
-    	nh.getParam("max_position/rotation/gold",rotation_max_adj_gold);
-    }
-    if (nh.hasParam("max_position/rotation/green")) {
-    	nh.getParam("max_position/rotation/green",rotation_max_adj_green);
-    }
+	getParam(nh,"max_position","rotation","gold",rotation_max_adj_gold);
+	getParam(nh,"max_position","rotation","green",rotation_max_adj_green);
 
     double wrist_max_adj_gold = 0;
 	double wrist_max_adj_green = 0;
-    if (nh.hasParam("max_position/wrist/gold")) {
-    	nh.getParam("max_position/wrist/gold",wrist_max_adj_gold);
-    }
-    if (nh.hasParam("max_position/wrist/green")) {
-    	nh.getParam("max_position/wrist/green",wrist_max_adj_green);
-    }
 
-    double grasp1_max_adj_gold = 0;
+	getParam(nh,"max_position","wrist","gold",wrist_max_adj_gold);
+	getParam(nh,"max_position","wrist","green",wrist_max_adj_green);
+
+	double grasp1_max_adj_gold = 0;
     double grasp2_max_adj_gold = 0;
 	double grasp1_max_adj_green = 0;
 	double grasp2_max_adj_green = 0;
-	if (nh.hasParam("max_position/grasp/gold")) {
-		nh.getParam("max_position/grasp/gold",grasp1_max_adj_gold);
-		nh.getParam("max_position/grasp/gold",grasp2_max_adj_gold);
-	}
-	if (nh.hasParam("max_position/grasp/green")) {
-		nh.getParam("max_position/grasp/green",grasp1_max_adj_green);
-		nh.getParam("max_position/grasp/green",grasp2_max_adj_green);
-	}
-	if (nh.hasParam("max_position/grasp1/gold")) {
-		nh.getParam("max_position/grasp1/gold",grasp1_max_adj_gold);
-	}
-	if (nh.hasParam("max_position/grasp2/gold")) {
-		nh.getParam("max_position/grasp2/gold",grasp2_max_adj_gold);
-	}
-	if (nh.hasParam("max_position/grasp1/green")) {
-		nh.getParam("max_position/grasp1/green",grasp1_max_adj_green);
-	}
-	if (nh.hasParam("max_position/grasp2/green")) {
-		nh.getParam("max_position/grasp2/green",grasp2_max_adj_green);
-	}
 
-    DOF_types[SHOULDER_GOLD].max_position  = SHOULDER_MAX_ANGLE + shoulder_max_adj_gold DEG2RAD;
+	getParam(nh,"max_position","grasp1","gold",grasp1_max_adj_gold);
+	getParam(nh,"max_position","grasp2","gold",grasp2_max_adj_gold);
+	getParam(nh,"max_position","grasp1","green",grasp1_max_adj_green);
+	getParam(nh,"max_position","grasp2","green",grasp2_max_adj_green);
+
+	DOF_types[SHOULDER_GOLD].max_position  = SHOULDER_MAX_ANGLE + shoulder_max_adj_gold DEG2RAD;
     DOF_types[SHOULDER_GREEN].max_position = SHOULDER_MAX_ANGLE + shoulder_max_adj_green DEG2RAD;
     DOF_types[ELBOW_GOLD].max_position     = ELBOW_MAX_ANGLE + elbow_max_adj_gold DEG2RAD;
     DOF_types[ELBOW_GREEN].max_position    = ELBOW_MAX_ANGLE + elbow_max_adj_green DEG2RAD;
@@ -484,9 +506,10 @@ int init_ravengains(ros::NodeHandle n, struct device *device0)
         bool initgold=0, initgreen=0;
         for (int i = 0; i < NUM_MECH; i++)
         {
+        	int armId = armIdFromMechType(device0->mech[i].type);
             for (int j = 0; j < MAX_DOF_PER_MECH; j++)
             {
-                int dofindex =i*MAX_DOF_PER_MECH + j;
+                int dofindex =combinedJointIndex(armId,j);
 
                 // Set gains for gold and green arms
                 if ( device0->mech[i].type == GOLD_ARM)

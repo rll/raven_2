@@ -18,4 +18,5 @@
 #include "fwd_cable_coupling.h"
 
 void invCableCoupling(struct device *device0, int runlevel);
-void invMechCableCoupling(struct mechanism *mech, int no_use_actual = 0);
+void invMechCableCoupling(struct mechanism *mech, bool use_desired_ins = false);
+void invMechCableCoupling_new(struct mechanism *mech, bool use_desired_ins = false);

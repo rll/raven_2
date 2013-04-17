@@ -74,7 +74,7 @@ view_frames() {
   cd $CURR_WD
 }
 
-export ROSPUSH_DEFAULT_PATTERNS="--include=raven_2/ --include=raven_2/raven_2_control/*** --include=raven_2/raven_2_msgs/*** --include=raven_2/raven_2_params/***"
+export ROSPUSH_DEFAULT_PATTERNS="--include=raven_2/ --include=raven_2/raven_2_control/*** --include=raven_2/raven_2_msgs/*** --include=raven_2/raven_2_params/*** --include=tfx/***"
 
 rospush() {
   SSH_CMD=ssh

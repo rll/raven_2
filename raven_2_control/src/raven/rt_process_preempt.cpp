@@ -85,6 +85,160 @@ extern USBStruct USBBoards;
 
 extern bool omni_to_ros;
 
+void printmat() {
+
+	float tr1=0, tr2=0, tr3=0, tr4=0, tr5=0, tr6=0, tr7=0;
+
+	DOF_types[SHOULDER_GOLD].TR   = SHOULDER_TR_GOLD_ARM;
+	DOF_types[ELBOW_GOLD].TR      = ELBOW_TR_GOLD_ARM;
+	DOF_types[Z_INS_GOLD].TR      = Z_INS_TR_GOLD_ARM;
+	DOF_types[TOOL_ROT_GOLD].TR   = TOOL_ROT_TR_GOLD_ARM;
+	DOF_types[WRIST_GOLD].TR      = WRIST_TR_GOLD_ARM;
+	DOF_types[GRASP1_GOLD].TR     = GRASP1_TR_GOLD_ARM;
+	DOF_types[GRASP2_GOLD].TR     = GRASP2_TR_GOLD_ARM;
+
+	tr1=DOF_types[SHOULDER_GOLD].TR;
+	tr2=DOF_types[ELBOW_GOLD].TR;
+	tr3=DOF_types[Z_INS_GOLD].TR;
+	tr4=DOF_types[TOOL_ROT_GOLD].TR;
+	tr5=DOF_types[WRIST_GOLD].TR;
+	tr6=DOF_types[GRASP1_GOLD].TR;
+	tr7=DOF_types[GRASP2_GOLD].TR;
+
+	printf("%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n\n\n",1./tr1,1./tr2,1./tr3,1./tr4,1./tr5,1./tr6,1./tr7);
+#define T11 CABLE_COUPLING_11
+#define T22 CABLE_COUPLING_22
+#define T33 CABLE_COUPLING_33
+#define T44 CABLE_COUPLING_44
+#define T55 CABLE_COUPLING_55
+#define T66 CABLE_COUPLING_66
+#define T77 CABLE_COUPLING_77
+
+#define T21 CABLE_COUPLING_21
+
+#define T32 CABLE_COUPLING_32
+#define T31 CABLE_COUPLING_31
+
+#define T43 CABLE_COUPLING_43
+#define T42 CABLE_COUPLING_42
+#define T41 CABLE_COUPLING_41
+
+#define T53 CABLE_COUPLING_53
+#define T52 CABLE_COUPLING_52
+#define T51 CABLE_COUPLING_51
+
+#define T63 CABLE_COUPLING_63
+#define T62 CABLE_COUPLING_62
+#define T61 CABLE_COUPLING_61
+
+#define T73 CABLE_COUPLING_73
+#define T72 CABLE_COUPLING_72
+#define T71 CABLE_COUPLING_71
+
+#define inv(val) (1./(val))
+
+//#define GB_RATIO (GEAR_BOX_GP42_TR/GEAR_BOX_GP32_TR * (1.08 * CAPSTAN_RADIUS_GP32/CAPSTAN_RADIUS_GP42))
+
+	printf("%f\t%f\t%f\t%f\n\n\n",inv(GEAR_BOX_GP32_TR) , CAPSTAN_RADIUS_GP32 , CAPSTAN_TOOL_RADIUS , FINAL_RATIO_7);
+
+
+	printf("Bare values\n");
+	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T11, 0., 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T21,T22, 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T31,T32,T33, 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T41,T42,T43,T44, 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T51,T52,T53, 0.,T55, 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T61,T62,T63, 0., 0.,T66, 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",T71,T72,T73, 0., 0., 0.,T77);
+
+	printf("\n\n");
+
+//                                       T11,                   0.,       0.,  0.,  0.,  0.,  0.
+//                                  -T21*T11,                  T22,       0.,  0.,  0.,  0.,  0.
+//                     -(T31 - T32*T21) *T11,             -T32*T22,      T33,  0.,  0.,  0.,  0.
+//-(T41 - T42*T21 - T43*(T31 - T32*T21))*T11, -(T42 - T43*T32)*T22, -T43*T33, T44,  0.,  0.,  0.
+//-(T51 - T52*T21 - T53*(T31 - T32*T21))*T11, -(T52 - T53*T32)*T22, -T53*T33,  0., T55,  0.,  0.
+//-(T61 - T62*T21 - T63*(T31 - T32*T21))*T11, -(T62 - T63*T32)*T22, -T63*T33,  0.,  0., T66,  0.
+//-(T71 - T72*T21 - T73*(T31 - T32*T21))*T11, -(T72 - T73*T32)*T22, -T73*T33,  0.,  0.,  0., T77
+	printf("New forward coupling\n");
+	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T11, 0., 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-T21*T11,T22, 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T31 - T32*T21)*T11,-T32*T22,T33, 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T41 - T42*T21 - T43*(T31 - T32*T21))*T11,-(T42 - T43*T32)*T22,-T43*T33,T44, 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T51 - T52*T21 - T53*(T31 - T32*T21))*T11,-(T52 - T53*T32)*T22,-T53*T33, 0.,T55, 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T61 - T62*T21 - T63*(T31 - T32*T21))*T11,-(T62 - T63*T32)*T22,-T63*T33, 0., 0.,T66, 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",-(T71 - T72*T21 - T73*(T31 - T32*T21))*T11,-(T72 - T73*T32)*T22,-T73*T33, 0., 0., 0.,T77);
+
+	printf("\n\n");
+
+	if (CABLE_COUPLING_INSERTION_FACTOR == 1.) {
+		printf("New forward coupling adjusted\n");
+		printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",T11, 0., 0., 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-T21*T11,T22, 0., 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T31 - T32*T21)*T11,-T32*T22,T33, 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T41 - T42*T21 - T43*(T31 - T32*T21) / 1.08)*T11,-(T42 - T43*T32 / 1.08)*T22,-T43*T33 / 1.08,T44, 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T51 - T52*T21 - T53*(T31 - T32*T21) / 1.08)*T11,-(T52 - T53*T32 / 1.08)*T22,-T53*T33 / 1.08, 0.,T55, 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",-(T61 - T62*T21 - T63*(T31 - T32*T21) / 1.08)*T11,-(T62 - T63*T32 / 1.08)*T22,-T63*T33 / 1.08, 0., 0.,T66, 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",-(T71 - T72*T21 - T73*(T31 - T32*T21) / 1.08)*T11,-(T72 - T73*T32 / 1.08)*T22,-T73*T33 / 1.08, 0., 0., 0.,T77);
+
+		printf("\n\n");
+	}
+
+	printf("Original forward coupling\n");
+	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(tr1), 0., 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., inv(tr2), 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0.,0., inv(tr3), 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., -inv(tr4) / GB_RATIO, inv(tr4), 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., -inv(tr5) / GB_RATIO, 0., inv(tr5), 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., -inv(tr6) / GB_RATIO, 0., 0., inv(tr6), 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., -inv(tr7) / GB_RATIO, 0., 0., 0., inv(tr7));
+
+
+	printf("\n\n");
+
+//	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T11), 0., 0., 0., 0., 0., 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T22)*T21, inv(T22), 0., 0., 0., 0., 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T33)*(2 * T32 * T21 + T31), inv(T33)*T32, inv(T33), 0., 0., 0., 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T44) * (T43 * (4 * T32 * T21 + 2 * T21) + 2 * T42 * T21 + T41), inv(T44)*(2 * T43 * T32 + T42), inv(T44)*T43, inv(T44), 0., 0., 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T55) * (T53 * (4 * T32 * T21 + 2 * T21) + 2 * T52 * T21 + T51), inv(T55)*(2 * T53 * T32 + T52), inv(T55)*T53, 0., inv(T55), 0., 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T66) * (T63 * (4 * T32 * T21 + 2 * T21) + 2 * T62 * T21 + T61), inv(T66)*(2 * T63 * T32 + T62), inv(T66)*T63, 0., 0., inv(T66), 0.);
+//	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",inv(T77) * (T73 * (4 * T32 * T21 + 2 * T21) + 2 * T72 * T21 + T71), inv(T77)*(2 * T73 * T32 + T72), inv(T77)*T73, 0., 0., 0., inv(T77));
+
+	printf("New inverse coupling\n");
+	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T11), 0., 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T22)*T21, inv(T22), 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T33)*T31, inv(T33)*T32, inv(T33), 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T44) * T41, inv(T44)*T42, inv(T44)*T43, inv(T44), 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T55) * T51, inv(T55)*T52, inv(T55)*T53, 0., inv(T55), 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T66) * T61, inv(T66)*T62, inv(T66)*T63, 0., 0., inv(T66), 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",inv(T77) * T71, inv(T77)*T72, inv(T77)*T73, 0., 0., 0., inv(T77) );
+
+	printf("\n\n");
+
+	if (CABLE_COUPLING_INSERTION_FACTOR == 1.) {
+		printf("New inverse coupling adjusted\n");
+		printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T11), 0., 0., 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T22)*T21, inv(T22), 0., 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T33)*T31, inv(T33)*T32, inv(T33), 0., 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T44) * T41, inv(T44)*T42, inv(T44)*T43/1.08, inv(T44), 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T55) * T51, inv(T55)*T52, inv(T55)*T53/1.08, 0., inv(T55), 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",inv(T66) * T61, inv(T66)*T62, inv(T66)*T63/1.08, 0., 0., inv(T66), 0., 0., 0.);
+		printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f]]\n",inv(T77) * T71, inv(T77)*T72, inv(T77)*T73/1.08, 0., 0., 0., inv(T77) );
+
+		printf("\n\n");
+	}
+
+	printf("Original inverse coupling\n");
+	printf("[[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",tr1, 0., 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., tr2, 0., 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0.,0., tr3, 0., 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., tr3 / GB_RATIO, tr4, 0., 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., tr3 / GB_RATIO, 0., tr5, 0., 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., tr3 / GB_RATIO, 0., 0., tr6, 0.);
+	printf("[%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f,\t%.6f],\n",0., 0., tr3 / GB_RATIO, 0., 0., 0., tr7);
+
+}
+
 /**
 *From PREEMPT_RT Dynamic memory allocation tips page.
 *This function creates a pool of memory in ram for use with any malloc or new calls so that they do not cause page faults.
@@ -445,8 +599,9 @@ int init_ros(int& argc, char**& argv)
 
 int main(int argc, char **argv)
 {
+	printmat();
 
-    //signal( SIGINT,&sigTrap);                // catch ^C for graceful close.  Unused under ROS
+	//signal( SIGINT,&sigTrap);                // catch ^C for graceful close.  Unused under ROS
     ioperm(PORT,1,1);                        // set parallelport permissions
     if ( init_module() )
     {
@@ -469,6 +624,8 @@ int main(int argc, char **argv)
 	parser.addGroup(Homing::Config);
 	parser.addArg<string>("arm");
 	parser.read(argc, argv);
+
+	cout << "New cable coupling: " << Config::Options.use_new_cable_coupling << endl;
 
 	omni_to_ros = false;
 	if (parser.hasArg("arm")) {

@@ -16,7 +16,7 @@
 
 #include "motor.h"
 
-#define GB_RATIO (GEAR_BOX_GP42_TR/GEAR_BOX_GP32_TR * (1.08 * CAPSTAN_RADIUS_GP32/CAPSTAN_RADIUS_GP42))
+#define GB_RATIO (GEAR_BOX_GP42_TR/GEAR_BOX_GP32_TR * (1.08 * CAPSTAN_RADIUS_GP32/CAPSTAN_RADIUS_GP42_1024))
 
 std::vector<ArmData> DeviceInitializer::ARM_DATA;
 std::set<std::string> DeviceInitializer::DISABLE_ARMS;
