@@ -213,6 +213,30 @@ inline int jointTypeFromCombinedType(int combinedType) {
 		}
 }
 
+inline int armIdFromCombinedType(int combinedType) {
+	switch (combinedType) {
+		case SHOULDER_GOLD:
+		case ELBOW_GOLD:
+		case Z_INS_GOLD:
+		case TOOL_ROT_GOLD:
+		case WRIST_GOLD:
+		case GRASP1_GOLD:
+		case GRASP2_GOLD:
+		case NO_CONNECTION_GOLD:
+			return GOLD_ARM_ID;
+		case SHOULDER_GREEN:
+		case ELBOW_GREEN:
+		case Z_INS_GREEN:
+		case TOOL_ROT_GREEN:
+		case WRIST_GREEN:
+		case GRASP1_GREEN:
+		case GRASP2_GREEN:
+		case NO_CONNECTION_GREEN:
+			return GREEN_ARM_ID;
+		default: printf("UNKNOWN COMBINED TYPE: %d\n",combinedType); return -1;
+		}
+}
+
 inline int combinedJointIndex(int armId,int jointId) {
 	if (armId == GOLD_ARM_ID) {
 		switch (jointId) {

@@ -131,6 +131,7 @@ class StatePrinter(object):
 			return
 		self.last_print_time = now
 		
+		conv = self.conv
 		
 		self.fields = {}
 		
@@ -196,11 +197,11 @@ class StatePrinter(object):
 			#    float32 grasp
 			tool_pose = transform(arm.tool.pose)
 			self.fields['tool_pose'] = tool_pose
-			self.fields['grasp'] = arm.tool.grasp
+			self.fields['grasp'] = arm.tool.grasp * conv
 			
 			tool_pose_desired = transform(arm.tool_set_point.pose)
 			self.fields['tool_pose_desired'] = tool_pose_desired
-			self.fields['grasp_desired'] = arm.tool_set_point.grasp
+			self.fields['grasp_desired'] = arm.tool_set_point.grasp * conv
 			
 #			self.output = add_line('Pose: ({tool_pose.position.x:.3f}, {tool_pose.position.y:.3f}, {tool_pose.position.z:.3f})')
 #			self.output = add_line('      {tool_pose.tb_angles}')
@@ -243,7 +244,6 @@ class StatePrinter(object):
 			
 			#  raven_2_msgs/JointState[] joints
 			for joint in arm.joints:
-				conv = self.conv
 				if joint.type == Constants.JOINT_TYPE_INSERTION:
 					conv = 100.
 				

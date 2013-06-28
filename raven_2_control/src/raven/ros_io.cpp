@@ -363,6 +363,12 @@ void processRavenCmd(const raven_2_msgs::RavenCommand& cmd1) {
 	}
 }
 
+//void printMat(const std::string& name, const btMatrix3x3& mat) {
+//	btQuaternion q;
+//	mat.getRotation(q);
+//	printf("%s: %f %f %f %f\n",name.c_str(),q.x(),q.y(),q.z(),q.w());
+//}
+
 bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass& params) {
 	static ros::Time last_call(0);
 
@@ -434,12 +440,6 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 			}
 		}
 
-		btQuaternion rot = tool_pose.getRotation();
-
-		master_raw_orientation[arm_id].setRotation(rot);
-
-		btMatrix3x3 rot_mx_temp(rot);
-
 		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
 			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
 				params.xd[mech_ind].x += p.x() * MICRON_PER_M;
@@ -455,17 +455,18 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 				master_position[arm_id] = p;
 
 			}
-		} else {
-
 		}
+
+		btMatrix3x3 rot_mx = tool_pose.getBasis();
 
 		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
 			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
-				ROS_ERROR_THROTTLE(0.1,"Relative orientation not implemented!");
+				master_raw_orientation[arm_id] = master_raw_orientation[arm_id] * rot_mx;
 			} else {
-				rot_mx_temp = rot_mx_temp * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
-				master_orientation[arm_id] = rot_mx_temp;
+				master_raw_orientation[arm_id] = rot_mx;
 			}
+
+			master_orientation[arm_id] = master_raw_orientation[arm_id] * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
 		}
 
 		const int graspmax = (1000. * TOOL_GRASP_COMMAND_MAX);
@@ -546,12 +547,22 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 			}
 		}
 
-
-
-		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
+			btMatrix3x3 rd_mat;
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
+				btMatrix3x3 curr_rd;
+				for (int j=0;j<3;j++) {
+					for (int k=0;k<3;k++) {
+						curr_rd[j][k] = params.rd[mech_ind].R[j][k];
+					}
+				}
+				rd_mat = curr_rd * (TOOL_POSE_AXES_TRANSFORM.getBasis() * rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse());
+			} else {
+				rd_mat = rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
+			}
 			for (int j=0;j<3;j++) {
 				for (int k=0;k<3;k++) {
-					params.rd[mech_ind].R[j][k] = rot_mx_temp[j][k];
+					params.rd[mech_ind].R[j][k] = rd_mat[j][k];
 				}
 			}
 		}
@@ -589,6 +600,7 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 
 				}
 			}
+			btQuaternion rot = tool_pose.getRotation();
 			for (int i=0;i<4;i++) {
 				printf("%.4f ",rot[i]);
 			}

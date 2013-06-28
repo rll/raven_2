@@ -3,6 +3,7 @@ import roslib; roslib.load_manifest("raven_2_teleop")
 import rospy
 import math
 from numpy import *
+from numpy.linalg import *
 import tf
 import tf.transformations as tft
 from sixense.msg import Calib, CalibPaddle
@@ -50,7 +51,7 @@ class HydraTeleop:
 	joystick_active = [True,True]
 	recorder = None
 
-	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False, force_pedal_down=False):
+	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False, force_pedal_down=False, relative_orientation=False):
 		self.scale = scale
 		self.scale_increment = scale / 20
 		self.scale_adjusting_mode = False
@@ -58,6 +59,8 @@ class HydraTeleop:
 		self.force_pedal_down = force_pedal_down
 		
 		self.grasp_while_inactive = grasp_while_inactive
+		
+		self.relative_orientation = relative_orientation
 		
 		self.pub = rospy.Publisher('raven_command', RavenCommand)
 
@@ -250,14 +253,26 @@ class HydraTeleop:
 				T1 = mat(array([[0,1,0,0],  [-1,0,0,0],  [0,0, 1,0], [0,0,0,1]]))
 				T2 = mat(array([[1,0,0,0],  [0,-1,0,0],  [0,0,-1,0], [0,0,0,1]]))
 				
-				qmat = mat(tft.quaternion_matrix(array([xx,yy,zz,ww])))
+				qmat = T1 * mat(tft.quaternion_matrix(array([xx,yy,zz,ww])))
+				
+				if self.relative_orientation:
+					last_xx = self.last_msg.paddles[i].transform.rotation.x
+					last_yy = self.last_msg.paddles[i].transform.rotation.y
+					last_zz = self.last_msg.paddles[i].transform.rotation.z
+					last_ww = self.last_msg.paddles[i].transform.rotation.w
+					
+					last_qmat = T1 * mat(tft.quaternion_matrix(array([last_xx,last_yy,last_zz,last_ww])))
+					
+					qmat = inv(last_qmat) * qmat
 				
 				p_t = array(T1 * p)[0:3].flatten().tolist()
-				#q_t = array(tft.quaternion_from_matrix(T1 * qmat * T2)).flatten().tolist()
-				q_t = array(tft.quaternion_from_matrix(T1 * qmat)).flatten().tolist()
+				q_t = array(tft.quaternion_from_matrix(qmat)).flatten().tolist()
 				
 				#tool_cmd.pose = Pose(Point(dx,dy,dz),Quaternion(xx,yy,zz,ww))
-				tool_cmd.pose_option = ToolCommand.POSE_POSITION_RELATIVE
+				if self.relative_orientation:
+					tool_cmd.pose_option = ToolCommand.POSE_RELATIVE
+				else:
+					tool_cmd.pose_option = ToolCommand.POSE_POS_REL_ORI_ABS
 				tool_cmd.pose = Pose(Point(*p_t),Quaternion(*q_t))
 				
 				if paddle.buttons[GRIP_OPEN_BUTTON[i]]: grip[i] = 1
@@ -335,6 +350,9 @@ if __name__ == "__main__":
 	
 	parser = OptionParser()
 	
+	parser.add_option('--disable-left',action='store_true',default=False)
+	parser.add_option('--disable-right',action='store_true',default=False)
+	
 	parser.add_option('-g','--grasp-while-inactive',action='store_true',default=False)
 	
 	parser.add_option('-s','--scale',default=DEFAULT_SCALE)
@@ -343,8 +361,7 @@ if __name__ == "__main__":
 	
 	parser.add_option('--force-pedal-down',action='store_true',default=False)
 	
-	parser.add_option('--disable-left',action='store_true',default=False)
-	parser.add_option('--disable-right',action='store_true',default=False)
+	parser.add_option('-o','--relative-orientation',action='store_true',default=False)
 	
 	(options,args) = parser.parse_args()
 	
@@ -355,7 +372,8 @@ if __name__ == "__main__":
 
 	listener = tf.TransformListener()
 
-	HT = HydraTeleop(listener,record=options.record,scale=options.scale,grasp_while_inactive=options.grasp_while_inactive,force_pedal_down=options.force_pedal_down)
+	HT = HydraTeleop(listener,record=options.record,scale=options.scale,grasp_while_inactive=options.grasp_while_inactive,
+					force_pedal_down=options.force_pedal_down,relative_orientation=options.relative_orientation)
 	rospy.spin()
 	
 	rospy.loginfo('shutting down')

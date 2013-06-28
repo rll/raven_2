@@ -97,6 +97,8 @@ int initLocalioData(void)
         for (i=0;i<NUM_MECH;i++) {
         	master_raw_position[i] = btVector3(0,0,0);
             master_position[i] = btVector3(0,0,0);
+            master_raw_orientation[i] = btMatrix3x3::getIdentity();
+            master_orientation[i] = btMatrix3x3::getIdentity();
         }
     }
     pthread_mutex_unlock(&data1Mutex);
