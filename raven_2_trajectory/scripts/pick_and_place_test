@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest('raven_2_trajectory')
+import rospy
+from geometry_msgs.msg import *
+from math import *
+from raven_2_msgs.msg import *
+from std_msgs.msg import Header
+import copy
+import sys,argparse, os.path
+
+import tf
+import tfx
+
+from raven_2_trajectory.trajectory_player import TrajectoryPlayer, Stage
+
+pub_cmd = None
+tf_listener = None
+start_time = None
+init_pose_left = None
+init_pose_right = None
+
+
+approach_start = 0.06
+approach_end = 0.00
+retract_end = 0.14
+retract_drop = 0.06
+
+circle_duration = rospy.Duration(3)
+circle_radius = 0.032 #0.027
+circle_x_adj = 0.008
+circle_around = 2*pi + pi
+
+if __name__ == '__main__':
+	rospy.init_node(os.path.basename(sys.argv[0]),anonymous=True)
+	
+	parser = argparse.ArgumentParser(add_help=False)
+	
+	parser.add_argument('-h','--height',type=float,default=0.06)
+	
+	place_group = parser.add_mutually_exclusive_group()
+	place_group.add_argument('-p','--place',action='store_true',default=False)
+	place_group.add_argument('--place-test',action='store_true',default=False)
+	place_group.add_argument('--loop',action='store_true',default=False)
+	
+	parser.add_argument('-n','--number',type=int,default=1)
+	
+	args = parser.parse_args(rospy.myargv()[1:])
+	
+	player = TrajectoryPlayer(arms='R')
+	
+	#tool_orientation = tfx.rotation_tb(-5.8, 83.9, 158.3)
+	tool_orientation = tfx.rotation_tb(-5.8, 90, 158.3)
+	
+	pick_orientation = tfx.rotation_tb(30.5, 74.4, 127.2)
+	
+	adj = -0.013
+	pick_pt = tfx.point(-0.103, -0.083, -0.16)
+	init_pt = pick_pt + [0,0,args.height]
+	
+	init_pose = tfx.pose(init_pt,pick_orientation)
+	
+	pick_pose = tfx.pose(pick_pt,pick_orientation)
+	
+	lift_pose = init_pose.copy()
+	
+	place_orientation = pick_orientation#tfx.rotation_tb(33.2,75.4,30.5)
+	
+	place_ref_pt = pick_pt + [-0.002,0.082-0.026,0]
+	place_pt = place_ref_pt + [0,0,0.01]
+	place_init_pt = place_ref_pt + [0,0,args.height]
+	
+	place_init_pose = tfx.pose(place_init_pt,place_orientation)
+	
+	place_pose = tfx.pose(place_pt,place_orientation)
+	
+	place_final_pose = place_init_pose.copy()
+	
+	#player.add_open_gripper()
+	player.add_set_gripper(0.25)
+	player.add_goto_first_pose(init_pose,speed=0.02)
+	player.add_delay(3)
+	player.add_pose_to_pose('Lower tool to pick', init_pose, pick_pose,duration=4)
+	#player.add_set_gripper(0)
+	player.add_set_gripper(-.5)
+	#player.add_close_gripper(5)
+	player.add_delay(5)
+	player.add_pose_to_pose('Raise tool', pick_pose, lift_pose,duration=4)
+	
+	if args.place_test:
+		player.add_pose_to_pose('Move to place', lift_pose, place_init_pose, duration=3)
+	
+	elif args.place:
+		player.add_pose_to_pose('Move to place', lift_pose, place_init_pose, duration=3)
+		player.add_set_gripper(-0.5)
+		player.add_pose_to_pose('Lower tool to pick', place_init_pose, place_pose, duration=6)
+		player.add_delay(1)
+		player.add_set_gripper(0.25)
+		player.add_pose_to_pose('Raise tool', place_pose, place_final_pose, duration=3)
+	
+	for i in xrange(args.number):
+		if args.number > 1:
+			print "Run #%d/%d" %(i+1,args.number)
+		success = player.play()
+		if not success:
+			break

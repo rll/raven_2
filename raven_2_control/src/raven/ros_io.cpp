@@ -42,6 +42,8 @@
 #include <raven_2_msgs/RavenCommand.h>
 #include <raven_2_msgs/RavenTrajectoryCommand.h>
 
+#include <raven_2_msgs/ToolCommandStamped.h>
+
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/JointState.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -95,10 +97,11 @@ ros::Publisher vis_pub2;
 ros::Publisher pub_ravenstate_old;
 #endif
 
-ros::Subscriber cmd_sub;
-ros::Subscriber cmd_traj_sub;
-ros::Subscriber cmd_pose_sub[2];
-ros::Subscriber cmd_grasp_sub[2];
+ros::Subscriber sub_raven_cmd;
+ros::Subscriber sub_traj_cmd;
+ros::Subscriber sub_pose_cmd[2];
+ros::Subscriber sub_grasp_cmd[2];
+ros::Subscriber sub_tool_cmd[2];
 ros::Subscriber torque_sub1;
 ros::Subscriber torque_sub2;
 ros::Subscriber joint_sub;
@@ -140,6 +143,9 @@ void publish_marker(struct robot_device*);
 
 #define RAVEN_COMMAND_GRASP_TOPIC_BASE APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"grasp")
 #define RAVEN_COMMAND_GRASP_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_GRASP_TOPIC_BASE,side)
+
+#define RAVEN_COMMAND_TOOL_TOPIC_BASE APPEND_TOPIC(RAVEN_COMMAND_TOPIC,"tool")
+#define RAVEN_COMMAND_TOOL_TOPIC(side) APPEND_TOPIC(RAVEN_COMMAND_TOOL_TOPIC_BASE,side)
 
 bool checkRate(ros::Time& last_pub,ros::Duration interval,ros::Duration& since_last_pub) {
 	ros::Time now = ros::Time::now();
@@ -244,8 +250,8 @@ void cmd_callback(const raven_2_msgs::RavenCommand& cmd) {
 }
 
 void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId) {
-	//printf("cmd pose callback\n");
-	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
+	//printf("pose cmd %s callback\n",armNameFromId(armId).c_str());
+	if (!checkMasterMode(RAVEN_COMMAND_TOOL_TOPIC(armNameFromId(armId)))) { return; }
 
 	raven_2_msgs::RavenCommand cmd;
 	cmd.header = pose->header;
@@ -267,13 +273,13 @@ void cmd_pose_callback(const geometry_msgs::PoseStampedConstPtr& pose,int armId)
 	processRavenCmd(cmd);
 }
 
-void cmd_grasp_callback(const std_msgs::Float32& grasp,int armId) {
-	//printf("cmd pose callback\n");
-	if (!checkMasterMode(RAVEN_COMMAND_POSE_TOPIC(armNameFromId(armId)))) { return; }
+void cmd_grasp_callback(const std_msgs::Float32ConstPtr& grasp,int armId) {
+	//printf("grasp cmd %s callback\n",armNameFromId(armId).c_str());
+	if (!checkMasterMode(RAVEN_COMMAND_TOOL_TOPIC(armNameFromId(armId)))) { return; }
 
 	raven_2_msgs::RavenCommand cmd;
 	cmd.header.stamp = ros::Time::now();
-	cmd.header.frame_id = "";
+	cmd.header.frame_id = "/0_link";
 	cmd.pedal_down = true;
 	cmd.controller = raven_2_msgs::Constants::CONTROLLER_NONE;
 	raven_2_msgs::ArmCommand arm_cmd;
@@ -282,7 +288,27 @@ void cmd_grasp_callback(const std_msgs::Float32& grasp,int armId) {
 
 	arm_cmd.tool_command.grasp_option = raven_2_msgs::ToolCommand::GRASP_SET_NORMALIZED;
 
-	arm_cmd.tool_command.grasp = grasp.data;
+	arm_cmd.tool_command.grasp = grasp->data;
+	cmd.arm_names.push_back(armNameFromId(armId));
+	cmd.arms.push_back(arm_cmd);
+	//cmd.arms[armId] = arm_cmd;
+	processRavenCmd(cmd);
+}
+
+void cmd_tool_callback(const raven_2_msgs::ToolCommandStampedConstPtr& tool_command,int armId) {
+	//printf("tool cmd %s callback\n",armNameFromId(armId).c_str());
+	if (!checkMasterMode(RAVEN_COMMAND_TOOL_TOPIC(armNameFromId(armId)))) { return; }
+
+	raven_2_msgs::RavenCommand cmd;
+	cmd.header = tool_command->header;
+	cmd.pedal_down = true;
+	//FIXME: needs to work
+	//cmd.controller = raven_2_msgs::Constants::CONTROLLER_END_EFFECTOR;
+	cmd.controller = raven_2_msgs::Constants::CONTROLLER_CARTESIAN_SPACE;
+	raven_2_msgs::ArmCommand arm_cmd;
+	arm_cmd.active = true;
+	arm_cmd.tool_command = tool_command->command;
+
 	cmd.arm_names.push_back(armNameFromId(armId));
 	cmd.arms.push_back(arm_cmd);
 	//cmd.arms[armId] = arm_cmd;
@@ -407,66 +433,128 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 			}
 		}
 
-		tf::Transform tool_pose_raw;
-		tf::poseMsgToTF(armCmd.tool_command.pose,tool_pose_raw);
-
-		tf::StampedTransform to0link;
-		try {
-			tf_listener->lookupTransform("0_link",cmd.header.frame_id,ros::Time(0),to0link);
-		} catch (tf::TransformException& ex) {
-			ROS_ERROR("%s",ex.what());
-			continue;
-		}
-
-		btTransform tool_pose;
-
-		tf::Transform tool_pose_tf = to0link * tool_pose_raw;
-
-		tf::Quaternion tf_q = tool_pose_tf.getRotation();
-		btQuaternion tool_pose_q(tf_q.x(),tf_q.y(),tf_q.z(),tf_q.w());
-
-		tf::Vector3 tf_p = tool_pose_tf.getOrigin();
-		btVector3 tool_pose_p(tf_p.x(),tf_p.y(),tf_p.z());
-		tool_pose = btTransform(tool_pose_q,tool_pose_p);
-
-		btVector3 p = tool_pose.getOrigin();
-
 		uint8_t pose_option = armCmd.tool_command.pose_option;
-		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
-			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
-				master_raw_position[arm_id] += p;
-			} else {
-				master_raw_position[arm_id] = p;
-			}
-		}
+		if (pose_option) {
+			tf::Transform tool_pose_raw;
+			tf::poseMsgToTF(armCmd.tool_command.pose,tool_pose_raw);
 
-		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
-			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
-				params.xd[mech_ind].x += p.x() * MICRON_PER_M;
-				params.xd[mech_ind].y += p.y() * MICRON_PER_M;
-				params.xd[mech_ind].z += p.z() * MICRON_PER_M;
-
-				master_position[arm_id] += p;
-			} else {
-				params.xd[mech_ind].x = p.x() * MICRON_PER_M;
-				params.xd[mech_ind].y = p.y() * MICRON_PER_M;
-				params.xd[mech_ind].z = p.z() * MICRON_PER_M;
-
-				master_position[arm_id] = p;
-
-			}
-		}
-
-		btMatrix3x3 rot_mx = tool_pose.getBasis();
-
-		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
-			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
-				master_raw_orientation[arm_id] = master_raw_orientation[arm_id] * rot_mx;
-			} else {
-				master_raw_orientation[arm_id] = rot_mx;
+			tf::StampedTransform to0link;
+			try {
+				tf_listener->lookupTransform("0_link",cmd.header.frame_id,ros::Time(0),to0link);
+			} catch (tf::TransformException& ex) {
+				ROS_ERROR("%s",ex.what());
+				continue;
 			}
 
-			master_orientation[arm_id] = master_raw_orientation[arm_id] * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
+			btTransform tool_pose;
+
+			tf::Transform tool_pose_tf = to0link * tool_pose_raw;
+
+			tf::Quaternion tf_q = tool_pose_tf.getRotation();
+			btQuaternion tool_pose_q(tf_q.x(),tf_q.y(),tf_q.z(),tf_q.w());
+
+			tf::Vector3 tf_p = tool_pose_tf.getOrigin();
+			btVector3 tool_pose_p(tf_p.x(),tf_p.y(),tf_p.z());
+			tool_pose = btTransform(tool_pose_q,tool_pose_p);
+
+			btVector3 p = tool_pose.getOrigin();
+
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+				if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
+					master_raw_position[arm_id] += p;
+				} else {
+					master_raw_position[arm_id] = p;
+				}
+			}
+
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_ENABLED) {
+				if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_POSITION_RELATIVE) {
+					params.xd[mech_ind].x += p.x() * MICRON_PER_M;
+					params.xd[mech_ind].y += p.y() * MICRON_PER_M;
+					params.xd[mech_ind].z += p.z() * MICRON_PER_M;
+
+					master_position[arm_id] += p;
+				} else {
+					params.xd[mech_ind].x = p.x() * MICRON_PER_M;
+					params.xd[mech_ind].y = p.y() * MICRON_PER_M;
+					params.xd[mech_ind].z = p.z() * MICRON_PER_M;
+
+					master_position[arm_id] = p;
+
+				}
+			}
+
+			btMatrix3x3 rot_mx = tool_pose.getBasis();
+
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
+				if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
+					master_raw_orientation[arm_id] = master_raw_orientation[arm_id] * rot_mx;
+				} else {
+					master_raw_orientation[arm_id] = rot_mx;
+				}
+
+				master_orientation[arm_id] = master_raw_orientation[arm_id] * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
+			}
+
+			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
+				btMatrix3x3 rd_mat;
+				if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
+					btMatrix3x3 curr_rd;
+					for (int j=0;j<3;j++) {
+						for (int k=0;k<3;k++) {
+							curr_rd[j][k] = params.rd[mech_ind].R[j][k];
+						}
+					}
+					rd_mat = curr_rd * (TOOL_POSE_AXES_TRANSFORM.getBasis() * rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse());
+				} else {
+					rd_mat = rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
+				}
+				for (int j=0;j<3;j++) {
+					for (int k=0;k<3;k++) {
+						params.rd[mech_ind].R[j][k] = rd_mat[j][k];
+					}
+				}
+			}
+
+			if (params.rd[mech_ind].R[0][0] != params.rd[mech_ind].R[0][0]) {
+				printf("Input matrix is nan!\n");
+				std::cout << armCmd.tool_command << std::endl;
+				for (int i=0;i<3;i++) {
+					for (int j=0;j<3;j++) {
+						printf("%.4f ",tool_pose_raw.getBasis()[i][j]);
+					}
+					printf("\n");
+				}
+				for (int i=0;i<3;i++) {
+					printf("%.4f ",tool_pose_raw.getOrigin()[i]);
+				}
+				printf("\n");
+				for (int i=0;i<3;i++) {
+					for (int j=0;j<3;j++) {
+						printf("%.4f ",tool_pose.getBasis()[i][j]);
+					}
+					printf("\n");
+				}
+				for (int i=0;i<3;i++) {
+					printf("%.4f ",tool_pose.getOrigin()[i]);
+				}
+				printf("\n");
+				for (int i=0;i<3;i++) {
+					for (int j=0;j<3;j++) {
+
+					}
+				}
+				for (int i=0;i<3;i++) {
+					for (int j=0;j<3;j++) {
+
+					}
+				}
+				btQuaternion rot = tool_pose.getRotation();
+				for (int i=0;i<4;i++) {
+					printf("%.4f ",rot[i]);
+				}
+				printf("\n");
+			}
 		}
 
 		const int graspmax = (1000. * TOOL_GRASP_COMMAND_MAX);
@@ -545,66 +633,6 @@ bool processEndEffectorControl(const raven_2_msgs::RavenCommand& cmd,param_pass&
 					params.xd[mech_ind].z += z_ins_in_world.z() * MICRON_PER_M;
 				}
 			}
-		}
-
-		if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_ENABLED) {
-			btMatrix3x3 rd_mat;
-			if (pose_option & raven_2_msgs::ToolCommand::POSE_OPTION_FLAG_ORIENTATION_RELATIVE) {
-				btMatrix3x3 curr_rd;
-				for (int j=0;j<3;j++) {
-					for (int k=0;k<3;k++) {
-						curr_rd[j][k] = params.rd[mech_ind].R[j][k];
-					}
-				}
-				rd_mat = curr_rd * (TOOL_POSE_AXES_TRANSFORM.getBasis() * rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse());
-			} else {
-				rd_mat = rot_mx * TOOL_POSE_AXES_TRANSFORM.getBasis().inverse();
-			}
-			for (int j=0;j<3;j++) {
-				for (int k=0;k<3;k++) {
-					params.rd[mech_ind].R[j][k] = rd_mat[j][k];
-				}
-			}
-		}
-
-		if (params.rd[mech_ind].R[0][0] != params.rd[mech_ind].R[0][0]) {
-			printf("Input matrix is nan!\n");
-			std::cout << armCmd.tool_command << std::endl;
-			for (int i=0;i<3;i++) {
-				for (int j=0;j<3;j++) {
-					printf("%.4f ",tool_pose_raw.getBasis()[i][j]);
-				}
-				printf("\n");
-			}
-			for (int i=0;i<3;i++) {
-				printf("%.4f ",tool_pose_raw.getOrigin()[i]);
-			}
-			printf("\n");
-			for (int i=0;i<3;i++) {
-				for (int j=0;j<3;j++) {
-					printf("%.4f ",tool_pose.getBasis()[i][j]);
-				}
-				printf("\n");
-			}
-			for (int i=0;i<3;i++) {
-				printf("%.4f ",tool_pose.getOrigin()[i]);
-			}
-			printf("\n");
-			for (int i=0;i<3;i++) {
-				for (int j=0;j<3;j++) {
-
-				}
-			}
-			for (int i=0;i<3;i++) {
-				for (int j=0;j<3;j++) {
-
-				}
-			}
-			btQuaternion rot = tool_pose.getRotation();
-			for (int i=0;i<4;i++) {
-				printf("%.4f ",rot[i]);
-			}
-			printf("\n");
 		}
 	}
 
@@ -1680,14 +1708,16 @@ int init_pubs(ros::NodeHandle &n,struct robot_device *device0) {
 
 void init_subs(ros::NodeHandle &n,struct robot_device *device0) {
 	std::cout << "Initializing ros subscribers" << std::endl;
-	cmd_sub = n.subscribe(RAVEN_COMMAND_TOPIC, 1, cmd_callback);
-	cmd_traj_sub = n.subscribe(RAVEN_COMMAND_TRAJECTORY_TOPIC, 1, cmd_trajectory_callback);
+	sub_raven_cmd = n.subscribe(RAVEN_COMMAND_TOPIC, 1, cmd_callback);
+	sub_traj_cmd = n.subscribe(RAVEN_COMMAND_TRAJECTORY_TOPIC, 1, cmd_trajectory_callback);
 	mechanism* _mech = NULL;
 	int mechnum = 0;
 	while (loop_over_mechs(device0,_mech,mechnum)) {
 		int armId = armIdFromMechType(_mech->type);
 		std::string armName = rosArmName(armId);
-		cmd_pose_sub[armId] = n.subscribe<geometry_msgs::PoseStamped>(RAVEN_COMMAND_POSE_TOPIC(armName), 1, boost::bind(cmd_pose_callback,_1,armId));
+		sub_pose_cmd[armId] = n.subscribe<geometry_msgs::PoseStamped>(RAVEN_COMMAND_POSE_TOPIC(armName), 1, boost::bind(cmd_pose_callback,_1,armId));
+		sub_grasp_cmd[armId] = n.subscribe<std_msgs::Float32>(RAVEN_COMMAND_GRASP_TOPIC(armName), 1, boost::bind(cmd_grasp_callback,_1,armId));
+		sub_tool_cmd[armId] = n.subscribe<raven_2_msgs::ToolCommandStamped>(RAVEN_COMMAND_TOOL_TOPIC(armName), 1, boost::bind(cmd_tool_callback,_1,armId));
 	}
 
 	tf_listener = new tf::TransformListener();

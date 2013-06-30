@@ -179,6 +179,23 @@ class TrajectoryPlayer(object):
 		end = tfx.pose(end_pos,orientation)
 		self.add_pose_to_pose(name, start, end, arm=arm, duration=duration, speed=speed)
 	
+	def add_point_to_point_with_lift(self,name,start_pos,end_pos,orientation,height,arm=None,duration=None,speed=None):
+		start = tfx.pose(start_pos,orientation)
+		end = tfx.pose(end_pos,orientation)
+		if duration is None:
+			if speed is None:
+				speed = self.default_speed
+			duration = end.position.distance(start.position) / speed
+		def fn(cmd,t):
+			pose = start.interpolate(end,t)
+			
+			pose.position.z += sin(t * pi) * height
+			
+			tool_pose = pose.msg.Pose()
+		
+			TrajectoryPlayer.add_arm_pose_cmd(cmd,self._check(arm),tool_pose)
+		self.add_stage(name,duration,fn)
+	
 	def add_pose_to_point(self,name,start_pose,end_point,arm=None,duration=None,speed=None):
 		start = tfx.pose(start_pose)
 		end = tfx.pose(end_point,start.orientation)
@@ -253,7 +270,7 @@ class TrajectoryPlayer(object):
 			TrajectoryPlayer.add_arm_grasp_cmd(cmd, self._check(arm), grasp=value, grasp_option=ToolCommand.GRASP_SET_NORMALIZED)
 		self.add_stage(name,duration,fn)
 
-	def play(self):
+	def play(self,dry_run=False):
 		rate = rospy.Rate(50)
 		
 		cmd = None
@@ -272,7 +289,7 @@ class TrajectoryPlayer(object):
 		
 		last_stage_ind = -1
 		while not rospy.is_shutdown():
-			if last_stage_ind != -1:
+			if not dry_run and last_stage_ind != -1:
 				sys.stdout.write("\r\x1b[K")
 				sys.stdout.flush()
 			
@@ -308,6 +325,8 @@ class TrajectoryPlayer(object):
 				rospy.loginfo("Stage #%i/%i [%4.1fs] %s",stage_ind+1,len(self.stages),stage.duration.to_sec(),stage.name)
 			else:
 				sys.stdout.write("%.3f" % t)
+				if dry_run:
+					sys.stdout.write('\n')
 				sys.stdout.flush()
 			
 			if stage.is_pause:
@@ -325,7 +344,10 @@ class TrajectoryPlayer(object):
 			if stage_changed:
 				pass #print '\n\n' + str(cmd) + '\n\n'
 			
-			self.pub_cmd.publish(cmd)
+			if dry_run:
+				print cmd
+			else:
+				self.pub_cmd.publish(cmd)
 			
 			rate.sleep()
 		return success

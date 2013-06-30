@@ -18,7 +18,7 @@ SIDE_NAMES = ['L','R']
 SIDE_NAMES_FRIENDLY = ['left','right']
 
 BASE_FRAME = '/0_link'
-END_EFFECTOR_FRAME_PREFIX = '/instrument_shaft_'
+END_EFFECTOR_FRAME_PREFIX = '/tool_'
 END_EFFECTOR_FRAME_SUFFIX = ['L','R']
 
 #CalibPaddle.START	= 0
@@ -38,6 +38,30 @@ SCALE_RESET_BUTTON = CalibPaddle.JOYSTICK
 
 DEFAULT_SCALE = .1
 
+class SideChecker:
+	
+	def __init__(self,topic='raven_state'):
+		self._msg = None
+		self._sub = rospy.Subscriber(topic,RavenState,self._cb)
+	
+	def _cb(self,msg):
+		if self._msg is None:
+			self._msg = msg
+			self._sub.unregister()
+	
+	def ready(self):
+		return self._msg is not None
+	
+	def get_sides(self):
+		if self._msg is None:
+			return None
+		return [arm.name for arm in self._msg.arms]
+	
+	def wait(self):
+		rate = rospy.Rate(10)
+		while not self.ready() and not rospy.is_shutdown():
+			rate.sleep()
+
 
 # left is paddle 0, right is paddle 1
 
@@ -50,8 +74,10 @@ class HydraTeleop:
 	stop_recording_last = False
 	joystick_active = [True,True]
 	recorder = None
+	
+	SIDE_ACTIVE = None
 
-	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False, force_pedal_down=False, relative_orientation=False):
+	def __init__(self,listener,record=False, scale=None, grasp_while_inactive=False, force_pedal_down=False, relative_orientation=False, frame=None, camera_frame=False):
 		self.scale = scale
 		self.scale_increment = scale / 20
 		self.scale_adjusting_mode = False
@@ -61,6 +87,19 @@ class HydraTeleop:
 		self.grasp_while_inactive = grasp_while_inactive
 		
 		self.relative_orientation = relative_orientation
+		
+		if frame:
+			self.frame = frame
+		else:
+			self.frame = BASE_FRAME
+		
+		if camera_frame:
+			pass
+			#T1 = mat(array([[0,1,0,0],  [-1,0,0,0],  [0,0, 1,0], [0,0,0,1]]))
+			#T2 = mat(array([[1,0,0,0],  [0,-1,0,0],  [0,0,-1,0], [0,0,0,1]]))
+		else:
+			self.T1 = mat(array([[0,1,0,0],  [-1,0,0,0],  [0,0, 1,0], [0,0,0,1]]))
+			self.T2 = mat(eye(4))
 		
 		self.pub = rospy.Publisher('raven_command', RavenCommand)
 
@@ -251,7 +290,7 @@ class HydraTeleop:
 				p = mat(array([dx,dy,dz,1])).transpose()
 				
 				T1 = mat(array([[0,1,0,0],  [-1,0,0,0],  [0,0, 1,0], [0,0,0,1]]))
-				T2 = mat(array([[1,0,0,0],  [0,-1,0,0],  [0,0,-1,0], [0,0,0,1]]))
+				#T2 = mat(array([[1,0,0,0],  [0,-1,0,0],  [0,0,-1,0], [0,0,0,1]]))
 				
 				qmat = T1 * mat(tft.quaternion_matrix(array([xx,yy,zz,ww])))
 				
@@ -268,7 +307,6 @@ class HydraTeleop:
 				p_t = array(T1 * p)[0:3].flatten().tolist()
 				q_t = array(tft.quaternion_from_matrix(qmat)).flatten().tolist()
 				
-				#tool_cmd.pose = Pose(Point(dx,dy,dz),Quaternion(xx,yy,zz,ww))
 				if self.relative_orientation:
 					tool_cmd.pose_option = ToolCommand.POSE_RELATIVE
 				else:
@@ -364,6 +402,15 @@ if __name__ == "__main__":
 	parser.add_option('-o','--relative-orientation',action='store_true',default=False)
 	
 	(options,args) = parser.parse_args()
+	
+	side_checker = SideChecker()
+	side_checker.wait()
+	
+	sides = side_checker.get_sides()
+	for idx, side_name in enumerate(SIDE_NAMES):
+		if side_name not in sides:
+			print 'Auto-disabling side %s' % SIDE_NAMES_FRIENDLY[idx]
+			SIDE_ACTIVE[idx] = False
 	
 	if options.disable_left:
 		SIDE_ACTIVE[0] = False
