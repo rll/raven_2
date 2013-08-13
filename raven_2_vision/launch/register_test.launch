@@ -1,8 +1,6 @@
 <!-- Launches both base and common -->
 
 <launch>
-    <node pkg="tf" type="static_transform_publisher" name="BC_L2R" args="0.103322 0 -0.00136 0 -0.104719755 0 left_BC right_BC 100" />
-
     <arg name="base_cb_name"     default="base_cb"/>
     <arg name="base_cam_model" default="prosilica"/>
     <arg name="base_cb_width"    default="8"/>
@@ -19,8 +17,8 @@
     <arg name="common_cb_topic"  default="$(arg common_cb_name)_pose"/>
     <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
 
- 
-    <include file="$(find raven_2_vision)/launch/register_base.launch">
+
+    <include file="$(find raven_2_vision)/launch/register_base_test.launch">
         <arg name="model"            default="$(arg base_cam_model)"/>
 	<arg name="base_cb_name"     default="$(arg base_cb_name)" />
         <arg name="base_cb_width"    default="$(arg base_cb_width)"/>
@@ -34,7 +32,7 @@
         <arg name="common_cb_topic"  default="$(arg common_cb_topic)2"/>
         <arg name="common_cb_frame"  default="$(arg common_cb_frame)"/>
     </include>
-    <include file="$(find raven_2_vision)/launch/register_common.launch">
+    <include file="$(find raven_2_vision)/launch/register_common_test.launch">
         <arg name="model"            default="$(arg reg_cam_model)"/>
         <arg name="common_cb_width"  default="$(arg common_cb_width)"/>
         <arg name="common_cb_height" default="$(arg common_cb_height)"/>

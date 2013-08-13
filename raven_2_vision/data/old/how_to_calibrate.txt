@@ -1,0 +1,25 @@
+ROS_NAMESPACE=usb_cam rosrun uvc_camera camera_node _camera_info_url:=file://$(rospack find raven_2_vision/data/filename.yaml
+rosrun camera_calibration cameracalibrator.py --size 8x6 --square 0.0155 image:=logitech_white/image_raw camera:=logitech_white
+
+needs a yaml like this:
+
+image_width: 1600
+image_height: 896
+camera_name: camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1404.427544, 0, 812.35918, 0, 1396.31843, 399.39324, 0, 0, 1]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.078317, -0.253172, 0.004035, 0.010638, 0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1399.648071, 0, 828.102712, 0, 0, 1412.027344, 400.938938, 0, 0, 0, 1, 0]

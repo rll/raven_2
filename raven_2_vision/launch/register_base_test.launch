@@ -32,24 +32,9 @@
         <arg name="width"  default="$(arg base_cb_width)"/>
         <arg name="height" default="$(arg base_cb_height)"/>
         <arg name="square" default="$(arg base_cb_square)"/>
-        <arg name="topic"  default="base_cb_left"/>
+        <arg name="topic"  default="$(arg base_cb_topic)"/>
 	<arg name="image"  default="/AD/left/image_rect"/>
 	<arg name="info"   default="/AD/left/camera_info"/>
-	<arg name="rect"   default="true"/>
-        <arg name="frame"  default="left_AD" />
-    </include>
-    <!-- Base Chessboard Detector Right -->
-    <include file="$(find raven_2_vision)/launch/chessboard.launch">
-        <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="base_right"/>
-        <arg name="width"  default="$(arg base_cb_width)"/>
-        <arg name="height" default="$(arg base_cb_height)"/>
-        <arg name="square" default="$(arg base_cb_square)"/>
-        <arg name="topic"  default="base_cb_right"/>
-	<arg name="image"  default="/AD/right/image_rect"/>
-	<arg name="info"   default="/AD/right/camera_info"/>
-	<arg name="rect"   default="true"/>
-        <arg name="frame"  default="right_AD" />
     </include>
     <!-- Common Chessboard Detector Left -->
     <include file="$(find raven_2_vision)/launch/chessboard.launch">
@@ -58,48 +43,10 @@
         <arg name="width"  default="$(arg common_cb_width)"/>
         <arg name="height" default="$(arg common_cb_height)"/>
         <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="common_cb_right"/>
-	<arg name="image"  default="/AD/right/image_rect"/>
-	<arg name="info"   default="/AD/right/camera_info"/>
-	<arg name="rect"   default="true"/>
-        <arg name="frame"  default="right_AD" />
-    </include>
-    <!-- Common Chessboard Detector Left -->
-    <include file="$(find raven_2_vision)/launch/chessboard.launch">
-        <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="common_left"/>
-        <arg name="width"  default="$(arg common_cb_width)"/>
-        <arg name="height" default="$(arg common_cb_height)"/>
-        <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="common_cb_left"/>
+        <arg name="topic"  default="$(arg common_cb_topic)"/>
 	<arg name="image"  default="/AD/left/image_rect"/>
 	<arg name="info"   default="/AD/left/camera_info"/>
-	<arg name="rect"   default="true"/>
-        <arg name="frame"  default="left_AD" />
     </include>
-
-
-
-
-    <!-- STEREO PROCESSING -->
-    <node name="base_pose_estimator" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
-	<param name="left" value="/AD/left" />
-	<param name="right" value="/AD/right" />
-	<param name="left_poses" value="base_cb_left" />
-	<param name="right_poses" value="base_cb_right" />
-	<param name="marker" value="CHESS" />
-	<param name="output" value="$(arg base_cb_topic)" />
-	<param name="frame" value="AD" />
-    </node>
-    <node name="common_pose_estimator" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
-	<param name="left" value="/AD/left" />
-	<param name="right" value="/AD/right" />
-	<param name="left_poses" value="common_cb_left" />
-	<param name="right_poses" value="common_cb_right" />
-	<param name="marker" value="CHESS" />
-	<param name="output" value="$(arg common_cb_topic)" />
-	<param name="frame" value="AD" />
-    </node>
 
 
     <!-- TRANSFORM REGISTERS -->
@@ -109,12 +56,10 @@
             <param name="listen" value="/$(arg base_cb_topic)"/>
             <param name="pose" value="base_pose"/>
             <!--<param name="pos" value="-0.068 0.2285 0.04075"/>-->
+	    <!--<param name="pos" value="0.19992 0.070 0.04910"/>-->
 	    <!--<param name="pos" value="-0.070 0.19992 0.04910"/>-->
-
-	    <!--<param name="pos" value="0.2 0.064 0.04153"/>-->
-	    <param name="pos" value="-0.064 0.2 0.04153"/>
+	    <param name="pos" value="-0.070 0.19992 0.04910"/>
             <param name="tb_deg" value="90 0 -90"/>
-	    <!--<param name="tb_deg" value="0 0 0"/>-->
             <param name="invert" value="True"/>
             <!--<param name="tf" value="0_link"/>-->
 	    <param name="tf" value="base_link_L"/>

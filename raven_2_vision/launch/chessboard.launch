@@ -1,15 +1,20 @@
+<!---->
 <launch>
-    <arg name="model" default="logitech"/>
+    <arg name="model" default="prosilica"/>
     <arg name="name"/>
-    <arg name="device" default="/dev/video0"/>
     <arg name="width" default="10"/>
     <arg name="height" default="7"/>
     <arg name="square" default="0.0122"/>
     <arg name="topic" default="chessboard_pose"/>
-    <group ns="$(arg model)_$(arg name)">
+    <arg name="image" default="/left/image_raw"/>
+    <arg name="info" default="/left/camera_info" />
+    <arg name="rect" default="false" />
+    <arg name="frame" default="left_BC" />
+    <!--<group ns="$(arg model)_$(arg name)">-->
         <node name="$(anon chessboard_tracker)" pkg="raven_2_vision" type="chessboard_tracker"
-                args="--width $(arg width) --height $(arg height) --square $(arg square) --topic $(arg topic)"
+                args="--width $(arg width) --height $(arg height) --square $(arg square) --topic $(arg topic)
+		--image $(arg image) --info $(arg info) --rect $(arg rect) --frame $(arg frame)"
                 output="screen"/>
         <!-- node name="chessboard_frame" pkg="raven_2_vision" type="chessboard_frame.py"/ -->
-    </group>
+    <!--</group>-->
 </launch>

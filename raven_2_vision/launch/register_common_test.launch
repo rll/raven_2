@@ -11,40 +11,14 @@
 
     <include file="$(find raven_2_vision)/launch/chessboard.launch">
         <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="common_left"/>
+        <arg name="name"   default="common_BC"/>
         <arg name="width"  default="$(arg common_cb_width)"/>
         <arg name="height" default="$(arg common_cb_height)"/>
         <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="common_cb_left_pose"/>
+        <arg name="topic"  default="$(arg common_cb_topic)"/>
 	<arg name="image"  default="/BC/left/image_rect"/>
 	<arg name="info"   default="/BC/left/camera_info"/>
-	<arg name="rect"   default="true"/>
-	<arg name="frame"  default="left_BC" />	
     </include>
-
-    <include file="$(find raven_2_vision)/launch/chessboard.launch">
-        <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="common_right"/>
-        <arg name="width"  default="$(arg common_cb_width)"/>
-        <arg name="height" default="$(arg common_cb_height)"/>
-        <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="common_cb_right_pose"/>
-	<arg name="image"  default="/BC/right/image_rect"/>
-	<arg name="info"   default="/BC/right/camera_info"/>
-	<arg name="rect"   default="true"/>
-        <arg name="frame"  default="right_BC" />
-    </include>
-    
-    
-    <node name="common_pose_estimator_main" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
-	<param name="left" value="/BC/left" />
-	<param name="right" value="/BC/right" />
-	<param name="left_poses" value="common_cb_left_pose" />
-	<param name="right_poses" value="common_cb_right_pose" />
-	<param name="marker" value="CHESS" />
-	<param name="output" value="$(arg common_cb_topic)" />
-	<param name="frame" value="BC" />
-    </node>
     
 
     <group ns="$(arg model)_$(arg name)">

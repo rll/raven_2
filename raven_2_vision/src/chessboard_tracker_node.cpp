@@ -25,25 +25,31 @@ struct LocalConfig : Config {
 	static float square;
 	static string topic;
 	static string image_topic;
+	static string info_topic;
 	static bool rect;
 	static float detection_interval;
 	static float print_interval;
+	static string frame_id;
 	LocalConfig() : Config() {
 		params.push_back(new Parameter<int>("width", &width, "chessboard width"));
 		params.push_back(new Parameter<int>("height", &height, "chessboard height"));
 		params.push_back(new Parameter<float>("square", &square, "chessboard sidelength"));
 		params.push_back(new Parameter<string>("topic", &topic, "pose topic"));
 		params.push_back(new Parameter<string>("image", &image_topic, "image topic"));
+		params.push_back(new Parameter<string>("info", &info_topic, "info topic"));
 		params.push_back(new Parameter<bool>("rect",&rect,"rectify image"));
 		params.push_back(new Parameter<float>("detection-interval", &detection_interval, "detection interval"));
 		params.push_back(new Parameter<float>("print-interval", &print_interval, "print interval"));
+		params.push_back(new Parameter<string>("frame", &frame_id, "frame id"));
 	}
 };
 int LocalConfig::width = 6;
 int LocalConfig::height = 8;
 float LocalConfig::square = .01;
 string LocalConfig::topic = "chessboard_pose";
+string LocalConfig::frame_id = "left_BC";
 string LocalConfig::image_topic = "";
+string LocalConfig::info_topic = "";
 bool LocalConfig::rect = true;
 float LocalConfig::detection_interval = 0.1;
 float LocalConfig::print_interval = 1;
@@ -79,7 +85,17 @@ int main(int argc, char* argv[]) {
 	ros::Subscriber image_sub = nh.subscribe(image_topic, 1, callback);
 	ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>(LocalConfig::topic,1);
 
-	sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", nh, ros::Duration(1));
+	string frame_id;
+	frame_id = LocalConfig::frame_id;
+
+	string info_topic;
+	if (LocalConfig::info_topic != "") {
+		info_topic = LocalConfig::info_topic;
+	} else {
+ 		info_topic = "camera_info";
+	}
+
+	sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(info_topic, nh, ros::Duration(1));
 	if (!info_ptr) throw runtime_error("could not get camera info");
 
 	if (LocalConfig::rect) {
@@ -140,8 +156,8 @@ int main(int argc, char* argv[]) {
 		if (gotPose) {
 			num_poses_since_print++;
 			total_num_poses++;
-
-			ps.header.frame_id = last_msg->header.frame_id;
+			ps.header.frame_id = frame_id;
+			//ps.header.frame_id = last_msg->header.frame_id;
 			ps.header.stamp = ros::Time::now();
 			pose_pub.publish(ps);
 		}

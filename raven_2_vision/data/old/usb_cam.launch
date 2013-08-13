@@ -1,0 +1,18 @@
+<launch>
+    <node name="usb_cam" pkg="usb_cam" type="usb_cam_node" output="screen" >
+        <param name="video_device" value="/dev/video0" />
+        <param name="image_width" value="1600" />
+        <param name="image_height" value="896" />
+        <param name="pixel_format" value="mjpeg" /> 
+        <param name="camera_frame_id" value="usb_cam" />
+        <param name="io_method" value="mmap"/>
+        <rosparam param="distortion_model">"Plumb Bob"</rosparam>
+        <rosparam param="D">[0.078317, -0.253172, 0.004035, 0.010638, 0.]</rosparam>
+        <rosparam param="K">[1404.427544, 0., 812.35918, 0., 1396.31843, 399.39324, 0., 0., 1.]</rosparam>
+        <rosparam param="R">[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] </rosparam>
+        <rosparam param="P">[1399.648071, 0., 828.102712, 0., 0., 1412.027344, 400.938938, 0., 0., 0., 1., 0.] </rosparam>
+    </node>
+    <group ns="usb_cam">
+        <node name="image_proc" pkg="image_proc" type="image_proc" />
+    </group>
+</launch>
