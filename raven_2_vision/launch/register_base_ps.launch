@@ -1,0 +1,124 @@
+<!-- Launch file for calibrating the transforms between two stereo camera pairs and base frame-->
+
+<launch>
+
+    
+    <node pkg="tf" type="static_transform_publisher" name="world_left_BC" args="-0.016 -0.257 0.297 -1.576 0.003 -2.149 world left_BC 100" />
+    <!-- ARGUMENTS -->
+    <!-- Common Arguments -->
+    <arg name="model" default="prosilica"/>
+    <arg name="name" default="base_chessboard"/>
+    <arg name="namespace" default="BC"/>
+    <!-- Base Chessboard Arguments --> 
+    <arg name="base_cb_width"    default="5"/>
+    <arg name="base_cb_height"   default="4"/>
+    <arg name="base_cb_square"   default="0.0135"/>
+    <arg name="base_cb_topic"    default="base_cb_pose"/>
+    <arg name="base_cb_name"     default="base_cb"/>
+    <!-- Common Chessboard Arguments -->
+    <arg name="common_cb_width"  default="10"/>
+    <arg name="common_cb_height" default="7"/>
+    <arg name="common_cb_square" default="0.00606"/>
+    <arg name="common_cb_name"   default="common_cb"/>
+    <arg name="common_cb_topic"  default="$(arg common_cb_name)_pose"/>
+    <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
+
+
+
+    <!-- CHESSBOARD DETECTORS -->
+    <!-- Base Chessboard Detector Left -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="base_left"/>
+        <arg name="width"  default="$(arg base_cb_width)"/>
+        <arg name="height" default="$(arg base_cb_height)"/>
+        <arg name="square" default="$(arg base_cb_square)"/>
+        <arg name="topic"  default="base_cb_left"/>
+	<arg name="image"  default="$(arg namespace)/left/image_rect"/>
+	<arg name="info"   default="$(arg namespace)/left/camera_info"/>
+    </include>
+    <!-- Base Chessboard Detector Right -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="base_right"/>
+        <arg name="width"  default="$(arg base_cb_width)"/>
+        <arg name="height" default="$(arg base_cb_height)"/>
+        <arg name="square" default="$(arg base_cb_square)"/>
+        <arg name="topic"  default="base_cb_right"/>
+	<arg name="image"  default="$(arg namespace)/right/image_rect"/>
+	<arg name="info"   default="$(arg namespace)/right/camera_info"/>
+    </include>
+    <!-- Common Chessboard Detector Left -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="common_right"/>
+        <arg name="width"  default="$(arg common_cb_width)"/>
+        <arg name="height" default="$(arg common_cb_height)"/>
+        <arg name="square" default="$(arg common_cb_square)"/>
+        <arg name="topic"  default="common_cb_left"/>
+	<arg name="image"  default="$(arg namespace)/right/image_rect"/>
+	<arg name="info"   default="$(arg namespace)/right/camera_info"/>
+    </include>
+    <!-- Common Chessboard Detector Left -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="common_left"/>
+        <arg name="width"  default="$(arg common_cb_width)"/>
+        <arg name="height" default="$(arg common_cb_height)"/>
+        <arg name="square" default="$(arg common_cb_square)"/>
+        <arg name="topic"  default="common_cb_right"/>
+	<arg name="image"  default="$(arg namespace)/left/image_rect"/>
+	<arg name="info"   default="$(arg namespace)/left/camera_info"/>
+    </include>
+
+
+
+
+    <!-- STEREO PROCESSING -->
+    <node name="base_pose_estimator" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
+	<param name="left" value="$(arg namespace)/left" />
+	<param name="right" value="$(arg namespace)/right" />
+	<param name="left_poses" value="base_cb_left" />
+	<param name="right_poses" value="base_cb_right" />
+	<param name="marker" value="CHESS" />
+	<param name="output" value="$(arg base_cb_topic)" />
+	<param name="frame" value="$(arg namespace)" />
+    </node>
+    <node name="common_pose_estimator" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
+	<param name="left" value="$(arg namespace)/left" />
+	<param name="right" value="$(arg namespace)/right" />
+	<param name="left_poses" value="common_cb_left" />
+	<param name="right_poses" value="common_cb_right" />
+	<param name="marker" value="CHESS" />
+	<param name="output" value="$(arg common_cb_topic)" />
+	<param name="frame" value="$(arg namespace)" />
+    </node>
+
+
+    <!-- TRANSFORM REGISTERS -->
+    <!-- Registering Nodes -->
+    <group ns="$(arg model)_$(arg name)">
+        <node name="register_base" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg base_cb_topic)"/>
+            <param name="pose" value="base_pose"/>
+            <!--<param name="pos" value="-0.068 0.2285 0.04075"/>-->
+	    <!--<param name="pos" value="0.19992 0.070 0.04910"/>-->
+	    <!--<param name="pos" value="-0.070 0.19992 0.04910"/>-->
+	    <param name="pos" value="-0.070 0.17 0.04910"/>
+            <param name="tb_deg" value="90 0 -90"/>
+            <param name="invert" value="True"/>
+            <!--<param name="tf" value="0_link"/>-->
+	    <param name="tf" value="base_link_L"/>
+            <param name="invert_tf" value="True"/>
+            <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>
+            <param name="save_in_frame" value="/0_link"/>
+        </node>
+        <node name="register_common" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg common_cb_topic)"/>
+            <param name="tf" value="$(arg common_cb_frame)"/>
+            <param name="tf_always_new" value="True"/>
+            <!--<param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/>-->
+        </node>
+    </group>
+</launch>

@@ -1,0 +1,250 @@
+#!/usr/bin/env python
+
+import roslib; roslib.load_manifest('stereo_marker_detect')
+import rospy
+import tf
+from geometry_msgs.msg import PointStamped, Pose, Quaternion, PoseStamped
+from marker_detect.msg import MarkerInfos, MarkerXYs
+from ar_pose.msg import ARMarkers, ARMarker
+from sensor_msgs.msg import CameraInfo
+import image_geometry
+import Util
+from visualization_msgs.msg import Marker
+import tf
+
+'''
+Simple package which listens to MarkerInfos messages from two marker detector
+topics and uses stereo vision to compute a (hopefully #FIXME) more accurate
+depth estimate. Largely based off of stereo_click package stereo_converter.py.
+'''
+
+'''
+#TODO: Any way to improve pose estimates as well? Currently does averaging, not
+sure if even preferable to individual.
+'''
+
+POS_DIFF_THRESHOLD = 0.003
+ORI_DIFF_THRESHOLD = 0.004
+
+def quaternion_avg(q1, q2):
+    return Quaternion((q1.x+q2.x)/2.0, (q1.y+q2.y)/2.0, (q1.z+q2.z)/2.0,\
+            (q1.w+q2.w)/2.0)
+
+# tuple
+def pos_diff(p1, p2):
+    return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 + (p1[2] - p2[2])**2)**0.5
+
+# tuple
+def ori_diff(o1, o2):
+    return ((o1[0] - o2[0])**2 + (o1[1] - o2[1])**2 + (o1[2] - o2[2])**2\
+            + (o1[3] - o2[3])**2)**0.5
+
+class StereoMarkerDetector(object):
+
+    def __init__(self, l_marker_xy_topic, r_marker_xy_topic, l_cam_info_topic,\
+            r_cam_info_topic, common_output_topic, base_output_topic, output_frame, camera_frame, \
+	    common_id, base_id):
+        self.listener = tf.TransformListener()
+
+        rviz_topic = "stereo_marker"
+        self.rviz_pub = rospy.Publisher(rviz_topic, Marker)
+
+        self.tf_br = tf.TransformBroadcaster()
+        
+        # get camera infos
+        self.l_cam_info = rospy.wait_for_message(l_cam_info_topic, CameraInfo)
+        self.r_cam_info = rospy.wait_for_message(r_cam_info_topic, CameraInfo)
+
+        # subscribe to individual marker detectors
+        self.l_marker_sub = rospy.Subscriber(l_marker_xy_topic, MarkerXYs,\
+                self.l_marker_cb, queue_size = 1)
+        self.r_marker_sub = rospy.Subscriber(r_marker_xy_topic, MarkerXYs,\
+                self.r_marker_cb, queue_size = 1)
+        
+        self.common_output_topic = common_output_topic
+	self.base_output_topic = base_output_topic
+	self.common_id = int(common_id)
+	self.base_id = int(base_id)
+        self.output_frame = output_frame
+
+        # marker xys, compute and publish when we have both right and left
+        self.mxys1 = None
+        self.mxys2 = None
+
+        # keep track of transform to make sure cameras aren't moving when
+        # computing stereo estimate
+        #self.listener.waitForTransform('/odom_combined', camera_frame,\
+        #        rospy.Time.now(), rospy.Duration(1.0))
+        #self.cam_odom_pos, self.cam_odom_ori =\
+        #        self.listener.lookupTransform('/odom_combined', camera_frame,\
+        #        rospy.Time())
+        self.locked = False
+
+        #self.pub = rospy.Publisher(output_topic, MarkerInfos)
+        self.common_pub = rospy.Publisher(common_output_topic, PoseStamped)
+	self.base_pub = rospy.Publisher(base_output_topic, PoseStamped)
+
+    def l_marker_cb(self, marker_xys):
+        if self.locked: return
+        self.mxys1 = marker_xys
+        self.stereo_marker_cb()
+
+    def r_marker_cb(self, marker_xys):
+        if self.locked: return
+        self.mxys2 = marker_xys
+        self.stereo_marker_cb()
+
+    def refresh(self, cam_odom_pos, cam_odom_ori):
+        self.locked = False
+        self.mxys1 = None
+        self.mxys2 = None
+        self.cam_odom_pos = cam_odom_pos
+        self.cam_odom_ori = cam_odom_ori
+
+    def stereo_marker_cb(self):
+        if self.mxys1 and self.mxys2:
+            self.locked = True
+            # check camera view hasn't shifted
+            #self.listener.waitForTransform('/odom_combined', camera_frame,\
+            #    rospy.Time.now(), rospy.Duration(1.0))
+            #cam_odom_pos, cam_odom_ori =\
+            #    self.listener.lookupTransform('/odom_combined', camera_frame,\
+            #    rospy.Time())
+            #if pos_diff(self.cam_odom_pos, cam_odom_pos) > POS_DIFF_THRESHOLD\
+            #        or ori_diff(self.cam_odom_ori, cam_odom_ori) > \
+            #        ORI_DIFF_THRESHOLD:
+            #    self.refresh(cam_odom_pos, cam_odom_ori)
+            #    return # don't publish
+
+            # publish stereo marker infos
+            marker_infos = self.convert_stereo_marker_xys(self.mxys1, self.mxys2)
+	    common_output = self.convertMarkerInfosToPoseStamped(marker_infos, self.common_id)
+	    base_output = self.convertMarkerInfosToPoseStamped(marker_infos, self.base_id)	
+	    if common_output != None:
+                self.common_pub.publish(common_output)
+	    else:
+		rospy.loginfo("NO COMMON MARKER RECEIVED: "+str(self.common_id) + " ("+self.output_frame+")")
+	    if base_output != None:
+		self.base_pub.publish(base_output)
+	    else:
+		if self.output_frame == "left_AD":
+		    rospy.loginfo("NO BASE MARKER RECEIVED: "+str(self.base_id))
+            #self.refresh(cam_odom_pos, cam_odom_ori)
+            self.locked = False
+
+    def convertMarkerInfosToPoseStamped(self, marker_infos, id_number):
+	output = PoseStamped()
+	output.header.frame_id = marker_infos.header.frame_id
+	for marker in marker_infos.markers:
+	    if id_number == marker.id:
+		output.header.stamp = rospy.Time.now()
+		output.pose = marker.pose.pose
+		return output
+	return None
+
+    def convert_stereo_marker_xys(self, mxys1, mxys2):
+        pts = []
+        oris = []
+        ids = []
+
+        for id in mxys1.ids:
+            if id in mxys2.ids:
+                index1 = mxys1.ids.index(id)
+                index2 = mxys2.ids.index(id)
+                pt1 = mxys1.xys[index1]
+                pt2 = mxys2.xys[index2]
+                ori1 = mxys1.oris[index1]
+                ori2 = mxys2.oris[index2]
+                pt = self.convert_stereo(pt1, pt2)
+                pts.append(pt)
+                ids.append(id)
+                # average pose estimates
+                # oris.append(quaternion_avg(ori1, ori2))
+                oris.append(ori1)
+
+        now = rospy.Time.now()
+        #marker_infos = MarkerInfos()
+        marker_infos = ARMarkers()
+        marker_infos.header.frame_id = self.output_frame
+        marker_infos.header.stamp = now
+        for i in range(0, len(ids)):
+            p = Pose()
+            p.position = pts[i]
+            p.orientation = oris[i]
+
+            # For ARMarkers
+            marker = ARMarker()
+            marker.id = ids[i]
+            marker.pose.pose = p
+            marker.header.frame_id = self.output_frame
+            marker.header.stamp = now
+            marker_infos.markers.append(marker)
+
+            # For MarkerInfos
+            # marker_infos.ids.append(ids[i])
+            # marker_infos.poses.append(p)
+
+            rviz_marker = Util.createRvizMarker(p, self.output_frame, ids[i])
+            self.rviz_pub.publish(rviz_marker)
+
+            pos = p.position
+            ori = p.orientation
+            self.tf_br.sendTransform((pos.x, pos.y, pos.z),
+                                     (ori.x, ori.y, ori.z, ori.w), 
+                                     now, "stereo_" + str(ids[i]), self.output_frame)
+
+        return marker_infos
+
+    def convert_stereo(self, p1, p2):
+        if self.l_cam_info.P[3] == 0:
+            left = p1
+            right = p2
+        else:
+            left = p2
+            right = p1
+        u = left.x
+        v = left.y
+        disparity = left.x - right.x
+
+        stereo_model = image_geometry.StereoCameraModel()
+        stereo_model.fromCameraInfo(self.l_cam_info, self.r_cam_info)
+        (x,y,z) = stereo_model.projectPixelTo3d((u,v), disparity)
+        camera_pt = PointStamped()
+        camera_pt.header.frame_id = self.l_cam_info.header.frame_id
+        camera_pt.header.stamp = rospy.Time.now()
+        camera_pt.point.x = x
+        camera_pt.point.y = y
+        camera_pt.point.z = z
+        #self.listener.waitForTransform(self.output_frame, camera_pt.header.frame_id,\
+        #        rospy.Time.now(),rospy.Duration(4.0))
+        #output_point = self.listener.transformPoint(self.output_frame, camera_pt)
+
+        #return output_point.point
+
+        return camera_pt.point
+
+if __name__ == '__main__':
+    try:
+        rospy.init_node('stereo_marker_detect')
+
+        l_marker_xy_topic = rospy.get_param('~l_marker_xy_topic', 'l_marker_xys')
+        r_marker_xy_topic = rospy.get_param('~r_marker_xy_topic', 'r_marker_xys')
+        
+        l_cam_info_topic = rospy.get_param('~l_cam_info_topic', '')
+        r_cam_info_topic = rospy.get_param('~r_cam_info_topic', '')
+
+        common_output_topic = rospy.get_param('~common_output_topic', 'common_cb_detector')
+	base_output_topic = rospy.get_param('~base_output_topic', 'base_cb_pose')
+	common_id = rospy.get_param('~common_id', '30')
+	base_id = rospy.get_param('~base_id', '32')
+        output_frame = rospy.get_param('~output_frame', 'left_BC')
+
+        camera_frame = rospy.get_param('~camera_frame', 'left_BC')
+        
+        detector = StereoMarkerDetector(l_marker_xy_topic, r_marker_xy_topic,\
+                l_cam_info_topic, r_cam_info_topic, common_output_topic, base_output_topic, output_frame,\
+                camera_frame, common_id, base_id)
+        rospy.spin()
+
+    except rospy.ROSInterruptException:
+        pass

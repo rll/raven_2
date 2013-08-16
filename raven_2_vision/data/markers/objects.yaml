@@ -1,0 +1,6 @@
+objects:
+  table:
+    - id: 52
+robot:
+  /base_link_L:
+    - id: 53

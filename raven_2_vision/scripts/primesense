@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest('raven_pose_estimator')
+import rospy
+import tf
+import tfx
+import math
+import image_geometry
+from ar_pose.msg import ARMarker
+from ar_pose.msg import ARMarkers
+from marker_detect.msg import MarkerInfos, MarkerXYs
+from geometry_msgs.msg import PoseWithCovariance
+from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import QuaternionStamped
+from sensor_msgs.msg import CameraInfo, Image
+
+import cv
+import cv2
+import cv_bridge
+
+DEBUG = True
+
+class PSChessEstimator:
+	def __init__(self, chess_pose, output, depth, rgb_cam_info, pixel_coords):
+		self.cam_sub  = rospy.Subscriber(rgb_cam_info, CameraInfo, self.updateInfo)
+		self.depth_sub = rospy.Subscriber(depth, Image, self.updateDepth)
+		self.pixel_sub = rospy.Subscriber(pixel_coords, MarkerXYs, self.updatePixels)
+		self.pose_sub = rospy.Subscriber(chess_pose, MarkerInfos, self.calculateDepth) 
+		self.pose_pub = rospy.Publisher(output, PoseStamped)
+		self.output = PoseStamped()
+		self.info = None
+		self.depth_image = None
+		self.bridge = cv_bridge.CvBridge()
+		self.pixel_y = None
+		self.pixel_x = None
+
+	def updateDepth(self, image):
+		rospy.loginfo("UPDATING DEPTH+++++++++++++++++++++++++")
+		i = self.bridge.imgmsg_to_cv(image, "32FC1")
+		self.depth_image = i
+		print "\t"+str(self.depth_image[0,0])
+
+	def updateInfo(self, info):
+		rospy.loginfo("UPDATING INFO++++++++++++++++++++++++++")
+		self.info = info
+	
+	def updatePixels(self, data):
+		self.pixel_y = data.xys[0].y
+		self.pixel_x = data.xys[0].x
+
+	def calculateDepth(self, markerinfos):
+		if self.depth_image != None and self.pixel_y !=None and self.pixel_x != None:
+			pose = markerinfos.poses[0]
+			self.output.pose = pose
+			self.output.header.stamp = rospy.Time.now()
+			#self.output.header.frame_id = pose.header.frame_id
+			self.output.header.frame_id = "camera_rgb_optical_frame"
+			if DEBUG:			
+				print "HEADER_ID: " + self.output.header.frame_id
+			(pixel_x, pixel_y) = self.convertPoseToPixels(self.output.pose.position)			
+			(pixel_x, pixel_y) = (self.pixel_x, self.pixel_y)
+			width = self.depth_image.width
+			#depth = self.depth_image.data[int(pixel_x + pixel_y*width)]
+			depth = self.depth_image[pixel_y, pixel_x]
+			if DEBUG:
+				print "POSITION: " + str(self.output.pose.position.x) + ", " + str(self.output.pose.position.y) +", " + str(self.output.pose.position.z)
+				print "WIDTH: " + str(width)
+				print "HEIGHT: " + str(self.depth_image.height)
+				print "PIXELS: " +"(" + str(pixel_x)+ ", "+str(pixel_y)+")"
+				print "DEPTH: " + str(depth)
+				print "PREVIOUS Z: " + str(self.output.pose.position.z)
+			self.output.pose.position.z = depth
+			self.publishPose()
+			
+	
+	def convertPoseToPixels(self, pose):
+		if self.info != None:
+			pinholeModel = image_geometry.PinholeCameraModel()
+			pinholeModel.fromCameraInfo(self.info)
+			(u, v) = pinholeModel.project3dToPixel((pose.x, pose.y, pose.z))
+			return (u, v)
+		else:
+			print "ERROR: NO CAMERA INFO"
+	
+		
+	def publishPose(self):
+		self.pose_pub.publish(self.output)
+		if DEBUG:
+			rospy.loginfo("PUBLISHED A POSE=====================")
+			rospy.loginfo(self.output)
+
+def main():
+	rospy.init_node("primesense")
+	chess_pose = rospy.get_param("~chess_pose", "primesense_poses")
+	output = rospy.get_param("~output", "common_cb_pose")
+	depth = rospy.get_param("~depth", "camera/depth/image_rect")
+	rgb_cam_info = rospy.get_param("~rgb_info", "camera/rgb/camera_info")
+	pixels = rospy.get_param("~pixels", "primesense_pixels")	
+	marker_id = rospy.get_param("~marker_id", "32")
+	p = PSChessEstimator(chess_pose, output, depth, rgb_cam_info, pixels)
+	rospy.spin()
+
+if __name__=='__main__':
+    main()
+
+

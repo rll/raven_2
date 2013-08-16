@@ -1,0 +1,31 @@
+<!---->
+<launch>
+
+    <!-- BEGIN COMMON PARAMETERS -->
+
+    <!-- depending on application increase this number -->
+
+    <param name="~num_markers" type="int" value="100" />
+    <param name="~camera_frame" type="string" value="left_optical_frame" />
+    <param name="~target_frame" type="string" value="left_optical_frame" />
+    <param name="~scale_factor" type="double" value="0.0105445269" />
+    <!--param name="thin_markers" type="bool" value="false" /-->
+    <!-- turn off x output to decrease load -->
+    <param name="~no_x_output" type="bool" value="false" />
+    <param name="~frame_rate" type="int" value="10" />
+    <!-- proportional to size of markers -->
+    <param name="~block_size" type="int" value="31" />
+    <!-- increase if poor contrast -->
+    <param name="~offset" type="double" value="15.0" />
+
+    <!-- END COMMMON PARAMETERS -->
+
+    <!-- AR detector node -->
+    <node pkg="marker_detect" name="primesense_marker_detector_stream" type="marker_detector_node" output="screen" args="output_x">
+        <param name="pub_topic" type="string" value="primesense_poses" />
+        <param name="xy_pub_topic" type="string" value="primesense_pixels" />
+    	<remap from="image_rect" to="camera/rgb/image_rect" />
+        <remap from="camera_info" to="camera/rgb/camera_info" />
+    </node>
+    
+</launch>

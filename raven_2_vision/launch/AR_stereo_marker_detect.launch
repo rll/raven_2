@@ -1,0 +1,58 @@
+<!---->
+<launch>
+
+    <!-- BEGIN COMMON PARAMETERS -->
+    <arg name="common_output" default="common_cb_pose" />
+    <arg name="base_output" default="base_cb_pose" />
+    <arg name="common_id" default="30" />
+    <arg name="base_id" default="32" />
+    <arg name="space" default="BC" />
+
+    <!-- depending on application increase this number -->
+    <param name="~num_markers" type="int" value="100" />
+    <param name="~camera_frame" type="string" value="left_BC" />
+    <param name="~target_frame" type="string" value="left_BC" />
+    <param name="~scale_factor" type="double" value="0.0105445269" />
+    <!--param name="thin_markers" type="bool" value="false" /-->
+    <!-- turn off x output to decrease load -->
+    <param name="~no_x_output" type="bool" value="false" />
+    <param name="~frame_rate" type="int" value="10" />
+    <!-- proportional to size of markers -->
+    <param name="~block_size" type="int" value="31" />
+    <!-- increase if poor contrast -->
+    <param name="~offset" type="double" value="15.0" />
+
+    <!-- END COMMMON PARAMETERS -->
+
+    <!-- first stereo node -->
+    <node pkg="marker_detect" name="$(arg space)_l_marker_detector_stream" type="marker_detector_node" output="screen" args="output_x">
+        <param name="pub_topic" type="string" value="$(arg space)_l_marker_detector" />
+        <param name="xy_pub_topic" type="string" value="$(arg space)_l_marker_xys" />
+    	<remap from="image_rect" to="$(arg space)/left/image_rect" />
+        <remap from="camera_info" to="$(arg space)/left/camera_info" />
+    </node>
+
+    <!-- second stereo node -->
+    <node pkg="marker_detect" name="$(arg space)_r_marker_detector_stream" type="marker_detector_node" output="screen" args="output_x">
+        <param name="pub_topic" type="string" value="$(arg space)_r_marker_detector" />
+        <param name="xy_pub_topic" type="string" value="$(arg space)_r_marker_xys" />
+    	<remap from="image_rect" to="$(arg space)/right/image_rect" />
+        <remap from="camera_info" to="$(arg space)/right/camera_info" />
+    </node>
+
+    <!-- combined node -->
+    <node pkg="raven_2_vision" name="$(arg space)_marker_detector_stereo" type="stereo_AR" output="screen">
+        <param name="l_marker_topic" type="string" value="$(arg space)_l_marker_detector" />
+        <param name="r_marker_topic" type="string" value="$(arg space)_r_marker_detector" />
+        <param name="l_marker_xy_topic" type="string" value="$(arg space)_l_marker_xys" />
+        <param name="r_marker_xy_topic" type="string" value="$(arg space)_r_marker_xys" />
+        <param name="l_cam_info_topic" type="string" value="$(arg space)/left/camera_info" />
+        <param name="r_cam_info_topic" type="string" value="$(arg space)/right/camera_info" />
+        <param name="common_output_topic" type="string" value="$(arg common_output)" />
+	<param name="base_output_topic" type="string" value="$(arg base_output)" />
+	<param name="common_id" type="string" value="$(arg common_id)" />
+	<param name="base_id" type="string" value="$(arg base_id)" />
+        <param name="output_frame" type="string" value="left_$(arg space)" />
+    </node>
+    
+</launch>

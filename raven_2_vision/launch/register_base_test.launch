@@ -1,0 +1,78 @@
+<!-- Launch file for calibrating the transforms between two stereo camera pairs and base frame-->
+
+<launch>
+
+    
+    <!--<node pkg="tf" type="static_transform_publisher" name="AD_R2L" args="-0.103322 0 0.00136 0 -0.104719755 0 left_AD right_AD 100" />-->
+    <!-- ARGUMENTS -->
+    <!-- Common Arguments -->
+    <arg name="model" default="prosilica"/>
+    <arg name="name" default="base_chessboard"/>
+    <!-- Base Chessboard Arguments --> 
+    <arg name="base_cb_width"    default="5"/>
+    <arg name="base_cb_height"   default="4"/>
+    <arg name="base_cb_square"   default="0.0135"/>
+    <arg name="base_cb_topic"    default="base_cb_pose"/>
+    <arg name="base_cb_name"     default="base_cb"/>
+    <!-- Common Chessboard Arguments -->
+    <arg name="common_cb_width"  default="10"/>
+    <arg name="common_cb_height" default="7"/>
+    <arg name="common_cb_square" default="0.00606"/>
+    <arg name="common_cb_name"   default="common_cb"/>
+    <arg name="common_cb_topic"  default="$(arg common_cb_name)_pose"/>
+    <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
+
+
+
+    <!-- CHESSBOARD DETECTORS -->
+    <!-- Base Chessboard Detector Left -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="base_left"/>
+        <arg name="width"  default="$(arg base_cb_width)"/>
+        <arg name="height" default="$(arg base_cb_height)"/>
+        <arg name="square" default="$(arg base_cb_square)"/>
+        <arg name="topic"  default="$(arg base_cb_topic)"/>
+	<arg name="image"  default="/AD/left/image_rect"/>
+	<arg name="info"   default="/AD/left/camera_info"/>
+    </include>
+    <!-- Common Chessboard Detector Left -->
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="common_right"/>
+        <arg name="width"  default="$(arg common_cb_width)"/>
+        <arg name="height" default="$(arg common_cb_height)"/>
+        <arg name="square" default="$(arg common_cb_square)"/>
+        <arg name="topic"  default="$(arg common_cb_topic)"/>
+	<arg name="image"  default="/AD/left/image_rect"/>
+	<arg name="info"   default="/AD/left/camera_info"/>
+    </include>
+
+
+    <!-- TRANSFORM REGISTERS -->
+    <!-- Registering Nodes -->
+    <group ns="$(arg model)_$(arg name)">
+        <node name="register_base" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg base_cb_topic)"/>
+            <param name="pose" value="base_pose"/>
+            <!--<param name="pos" value="-0.068 0.2285 0.04075"/>-->
+	    <!--<param name="pos" value="0.19992 0.070 0.04910"/>-->
+	    <!--<param name="pos" value="-0.070 0.19992 0.04910"/>-->
+	    <param name="pos" value="-0.070 0.19992 0.04910"/>
+            <param name="tb_deg" value="90 0 -90"/>
+            <param name="invert" value="True"/>
+            <!--<param name="tf" value="0_link"/>-->
+	    <param name="tf" value="base_link_L"/>
+            <param name="invert_tf" value="True"/>
+            <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>
+            <param name="save_in_frame" value="/0_link"/>
+        </node>
+        <node name="register_common" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg common_cb_topic)"/>
+            <param name="tf" value="$(arg common_cb_frame)"/>
+            <param name="tf_always_new" value="True"/>
+            <!--<param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/>-->
+        </node>
+    </group>
+</launch>

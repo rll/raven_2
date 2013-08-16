@@ -1,0 +1,47 @@
+<!-- Launch file for calibrating the transforms between two stereo camera pairs and base frame-->
+
+<launch>
+
+    
+    
+    <!-- ARGUMENTS -->
+    <!-- Common Arguments -->
+    <arg name="model" default="prosilica"/>
+    <arg name="name" default="base_chessboard"/>
+    <arg name="namespace" default="BC"/>
+    <arg name="base_cb_topic" default="base_cb_pose"/>
+    <arg name="common_cb_topic" default="common_cb_pose"/>
+    <arg name="common_cb_frame" default="" />
+    
+    <!-- AR Stereo Detector -->
+    <include file="$(find raven_2_vision)/launch/AR_stereo_marker_detect.launch" >
+	<arg name="common_output" default="$(arg common_cb_topic)" />
+	<arg name="base_output" default="$(arg base_cb_topic)" />
+	<arg name="common_id" default="30" />
+	<arg name="base_id" default="32" />
+    </include>
+
+
+    <!-- TRANSFORM REGISTERS -->
+    <!-- Registering Nodes -->
+    <group ns="$(arg model)_$(arg name)">
+        <node name="register_base" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg base_cb_topic)"/>
+            <param name="pose" value="base_pose"/>
+	    <param name="pos" value="-0.070 0.205 0.04910"/>
+            <param name="tb_deg" value="90 0 -90"/>
+            <param name="invert" value="True"/>
+	    <param name="tf" value="base_link_L"/>
+            <param name="invert_tf" value="True"/>
+            <param name="tf_always_new" value="True"/>
+            <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>
+            <param name="save_in_frame" value="/0_link"/>
+        </node>
+        <node name="register_common" pkg="tfx" type="publisher" args="--use-params" output="screen">
+            <param name="listen" value="/$(arg common_cb_topic)"/>
+            <param name="tf" value="$(arg common_cb_frame)"/>
+            <param name="tf_always_new" value="True"/>
+            <!--<param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose_cb.yaml"/>-->
+        </node>
+    </group>
+</launch>
