@@ -1,25 +1,55 @@
+<!---->
 <launch>
-    <arg name="model" default="logitech"/>
-    <arg name="name"/>
-    <arg name="device" default="/dev/video0"/>
+    <arg name="model" default="prosilica"/>
+    <arg name="name" default="common_chessboard"/>
     <arg name="common_cb_width"  default="10"/>
     <arg name="common_cb_height" default="7"/>
-    <arg name="common_cb_square" default="0.0122"/>
+    <arg name="common_cb_square" default="0.00606"/>
     <arg name="common_cb_name"   default="common_cb"/>
     <arg name="common_cb_topic"  default="$(arg common_cb_name)_pose"/>
-    <arg name="common_cb_frame"  default="/$(arg common_cb_name)_frame"/>
+    <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
+
     <include file="$(find raven_2_vision)/launch/chessboard.launch">
         <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="$(arg name)"/>
-        <arg name="device" default="$(arg device)"/>
+        <arg name="name"   default="common_left"/>
         <arg name="width"  default="$(arg common_cb_width)"/>
         <arg name="height" default="$(arg common_cb_height)"/>
         <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="$(arg common_cb_topic)"/>
+        <arg name="topic"  default="common_cb_left_pose"/>
+	<arg name="image"  default="/BC/left/image_rect"/>
+	<arg name="info"   default="/BC/left/camera_info"/>
+	<arg name="rect"   default="true"/>
+	<arg name="frame"  default="left_BC" />	
     </include>
+
+    <include file="$(find raven_2_vision)/launch/chessboard.launch">
+        <arg name="model"  default="$(arg model)"/>
+        <arg name="name"   default="common_right"/>
+        <arg name="width"  default="$(arg common_cb_width)"/>
+        <arg name="height" default="$(arg common_cb_height)"/>
+        <arg name="square" default="$(arg common_cb_square)"/>
+        <arg name="topic"  default="common_cb_right_pose"/>
+	<arg name="image"  default="/BC/right/image_rect"/>
+	<arg name="info"   default="/BC/right/camera_info"/>
+	<arg name="rect"   default="true"/>
+        <arg name="frame"  default="right_BC" />
+    </include>
+    
+    
+    <node name="common_pose_estimator_main" pkg="raven_pose_estimator" type="pose_estimator" output="screen">
+	<param name="left" value="/BC/left" />
+	<param name="right" value="/BC/right" />
+	<param name="left_poses" value="common_cb_left_pose" />
+	<param name="right_poses" value="common_cb_right_pose" />
+	<param name="marker" value="CHESS" />
+	<param name="output" value="$(arg common_cb_topic)" />
+	<param name="frame" value="BC" />
+    </node>
+    
+
     <group ns="$(arg model)_$(arg name)">
         <node name="register_common" pkg="tfx" type="publisher" args="--use-params" output="screen">
-            <param name="listen" value="$(arg common_cb_topic)"/>
+            <param name="listen" value="/$(arg common_cb_topic)"/>
             <param name="tf" value="$(arg common_cb_frame)"/>
             <param name="invert_tf" value="true"/>
             <param name="tf_always_new" value="True"/>
