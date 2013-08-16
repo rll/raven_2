@@ -246,6 +246,8 @@ class StatePrinter(object):
 			for joint in arm.joints:
 				if joint.type == Constants.JOINT_TYPE_INSERTION:
 					conv = 100.
+				else:
+					conv = self.conv
 				
 				#    uint16 type
 				self.fields['joint_types'].append(Constants.JOINT_TYPE_STRINGS.split(',')[joint.type])
