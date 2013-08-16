@@ -23,13 +23,13 @@
     <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
 
 
-    <include file="$(find raven_2_vision)/launch/register_base_AR.launch">
+    <include file="$(find raven_2_vision)/launch/AR/register_base_AR.launch">
         <arg name="model"            default="$(arg base_cam_model)"/>
         <arg name="common_cb_topic"  default="$(arg common_cb_topic)2"/>
-	<arg name="base_cb_topic"    default="$(arg base_cb_topic)" />
+        <arg name="base_cb_topic"    default="$(arg base_cb_topic)" />
         <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
     </include>
-    <include file="$(find raven_2_vision)/launch/register_common_AR.launch">
+    <include file="$(find raven_2_vision)/launch/AR/register_common_AR.launch">
         <arg name="model"            default="$(arg reg_cam_model)"/>
         <arg name="common_cb_topic"  default="$(arg common_cb_topic)"/>
     </include>

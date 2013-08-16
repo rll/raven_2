@@ -14,7 +14,7 @@
     <arg name="common_cb_frame" default="" />
     
     <!-- AR Stereo Detector -->
-    <include file="$(find raven_2_vision)/launch/AR_stereo_marker_detect.launch" >
+    <include file="$(find raven_2_vision)/launch/AR/AR_stereo_marker_detect.launch" >
 	<arg name="common_output" default="$(arg common_cb_topic)" />
 	<arg name="base_output" default="$(arg base_cb_topic)" />
 	<arg name="common_id" default="30" />
@@ -29,10 +29,10 @@
         <node name="register_base" pkg="tfx" type="publisher" args="--use-params" output="screen">
             <param name="listen" value="/$(arg base_cb_topic)"/>
             <param name="pose" value="base_pose"/>
-	    <param name="pos" value="-0.070 0.220446 0.0279"/>
+            <param name="pos" value="-0.070 0.220446 0.0279"/>
             <param name="tb_deg" value="90 0 -90"/> 
             <param name="invert" value="True"/>
-	    <param name="tf" value="base_link_L"/>
+            <param name="tf" value="base_link_L"/>
             <param name="invert_tf" value="True"/>
             <param name="tf_always_new" value="True"/>
             <param name="save" value="$(find raven_2_vision)/data/$(arg model)/$(arg name)_pose.yaml"/>

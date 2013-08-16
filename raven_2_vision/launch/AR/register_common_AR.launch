@@ -8,16 +8,15 @@
     <arg name="common_cb_name"   default="common_cb"/>
     <arg name="common_cb_topic"  default="$(arg common_cb_name)_pose"/>
     <arg name="common_cb_frame"  default="$(arg common_cb_name)_frame"/>
+    <arg name="base_cb_topic"    default="base_cb_pose" />
 
-    <include file="$(find raven_2_vision)/launch/chessboard.launch">
-        <arg name="model"  default="$(arg model)"/>
-        <arg name="name"   default="common_BC"/>
-        <arg name="width"  default="$(arg common_cb_width)"/>
-        <arg name="height" default="$(arg common_cb_height)"/>
-        <arg name="square" default="$(arg common_cb_square)"/>
-        <arg name="topic"  default="$(arg common_cb_topic)"/>
-	<arg name="image"  default="/BC/left/image_rect"/>
-	<arg name="info"   default="/BC/left/camera_info"/>
+    <!-- AR Stereo Detector -->
+    <include file="$(find raven_2_vision)/launch/AR/AR_stereo_marker_detect.launch" >
+        <arg name="common_output" default="$(arg common_cb_topic)" />
+        <arg name="base_output" default="$(arg base_cb_topic)" />
+        <arg name="common_id" default="30" />
+        <arg name="base_id" default="32" />
+        <arg name="space" default="BC" />
     </include>
     
 

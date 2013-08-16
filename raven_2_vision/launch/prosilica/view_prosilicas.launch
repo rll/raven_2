@@ -1,0 +1,20 @@
+<!---->
+<launch>
+    <arg name="image_type" default="image_rect_color" />
+
+    <node name="BC_left" pkg="image_view" type="image_view">
+	<remap from="image" to="/BC/left/$(arg image_type)" />
+    </node>
+
+    <node name="BC_right" pkg="image_view" type="image_view">
+	<remap from="image" to="/BC/right/$(arg image_type)" />
+    </node>
+
+    <node name="AD_left" pkg="image_view" type="image_view">
+	<remap from="image" to="/AD/left/$(arg image_type)" />
+    </node>
+
+    <node name="AD_right" pkg="image_view" type="image_view">
+	<remap from="image" to="/AD/right/$(arg image_type)" />
+    </node>
+</launch>
