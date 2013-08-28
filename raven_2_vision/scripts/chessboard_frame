@@ -192,6 +192,7 @@ class ChessboardFrame:
 		self.transform = Tworld_to_cam
 		self.transform_frame = msg.header.frame_id
 		
+                print "sending"
 		self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,msg.header.stamp,self.transform_frame,'/world')
 		
 		
@@ -201,7 +202,8 @@ class ChessboardFrame:
 		if self.transform is not None:
 			Tworld_to_cam_p = self.transform[0:3,3]
 			Tworld_to_cam_q = tft.quaternion_from_matrix(self.transform)
-			self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,rospy.Time.now(),self.transform_frame,'/world')
+			print "publishing"
+                        self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,rospy.Time.now(),self.transform_frame,'/world')
 
 
 def print_help():
@@ -218,6 +220,7 @@ def print_help():
 	print '---------------------------------'
 	
 if __name__ == '__main__':
+        print "HELLO"
 	rospy.init_node('chessboard_frame')
 	
 	listener = tf.TransformListener()

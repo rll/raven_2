@@ -61,12 +61,13 @@ int main(int argc, char* argv[]) {
 	geometry_msgs::Pose pose;
 	bool poseWasFound = false;
 	while (true) {
+	  std::vector<cv::Point2f> cornersImage;
 		cv::Mat image0, image;
 		capture >> image0;
 		if (image0.data == NULL) throw runtime_error("no image");
 		image0.copyTo(image);
 
-		bool gotPose = getChessboardPoseNoRect(image, Size(LocalConfig::width, LocalConfig::height), .0157, cameraMatrix, distCoeffs, pose);
+		bool gotPose = getChessboardPoseNoRect(image, Size(LocalConfig::width, LocalConfig::height), .0157, cameraMatrix, distCoeffs, pose, cornersImage);
 		if (gotPose) {
 			poseWasFound = true;
 			cout << "found checkerboard. press q to quit" << endl;

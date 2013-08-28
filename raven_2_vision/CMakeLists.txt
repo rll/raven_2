@@ -23,6 +23,9 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 add_definitions("-DRAVEN_VISION_DATA_DIR=${CMAKE_SOURCE_DIR}/data")
 
+#initialize boost directory search
+rosbuild_add_boost_directories()
+
 #common commands for building c++ executables and libraries
 rosbuild_add_library(${PROJECT_NAME} src/raven_vision.cpp src/config.cpp)
 target_link_libraries(${PROJECT_NAME} boost_program_options)
@@ -39,3 +42,7 @@ target_link_libraries(extrinsic_calibration ${PROJECT_NAME})
 
 rosbuild_add_executable(chessboard_tracker src/chessboard_tracker_node.cpp)
 target_link_libraries(chessboard_tracker ${PROJECT_NAME})
+
+rosbuild_add_executable(stereo_error_characterizer src/stereo_error_characterizer_node.cpp)
+rosbuild_link_boost(stereo_error_characterizer thread system signals)
+target_link_libraries(stereo_error_characterizer ${PROJECT_NAME})

@@ -13,6 +13,7 @@
   <depend package="rospy"/>
   <depend package="bullet"/>
   <depend package="geometry_msgs"/>
+  <depend package="image_geometry"/>
   <depend package="sensor_msgs"/>
   <depend package="tf"/>
   <depend package='tfx'/> <!-- https://bitbucket.org/benkehoe/tfx -->

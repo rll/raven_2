@@ -43,13 +43,13 @@ struct LocalConfig : Config {
 		params.push_back(new Parameter<string>("frame", &frame_id, "frame id"));
 	}
 };
-int LocalConfig::width = 6;
-int LocalConfig::height = 8;
+int LocalConfig::width = 7;
+int LocalConfig::height = 9;
 float LocalConfig::square = .01;
 string LocalConfig::topic = "chessboard_pose";
 string LocalConfig::frame_id = "left_BC";
-string LocalConfig::image_topic = "";
-string LocalConfig::info_topic = "";
+string LocalConfig::image_topic = "BC/right/image_raw";
+string LocalConfig::info_topic = "BC/right/camera_info";
 bool LocalConfig::rect = true;
 float LocalConfig::detection_interval = 0.1;
 float LocalConfig::print_interval = 1;
@@ -94,6 +94,7 @@ int main(int argc, char* argv[]) {
 	} else {
  		info_topic = "camera_info";
 	}
+	std::cout << info_topic << std::endl;
 
 	sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(info_topic, nh, ros::Duration(1));
 	if (!info_ptr) throw runtime_error("could not get camera info");
@@ -146,12 +147,12 @@ int main(int argc, char* argv[]) {
 
 		cv::Mat image = cv_bridge::toCvCopy(last_msg)->image;
 
-
 		bool gotPose;
+		cv::vector<cv::Point2f> cornersImage;
 		if (LocalConfig::rect) {
-			gotPose = getChessboardPoseRect(image, Size(LocalConfig::width, LocalConfig::height), LocalConfig::square, cameraMatrix, distCoeffs, ps.pose, true,windowName);
+		  gotPose = getChessboardPoseRect(image, Size(LocalConfig::width, LocalConfig::height), LocalConfig::square, cameraMatrix, distCoeffs, ps.pose, cornersImage, true, windowName);
 		} else {
-			gotPose = getChessboardPoseNoRect(image, Size(LocalConfig::width, LocalConfig::height), LocalConfig::square, cameraMatrix, distCoeffs, ps.pose, true,windowName);
+		  gotPose = getChessboardPoseNoRect(image, Size(LocalConfig::width, LocalConfig::height), LocalConfig::square, cameraMatrix, distCoeffs, ps.pose, cornersImage, true, windowName);
 		}
 		if (gotPose) {
 			num_poses_since_print++;

@@ -4,7 +4,7 @@
     <arg name="device" default="/dev/video0"/>
     <arg name="size" default="10x7"/>
     <arg name="square" default="0.0122"/>
-    <include file="$(find raven_2_vision)/launch/uvc.launch">
+    <include file="$(find raven_2_vision)/launch/uvc/uvc.launch">
         <arg name="model" value="$(arg model)"/>
         <arg name="name" value="$(arg name)"/>
         <arg name="device" value="$(arg device)"/>
