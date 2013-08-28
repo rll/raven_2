@@ -318,7 +318,7 @@ class StatePrinter(object):
 			line = lambda field_name, precision: num_line_fmt(precision).format(*(self.fields[field_name]),field_name=self.short_name(field_name))
 			str_line = lambda field_name,precision: str_line_fmt(precision).format(*(self.fields[field_name]),field_name=self.short_name(field_name))
 			
-			add_line = lambda field_name,precision: self.add_line(line(field_name,precision),field_name)
+			add_num_line = lambda field_name,precision: self.add_line(line(field_name,precision),field_name)
 			add_str_line = lambda field_name,precision: self.add_line(str_line(field_name,precision),field_name)
 			
 			if self.joints_enabled:
@@ -331,14 +331,14 @@ class StatePrinter(object):
 				else:
 					precision = 3
 				
-				add_line('joint_positions',precision)
-				add_line('joint_velocities',precision)
+				add_num_line('joint_positions',precision)
+				add_num_line('joint_velocities',precision)
 				add_str_line('joint_command_types',3)
-				add_line('joint_command_values',1)
+				add_num_line('joint_command_values',1)
 				
 				
-				add_line('joint_set_point_positions',precision)
-				add_line('joint_set_point_velocities',precision)
+				add_num_line('joint_set_point_positions',precision)
+				add_num_line('joint_set_point_velocities',precision)
 			
 			header_fmt = ' '.join([header_field_name_format] + ([header_field_format.format(field_num=i) for i in xrange(len(self.fields['motor_types']))]))
 			line_fmt = lambda field_format,precision: ' '.join([field_name_format] + ([field_format.format(field_num=i,precision=precision) for i in xrange(len(self.fields['motor_types']))]))
@@ -346,16 +346,16 @@ class StatePrinter(object):
 			if self.motors_enabled:
 				self.add_line('\n------------------------------MOTORS------------------------------')
 				self.add_line(header_fmt.format(*(self.fields['motor_types']),field_name=''))
-				add_line('motor_positions',1)
-				add_line('motor_velocities',1)
-				add_line('motor_torques',3)
+				add_num_line('motor_positions',1)
+				add_num_line('motor_velocities',1)
+				add_num_line('motor_torques',3)
 				
-				add_line('motor_set_point_positions',1)
-				add_line('motor_set_point_velocities',1)
+				add_num_line('motor_set_point_positions',1)
+				add_num_line('motor_set_point_velocities',1)
 				
-				add_line('motor_enc_vals',0)
-				add_line('motor_enc_offsets',0)
-				add_line('motor_dac_cmds',0)
+				add_num_line('motor_enc_vals',0)
+				add_num_line('motor_enc_offsets',0)
+				add_num_line('motor_dac_cmds',0)
 			''
 			
 			#  uint8 input_pins
