@@ -15,9 +15,9 @@ using namespace cv;
 
 vector<Point3f> calcChessboardCorners(Size boardSize, float squareSize) {
 	vector<Point3f> corners;
-	float halfHeight = (boardSize.height-1.)/2;
-	float halfWidth = (boardSize.width-1.)/2;
-	float offsetW = squareSize*(boardSize.width-1.)/2;
+	float halfHeight = (float)(boardSize.height-1.)/2;
+	float halfWidth = (float)(boardSize.width-1.)/2;
+	float offsetW = squareSize*halfWidth;
 	for( int i = 0; i < boardSize.height; i++ )
 	  for( int j = boardSize.width-1; j > -1; j--)
 	    corners.push_back(Point3f((j-halfWidth)*squareSize, (i-halfHeight)*squareSize, 0));
@@ -54,23 +54,12 @@ geometry_msgs::Pose rodToPose(const cv::Mat& rvec, const cv::Mat& tvec) {
 
 bool getChessboardPoseNoRect(Mat& image, Size boardSize, float squareSize, const Mat& cameraMatrix, const Mat& distCoeffs, geometry_msgs::Pose& poseOut, std::vector<cv::Point2f>& cornersImage, bool drawCorners,const char* windowName) {
 	vector<Point3f> cornersBoard = calcChessboardCorners(boardSize, squareSize);
-//	for (int i=0; i < cornersBoard.size(); i++) cout << i << " " << cornersBoard[i] << endl;
 	cornersImage.clear();
 	bool boardFound = findChessboardCorners(image, boardSize, cornersImage,
 			CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FAST_CHECK |CV_CALIB_CB_NORMALIZE_IMAGE);
-	// std::cout << "CORNERS BEFORE:" << std::endl;
-	// for (unsigned int i = i; i < cornersImage.size(); i++) {
-	//   std::cout << cornersImage[i].x << " " << cornersImage[i].y << std::endl;
-	// }
 	if (boardFound) {
-//		for (int i=0; i < cornersImage.size(); i++) cout << i << " " << cornersImage[i] << endl;
-//		cout << cameraMatrix << endl;
 		Mat rvec, tvec;
 		solvePnP(cornersBoard, cornersImage, cameraMatrix, distCoeffs, rvec, tvec, false);
-		// std::cout << "CORNERS AFTER:" << std::endl;
-		// for (unsigned int i = i; i < cornersImage.size(); i++) {
-		//   std::cout << cornersImage[i].x << " " << cornersImage[i].y << std::endl;
-		// }
 		poseOut = rodToPose(rvec, tvec);
 		if (drawCorners) {
 			drawChessboardCorners(image, boardSize, cornersImage, true);
@@ -81,7 +70,6 @@ bool getChessboardPoseNoRect(Mat& image, Size boardSize, float squareSize, const
 	}
 
 	return boardFound;
-
 }
 
 bool getChessboardPoseRect(Mat& image, Size boardSize, float squareSize, const Mat& cameraMatrix, const Mat& distCoeffs, geometry_msgs::Pose& poseOut, std::vector<cv::Point2f>& cornersImage, bool drawCorners,const char* windowName) {

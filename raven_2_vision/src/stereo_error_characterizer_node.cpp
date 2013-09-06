@@ -1,6 +1,7 @@
 /*
  * Node to calculate the error in stereo estimation using a detected chessboard with a known location wrt to the camera.
- * The stereo pair should be mounted on the T-shaped calibration rig
+ * The stereo pair should be mounted on the T-shaped calibration rig and the chessboard MUST BE PARALLEL TO THE XY PLANE OF THE CAMERA
+ * The calibration rig ensures this. If this does not, hold, the measurements will be off
  * Uses raven_vision.cpp to find the chessboards and uses the point disparity to estimate the 3D location
  *
  * @author Jeff Mahler
@@ -30,6 +31,7 @@
 #include <tf/transform_listener.h>
 
 #include "config.h"
+#include "raven_2_vision/position_error_table.hpp"
 #include "raven_2_vision/raven_vision.h"
 
 #define STRINGIFY(x) #x
@@ -86,7 +88,7 @@ struct LocalConfig : Config {
 // size of the small chessboard mounted on cardboard
 int LocalConfig::width = 10;
 int LocalConfig::height = 7;
-float LocalConfig::square = .007;
+float LocalConfig::square = .0122;
 
 std::string LocalConfig::stereo_name = "AD";
 std::string LocalConfig::left_pose_topic = "left_chessboard_pose";
@@ -106,7 +108,7 @@ int LocalConfig::ref_corner_coord_i = 0;
 int LocalConfig::ref_corner_coord_j = 0;
 float LocalConfig::ref_corner_cam_basis_x = 0.0f;
 float LocalConfig::ref_corner_cam_basis_y = 0.0f;
-float LocalConfig::chessboard_depth = 0.20f; //defaults to 20cm away
+float LocalConfig::chessboard_depth = 0.0f;
 std::string LocalConfig::error_filename = "stereo_estimation_errors.xml";
 
 static tf::TransformBroadcaster* br;
@@ -194,6 +196,15 @@ void image_callback(const sensor_msgs::ImageConstPtr& left_msg, const sensor_msg
 
       if (i == 0) {
 	ROS_INFO_STREAM("ref corner: " << corner3d);
+	if (LocalConfig::ref_corner_cam_basis_x == 0.0) {
+	  LocalConfig::ref_corner_cam_basis_x = corner3d.x;
+	}
+	if (LocalConfig::ref_corner_cam_basis_y == 0.0) {
+	  LocalConfig::ref_corner_cam_basis_y = corner3d.y;
+	}
+	if (LocalConfig::chessboard_depth == 0.0) {
+	  LocalConfig::chessboard_depth = corner3d.z;
+	}
       }
  
       // transform corner from left camera basis to chessboard basis
@@ -264,7 +275,7 @@ void SaveErrorXML() {
   fs << "xRange" << LocalConfig::width*LocalConfig::square;
   fs << "yRange" << LocalConfig::height*LocalConfig::square;
 
-  // write xy components of 3d positions
+  // write 3d positions
   fs << "xyPositions" << "[";
   for (unsigned int j = 0 ; j < LocalConfig::height; j++) {
     for (unsigned int i = 0; i < LocalConfig::width; i++) {
@@ -373,19 +384,24 @@ int main(int argc, char* argv[]) {
   }
 
   // set up the camera matrices
+  cv::Mat_<double> leftProjMatrix(3,4,  const_cast<double*>(&left_info_ptr->P[0]));
   cv::Mat_<double> leftCameraMatrix(3, 3, const_cast<double*>(&left_info_ptr->K[0]));
   cv::Mat_<double> leftDistCoeffs;
   if (LocalConfig::rect) {
     leftDistCoeffs = cv::Mat_<double>(5, 1, const_cast<double*>(&left_info_ptr->D[0]));
-  } else {
+  }
+  else {
+    leftCameraMatrix = leftProjMatrix(cv::Rect(0,0,3,3)).clone(); // use the optimal K matrix for the virtual rectified camera when the incoming image is already rectified
     leftDistCoeffs = cv::Mat_<double>(cv::Size(5,1), 0);
   }
 
+  cv::Mat_<double> rightProjMatrix(3,4,  const_cast<double*>(&right_info_ptr->P[0]));
   cv::Mat_<double> rightCameraMatrix(3, 3, const_cast<double*>(&right_info_ptr->K[0]));
   cv::Mat_<double> rightDistCoeffs;
   if (LocalConfig::rect) {
     rightDistCoeffs = cv::Mat_<double>(5, 1, const_cast<double*>(&right_info_ptr->D[0]));
   } else {
+    rightCameraMatrix = rightProjMatrix(cv::Rect(0,0,3,3)).clone(); // use the optimal K matrix for the virtual rectified camera when the incoming image is already rectified
     rightDistCoeffs = cv::Mat_<double>(cv::Size(5,1), 0);
   }
 
@@ -393,6 +409,8 @@ int main(int argc, char* argv[]) {
   right_camera_matrix = rightCameraMatrix.clone();
   left_dist_coeff = leftDistCoeffs.clone();
   right_dist_coeff = rightDistCoeffs.clone();
+  std::cout << left_camera_matrix << std::endl;
+  std::cout << right_camera_matrix << std::endl;
 
   // set up the windows
   left_window_name = nh.resolveName(LocalConfig::left_pose_topic,true);
@@ -425,7 +443,12 @@ int main(int argc, char* argv[]) {
 
   message_filters::Subscriber<sensor_msgs::Image> left_image_sub(nh, left_image_topic, 1);
   message_filters::Subscriber<sensor_msgs::Image> right_image_sub(nh, right_image_topic, 1);
-  
+
+  // PositionErrorTable pet("stereo_measurement_errors", "stereo_errors");
+  // PositionMeasurementNoise n = pet.LookupNoise(cv::Point3f(-0.044, -0.025, 0.555));
+  // std::cout << n.avgError << std::endl;
+  // std::cout << n.covariance << std::endl;
+
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> mySyncPolicy;
   message_filters::Synchronizer<mySyncPolicy> sync(mySyncPolicy(10), left_image_sub, right_image_sub);
   sync.registerCallback(boost::bind(&image_callback, _1, _2));

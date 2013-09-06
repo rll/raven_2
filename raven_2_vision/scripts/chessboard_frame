@@ -7,6 +7,7 @@ import tf
 import tf.transformations as tft
 from geometry_msgs.msg import *
 from numpy import *
+from numpy.linalg import norm
 from math import *
 from collections import namedtuple
 
@@ -135,29 +136,34 @@ class ChessboardFrame:
 		self.transform = None
 		self.transform_frame = None
 		
-		self.x_offset = 0.2
-		self.y_offset = -0.23071
-		self.z_offset= 0
+                # reflects the position of the chessboard relative to 0_link using the calibration mount as of 09/05/13
+		self.x_offset = -0.0676
+		self.y_offset = -0.0620
+		self.z_offset= -0.1070
 		
 		self.pos_increment = 0.005
 		
-		self.roll = 0
+		self.roll = -pi / 2.0f;
 		self.pitch = 0
-		self.yaw = pi/2
+		self.yaw = 0
 		
 		self.angle_increment = 1 * pi / 180
 		
 		self.invert_tf = False
 
+                self.avg_Tworld_to_cam_p = None
+                self.avg_Tworld_to_cam_q = None
+                self.num_poses = 0
+                self.parent = '0_link'
+
 	def pose_callback(self,msg):
-		#print 'got msg'
 		frame_id = msg.header
 		pose = msg.pose
 		p = tft.translation_matrix([pose.position.x,pose.position.y,pose.position.z])
 		rot = tft.quaternion_matrix([pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w])
+                self.num_poses = self.num_poses + 1
 		
 		Tcam_to_cb = dot(p,rot)
-		#print 'Tcam_to_cb',Tcam_to_cb
 		
 		#Tworld_to_cb = dot(tft.translation_matrix([self.x_offset,self.y_offset,self.z_offset]),tft.euler_matrix(0,0,pi/2))
 		Tworld_to_cb = dot(tft.translation_matrix([self.x_offset,self.y_offset,self.z_offset]),array(tb_to_mat(self.yaw, self.pitch, self.roll)))
@@ -174,7 +180,7 @@ class ChessboardFrame:
 		
 		pub_msg = PoseStamped()
 		pub_msg.header.stamp = msg.header.stamp
-		pub_msg.header.frame_id = '/world'
+		pub_msg.header.frame_id = self.parent
 		pub_msg.pose.position = Point(*(Tworld_to_cam_p.tolist()))
 		pub_msg.pose.orientation = Quaternion(*(Tworld_to_cam_q.tolist()))
 		
@@ -183,7 +189,7 @@ class ChessboardFrame:
 		
 		pub_cb_msg = PoseStamped()
 		pub_cb_msg.header.stamp = msg.header.stamp
-		pub_cb_msg.header.frame_id = '/world'
+		pub_cb_msg.header.frame_id = self.parent
 		pub_cb_msg.pose.position = Point(*(Tworld_to_cb[0:3,3].tolist()))
 		pub_cb_msg.pose.orientation = Quaternion(*(tft.quaternion_from_matrix(Tworld_to_cb).tolist()))
 		
@@ -191,19 +197,35 @@ class ChessboardFrame:
 		
 		self.transform = Tworld_to_cam
 		self.transform_frame = msg.header.frame_id
-		
-                print "sending"
-		self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,msg.header.stamp,self.transform_frame,'/world')
-		
-		
-		#print Tworld_to_cam_p.tolist() + Tworld_to_cam_q.tolist()
+
+		self.br.sendTransform(self.Tworld_to_cam_p,self.Tworld_to_cam_q,msg.header.stamp,self.transform_frame,self.parent)
 
 	def pub_tf(self):
 		if self.transform is not None:
 			Tworld_to_cam_p = self.transform[0:3,3]
 			Tworld_to_cam_q = tft.quaternion_from_matrix(self.transform)
-			print "publishing"
-                        self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,rospy.Time.now(),self.transform_frame,'/world')
+                        self.br.sendTransform(Tworld_to_cam_p,Tworld_to_cam_q,rospy.Time.now(),self.transform_frame,self.parent)
+
+        def avg_transforms(self, Tworld_to_cam_p, Tworld_to_cam_q):
+                if self.num_poses == 1:
+                        self.avg_Tworld_to_cam_p = Tworld_to_cam_p
+                        self.avg_Tworld_to_cam_q = Tworld_to_cam_q
+                else:
+                        self.avg_Tworld_to_cam_p = ((self.num_poses-1)*self.avg_Tworld_to_cam_p + Tworld_to_cam_p) / self.num_poses
+                        self.avg_Tworld_to_cam_q = self.slerp(self.avg_Tworld_to_cam_q, Tworld_to_cam_q, 1.0 / self.num_poses)
+                        
+        def slerp(self, p0, p1, t):
+                if (dot(p0, p1) < 0):
+                        p1 = -p1
+                d = dot(p0/norm(p0), p1/norm(p1))
+                if (d > 1.0):
+                        d = 1.0
+                omega = arccos(d)
+                so = sin(omega)
+                if so == 0:
+                        return p0
+                return sin((1.0-t)*omega) / so * p0 + sin(t*omega) / so * p1
+                        
 
 
 def print_help():
@@ -220,7 +242,6 @@ def print_help():
 	print '---------------------------------'
 	
 if __name__ == '__main__':
-        print "HELLO"
 	rospy.init_node('chessboard_frame')
 	
 	listener = tf.TransformListener()

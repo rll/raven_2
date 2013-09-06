@@ -27,7 +27,7 @@ add_definitions("-DRAVEN_VISION_DATA_DIR=${CMAKE_SOURCE_DIR}/data")
 rosbuild_add_boost_directories()
 
 #common commands for building c++ executables and libraries
-rosbuild_add_library(${PROJECT_NAME} src/raven_vision.cpp src/config.cpp)
+rosbuild_add_library(${PROJECT_NAME} src/raven_vision.cpp src/config.cpp src/position_error_table.cpp)
 target_link_libraries(${PROJECT_NAME} boost_program_options)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)

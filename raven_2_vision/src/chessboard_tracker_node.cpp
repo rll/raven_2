@@ -11,6 +11,7 @@
 #include "config.h"
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/SetCameraInfo.h>
 #include <cv_bridge/cv_bridge.h>
 #include <ros/topic.h>
 
@@ -43,13 +44,13 @@ struct LocalConfig : Config {
 		params.push_back(new Parameter<string>("frame", &frame_id, "frame id"));
 	}
 };
-int LocalConfig::width = 7;
-int LocalConfig::height = 9;
-float LocalConfig::square = .01;
+int LocalConfig::width = 10;
+int LocalConfig::height = 7;
+float LocalConfig::square = .007;
 string LocalConfig::topic = "chessboard_pose";
-string LocalConfig::frame_id = "left_BC";
-string LocalConfig::image_topic = "BC/right/image_raw";
-string LocalConfig::info_topic = "BC/right/camera_info";
+string LocalConfig::frame_id = "left_AD";
+string LocalConfig::image_topic = "AD/left/image_raw";
+string LocalConfig::info_topic = "AD/left/camera_info";
 bool LocalConfig::rect = true;
 float LocalConfig::detection_interval = 0.1;
 float LocalConfig::print_interval = 1;
@@ -84,8 +85,8 @@ int main(int argc, char* argv[]) {
 
 	ros::Subscriber image_sub = nh.subscribe(image_topic, 1, callback);
 	ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>(LocalConfig::topic,1);
-
-	string frame_id;
+	  
+	String frame_id;
 	frame_id = LocalConfig::frame_id;
 
 	string info_topic;
@@ -94,7 +95,7 @@ int main(int argc, char* argv[]) {
 	} else {
  		info_topic = "camera_info";
 	}
-	std::cout << info_topic << std::endl;
+	std::cout << "Info " << info_topic << std::endl;
 
 	sensor_msgs::CameraInfoConstPtr info_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(info_topic, nh, ros::Duration(1));
 	if (!info_ptr) throw runtime_error("could not get camera info");
@@ -105,14 +106,19 @@ int main(int argc, char* argv[]) {
 		ROS_INFO_STREAM("Not rectifying image data from topic " << image_topic);
 	}
 
+	cv::Mat_<double> projMatrix(3,4,  const_cast<double*>(&info_ptr->P[0]));
 	cv::Mat_<double> cameraMatrix(3,3, const_cast<double*>(&info_ptr->K[0]));
-
 	cv::Mat_<double> distCoeffs;
 	if (LocalConfig::rect) {
-		distCoeffs = cv::Mat_<double>(5,1, const_cast<double*>(&info_ptr->D[0]));
-	} else {
-		distCoeffs = cv::Mat_<double>(cv::Size(5,1), 0);
+	  distCoeffs = cv::Mat_<double>(5,1, const_cast<double*>(&info_ptr->D[0]));
 	}
+	else {
+	  cameraMatrix = projMatrix(cv::Rect(0,0,3,3)).clone(); // use the optimal K matrix for the virtual rectified camera when the incoming image is already rectified
+	  distCoeffs = cv::Mat_<double>(cv::Size(5,1), 0);
+	}
+
+	std::cout << cameraMatrix << std::endl;
+	std::cout << distCoeffs << std::endl;
 
 	string topic = nh.resolveName(LocalConfig::topic,true);
 	topic.erase(topic.begin()); //remove leading slash
@@ -134,7 +140,6 @@ int main(int argc, char* argv[]) {
 
 	geometry_msgs::PoseStamped ps;
 	while (ros::ok()) {
-
 		while (true) {
 			ros::spinOnce();
 			if (message_pending) {
