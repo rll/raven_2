@@ -14,7 +14,11 @@
   <depend package="tfx"/> <!-- https://bitbucket.org/benkehoe/tfx -->
   <depend package="geometry_msgs"/>
   <depend package="sensor_msgs"/>
+  <depend package="visualization_msgs"/>
+  <depend package="std_msgs"/>
   <depend package="raven_2_msgs"/>
+  <depend package="raven_2_utils"/>
+  <depend package="raven_2_control"/>
 
 </package>
 

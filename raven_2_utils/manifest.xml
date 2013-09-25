@@ -1,0 +1,30 @@
+<package>
+  <description brief="raven_2_utils">
+
+     raven_2_utils
+
+  </description>
+  <author>Greg Kahn</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_utils</url>
+
+  <depend package="rospy"/>
+  <depend package="roscpp"/>
+  <depend package="tf"/>
+  
+  <depend package="geometry_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="sensor_msgs"/>
+
+  
+  <depend package="raven_2_msgs"/>
+  <depend package="tfx"/>
+  <depend package="tf_conversions"/>
+  <depend package="dynamic_reconfigure"/>
+  <depend package="rospy"/>
+
+
+</package>
+
+

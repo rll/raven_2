@@ -18,6 +18,9 @@
   <depend package="tf"/>
   <depend package='tfx'/> <!-- https://bitbucket.org/benkehoe/tfx -->
 
+  <depend package="raven_2_utils"/>
+
+
 </package>
 
 
