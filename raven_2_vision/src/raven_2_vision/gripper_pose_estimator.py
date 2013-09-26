@@ -10,8 +10,8 @@ import tfx
 from raven_2_msgs.msg import *
 from geometry_msgs.msg import PoseStamped, TransformStamped
 
-from raven_2_utils import util
-from raven_2_utils import constants
+from raven_2_utils import raven_util
+from raven_2_utils import raven_constants
 
 from raven_2_control import kinematics
 
@@ -61,13 +61,13 @@ class GripperPoseEstimator():
         self.pre_adj_pub = {}
         self.post_adj_pub = {}
         for arm in self.arms:
-            rospy.Subscriber(Constants.GripperTape.Topic+'_'+arm, PoseStamped, partial(self._truthCallback,arm))
+            rospy.Subscriber(raven_constants.GripperTape.Topic+'_'+arm, PoseStamped, partial(self._truthCallback,arm))
             self.est_pose_pub[arm] = rospy.Publisher('estimated_gripper_pose_%s'%arm, PoseStamped)
             self.pose_error_pub[arm] = rospy.Publisher('estimated_gripper_pose_error_%s'%arm, PoseStamped)
             self.pre_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_pre_adjument_%s'%arm, TransformStamped)
             self.post_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_post_adjument_%s'%arm, TransformStamped)
             
-        rospy.Subscriber(Constants.RavenTopics.RavenState, RavenState, self._ravenStateCallback)
+        rospy.Subscriber(raven_constants.RavenTopics.RavenState, RavenState, self._ravenStateCallback)
           
     
     def _truthCallback(self,arm,msg):
@@ -77,15 +77,15 @@ class GripperPoseEstimator():
         #rospy.loginfo("%f",msg.header.stamp.to_sec())
         try:
             #rospy.loginfo('looking up transform')
-            tf_msg_to_link0 = tfx.lookupTransform(Constants.Frames.Link0, msg.header.frame_id, wait=5)
+            tf_msg_to_link0 = tfx.lookupTransform(raven_constants.Frames.Link0, msg.header.frame_id, wait=5)
             truthPose = tf_msg_to_link0 * tfx.pose(msg)
             
             #rospy.loginfo('found transform')
-            #truthPose = tfx.convertToFrame(msg, Constants.Frames.Link0, ignore_stamp=True)
+            #truthPose = tfx.convertToFrame(msg, raven_constants.Frames.Link0, ignore_stamp=True)
         except Exception, e:
             print e
             raise e
-        #truthPose = Util.convertToFrame(msg, Constants.Frames.Link0)
+        #truthPose = raven_util.convertToFrame(msg, raven_constants.Frames.Link0)
         calcPose = self.calcPose.get(arm)
         
         prevTruthPose = self.truthPose.get(arm)
@@ -158,7 +158,7 @@ class GripperPoseEstimator():
     
     def getGripperPose(self, armName, full=False):
         """
-        armName must be from Constants.Arm
+        armName must be from raven_constants.Arm
         """
         pose, isEst = self.estimatedPose[armName]
         if full:
@@ -175,7 +175,7 @@ class GripperPoseEstimator():
 def test():
     rospy.init_node('testGripperPoseEstimator',anonymous=True)
     rospy.sleep(2)
-    arms = Constants.Arm.Both
+    arms = raven_constants.Arm.Both
     gpe = GripperPoseEstimator(arms)
     rospy.sleep(2)
     
@@ -187,7 +187,7 @@ def test():
         truthPub[arm] = rospy.Publisher('truth_gripper_pose_%s'%arm,PoseStamped)
         
         
-    printEvery = Util.Timeout(1)
+    printEvery = raven_util.Timeout(1)
     printEvery.start()
     
     while not rospy.is_shutdown():
@@ -205,7 +205,7 @@ def test():
             if estimatedPoseisEstimate is not None and prevPoseAndIsEstimate.has_key(arm):
                 prevPose, prevIsEstimate = prevPoseAndIsEstimate[arm]
                 if prevIsEstimate is True and isEstimate is False:
-                    deltaPose = Util.deltaPose(prevPose, estimatedPose)
+                    deltaPose = raven_util.deltaPose(prevPose, estimatedPose)
                     print 'deltaPose between last estimate and current truth'
                     print deltaPose
                 #print 'truthPose_{0}: {1}'.format(arm,truthPose)
@@ -220,7 +220,7 @@ def test():
 def testTimeStamps():
     rospy.init_node('testTimeStampes',anonymous=True)
     rospy.sleep(1)
-    arms = Constants.Arm.Both
+    arms = raven_constants.Arm.Both
     gpe = GripperPoseEstimator(arms)
     rospy.sleep(2)
     

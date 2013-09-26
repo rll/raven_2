@@ -311,7 +311,7 @@ class RavenArm:
     # state info methods  #
     #######################
 
-    def getGripperPose(self,frame=MyConstants.Frames.Link0):
+    def getGripperPose(self,frame=raven_constants.Frames.Link0):
         """
         Returns gripper pose w.r.t. frame
 
@@ -368,7 +368,7 @@ class RavenArm:
 
 
 
-def testOpenCloseGripper(close=True,arm=MyConstants.Arm.Right):
+def testOpenCloseGripper(close=True,arm=raven_constants.Arm.Right):
     rospy.init_node('raven_commander',anonymous=True)
     ravenArm = RavenArm(arm)
     rospy.sleep(1)
@@ -387,7 +387,7 @@ def testOpenCloseGripper(close=True,arm=MyConstants.Arm.Right):
     rospy.loginfo('Press enter to exit')
     raw_input()
 
-def testMoveToHome(arm=MyConstants.Arm.Right):
+def testMoveToHome(arm=raven_constants.Arm.Right):
     rospy.init_node('raven_commander',anonymous=True)
     ravenArm = RavenArm(arm)
     imageDetector = ARImageDetector()
@@ -405,14 +405,14 @@ def testMoveToHome(arm=MyConstants.Arm.Right):
     rospy.loginfo('Press enter to exit')
     raw_input()
     
-def testGoToJoints(arm=MyConstants.Arm.Right):
+def testGoToJoints(arm=raven_constants.Arm.Right):
     rospy.init_node('rave_arm_node',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenPlanner(arm)
     rospy.sleep(2)
 
     angle = tfx.tb_angles(0,90,0)
-    endPose = tfx.pose([-.073, -.014, -.124], angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose([-.073, -.014, -.124], angle,frame=raven_constants.Frames.Link0)
 
 
     ravenArm.start()
@@ -450,14 +450,14 @@ def testGoToJoints(arm=MyConstants.Arm.Right):
     rospy.loginfo('Press enter to exit')
     raw_input()
 
-def testExecuteTrajopt(arm=MyConstants.Arm.Right):
+def testExecuteTrajopt(arm=raven_constants.Arm.Right):
     rospy.init_node('rave_arm_node',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenPlanner(arm)
     rospy.sleep(2)
 
     angle = tfx.tb_angles(0,90,0)
-    endPose = tfx.pose([-.073, -.014, -.15], angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose([-.073, -.014, -.15], angle,frame=raven_constants.Frames.Link0)
 
 
     ravenArm.start()
@@ -487,13 +487,13 @@ def testExecuteTrajopt(arm=MyConstants.Arm.Right):
     rospy.loginfo('Press enter to exit')
     raw_input()   
 
-def testGoToPose(arm=MyConstants.Arm.Right):
+def testGoToPose(arm=raven_constants.Arm.Right):
     rospy.init_node('raven_arm_node',anonymous=True)
     ravenArm = RavenArm(arm)
     rospy.sleep(2)
 
     angle = tfx.tb_angles(20,70,0)
-    endPose = tfx.pose([-.136, -.017, -.075], angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose([-.136, -.017, -.075], angle,frame=raven_constants.Frames.Link0)
 
     ravenArm.start()
 
@@ -506,14 +506,14 @@ def testGoToPose(arm=MyConstants.Arm.Right):
     raw_input()
     
 
-def testTrajopt(arm=MyConstants.Arm.Right):
+def testTrajopt(arm=raven_constants.Arm.Right):
     rospy.init_node('test_trajopt',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenPlanner(arm)
     rospy.sleep(2)
 
     angle = tfx.tb_angles(90,90,0)
-    endPose = tfx.pose([-.133, -.015, -.1], angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose([-.133, -.015, -.1], angle,frame=raven_constants.Frames.Link0)
     # z -.072
 
     startJoints = ravenArm.getCurrentJoints()
@@ -548,26 +548,26 @@ def testTrajopt(arm=MyConstants.Arm.Right):
     rospy.loginfo('Successful use of trajopt')
     code.interact(local=locals())
 
-def testExecuteJointTrajectory(arm=MyConstants.Arm.Right):
+def testExecuteJointTrajectory(arm=raven_constants.Arm.Right):
     rospy.init_node('test_trajopt',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenPlanner(arm)
     rospy.sleep(4)
 
 
-    if arm == MyConstants.Arm.Right:
-        toolframe = MyConstants.Frames.RightTool
+    if arm == raven_constants.Arm.Right:
+        toolframe = raven_constants.Frames.RightTool
     else:
-        toolframe = MyConstants.Frames.LeftTool
+        toolframe = raven_constants.Frames.LeftTool
 
     currPose = tfx.pose([0,0,0], frame=toolframe)
-    tf_tool_to_link0 = tfx.lookupTransform(MyConstants.Frames.Link0, currPose.frame, wait=5)
+    tf_tool_to_link0 = tfx.lookupTransform(raven_constants.Frames.Link0, currPose.frame, wait=5)
     currPose = tf_tool_to_link0 * currPose
 
     angle = tfx.tb_angles(-90,90,0)
     endPosition = currPose.position
     endPosition.x -= .05
-    endPose = tfx.pose(endPosition, angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose(endPosition, angle,frame=raven_constants.Frames.Link0)
 
 
     startJoints = ravenArm.getCurrentJoints()
@@ -628,7 +628,7 @@ def testExecuteJointTrajectory(arm=MyConstants.Arm.Right):
     rospy.loginfo('Press enter to exit')
     raw_input()
 
-def testOpenraveJoints(arm=MyConstants.Arm.Right):
+def testOpenraveJoints(arm=raven_constants.Arm.Right):
     rospy.init_node('test_trajopt',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenPlanner(arm)
@@ -642,26 +642,26 @@ def testOpenraveJoints(arm=MyConstants.Arm.Right):
 
     code.interact(local=locals())
     
-def testExecuteJointTrajectoryBSP(arm=MyConstants.Arm.Right):
+def testExecuteJointTrajectoryBSP(arm=raven_constants.Arm.Right):
     rospy.init_node('test_trajopt',anonymous=True)
     ravenArm = RavenArm(arm)
     ravenPlanner = RavenBSP(arm)
     rospy.sleep(4)
 
 
-    if arm == MyConstants.Arm.Right:
-        toolframe = MyConstants.Frames.RightTool
+    if arm == raven_constants.Arm.Right:
+        toolframe = raven_constants.Frames.RightTool
     else:
-        toolframe = MyConstants.Frames.LeftTool
+        toolframe = raven_constants.Frames.LeftTool
 
     currPose = tfx.pose([0,0,0], frame=toolframe)
-    tf_tool_to_link0 = tfx.lookupTransform(MyConstants.Frames.Link0, currPose.frame, wait=5)
+    tf_tool_to_link0 = tfx.lookupTransform(raven_constants.Frames.Link0, currPose.frame, wait=5)
     currPose = tf_tool_to_link0 * currPose
 
     angle = tfx.tb_angles(-90,90,0)
     endPosition = currPose.position
     endPosition.y += .05
-    endPose = tfx.pose(endPosition, angle,frame=MyConstants.Frames.Link0)
+    endPose = tfx.pose(endPosition, angle,frame=raven_constants.Frames.Link0)
 
 
     rospy.loginfo('Press enter to call bsp')
