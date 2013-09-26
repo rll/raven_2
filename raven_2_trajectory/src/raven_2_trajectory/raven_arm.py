@@ -17,7 +17,7 @@ import openravepy as rave
 # rename so no conflict with raven_2_msgs.msg.Constants
 from raven_2_utils import raven_util
 from raven_2_utils import raven_constants
-from raven_2_trajectory import raven_controller
+from raven_2_trajectory.raven_controller import RavenController
 
 
 

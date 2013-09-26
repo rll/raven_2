@@ -25,6 +25,7 @@ import threading
 
 import tfx
 
+from raven_2_msgs.msg import Constants
 from raven_2_utils import raven_util
 from raven_2_utils import raven_constants
 
@@ -333,7 +334,7 @@ class RavenPlanner:
         Needs to return finger1 and finger2
         """
 
-        pose = Util.convertToFrame(tfx.pose(pose), self.refFrame)
+        pose = raven_util.convertToFrame(tfx.pose(pose), self.refFrame)
         
         joints = kin.invArmKin(armName, pose, grasp)
         
@@ -380,7 +381,7 @@ class RavenPlanner:
                 if rosJointType == Constants.JOINT_TYPE_ROTATION:
                     lim = self.robot.GetJointFromDOFIndex(raveJointType).GetLimits()
                     limLower, limUpper = lim[0][0], lim[1][0]
-                    jointPos = Util.setWithinLimits(jointPos, limLower, limUpper, 2*pi)
+                    jointPos = raven_util.setWithinLimits(jointPos, limLower, limUpper, 2*pi)
                 
                 jointPositions.append(jointPos)
                 
@@ -454,7 +455,7 @@ class RavenPlanner:
         delta(p0->p1) -> delta(p0->p2) -> delta(p0->p3)...
         """
         startPose = poseList[0]
-        return [Util.deltaPose(startPose, pose) for pose in poseList[1:]]
+        return [raven_util.deltaPose(startPose, pose) for pose in poseList[1:]]
             
     
     def optimize1(self, n_steps, trajStartJoints, trajEndJoints):
@@ -611,7 +612,7 @@ class RavenPlanner:
         
         self.trajStartGrasp[armName] = startGrasp
         self.trajEndGrasp[armName] = endGrasp
-        endPose = Util.convertToFrame(tfx.pose(endPose), raven_constants.Frames.Link0)
+        endPose = raven_util.convertToFrame(tfx.pose(endPose), raven_constants.Frames.Link0)
         self.trajStartJoints[armName] = startJoints
         self.trajEndJoints[armName] = endJoints
     
@@ -622,7 +623,7 @@ class RavenPlanner:
         
         self.trajStartGrasp[armName] = startGrasp
         self.trajEndGrasp[armName] = endGrasp
-        startPose = Util.convertToFrame(tfx.pose(startPose), raven_constants.Frames.Link0)
+        startPose = raven_util.convertToFrame(tfx.pose(startPose), raven_constants.Frames.Link0)
         self.trajStartJoints[armName] = startJoints
         self.trajEndJoints[armName] = endJoints
     
@@ -634,9 +635,9 @@ class RavenPlanner:
         
         self.trajStartGrasp[armName] = startGrasp
         self.trajEndGrasp[armName] = endGrasp
-        startPose = Util.convertToFrame(tfx.pose(startPose), raven_constants.Frames.Link0)
+        startPose = raven_util.convertToFrame(tfx.pose(startPose), raven_constants.Frames.Link0)
         self.trajStartPose[armName] = startPose
-        endPose = Util.convertToFrame(tfx.pose(endPose), raven_constants.Frames.Link0)
+        endPose = raven_util.convertToFrame(tfx.pose(endPose), raven_constants.Frames.Link0)
         self.trajEndPose[armName] = endPose
         self.trajStartJoints[armName] = startJoints
         self.trajEndJoints[armName] = endJoints
@@ -707,8 +708,8 @@ def testSwitchPlaces(show=True):
     #leftCurrPose = tfx.pose([-.072,-.015,-.153],tfx.tb_angles(43.9,78.6,100.9),frame=raven_constants.Frames.Link0)
     
     
-    leftCurrPose = Util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Left]),raven_constants.Frames.Link0)
-    rightCurrPose = Util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Right]),raven_constants.Frames.Link0)
+    leftCurrPose = raven_util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Left]),raven_constants.Frames.Link0)
+    rightCurrPose = raven_util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Right]),raven_constants.Frames.Link0)
 
 
     rp.getTrajectoryPoseToPose(raven_constants.Arm.Left, leftCurrPose, rightCurrPose, n_steps=50)
@@ -765,8 +766,8 @@ def testFromAbove(show=True):
     rospy.init_node('testFromAbove',anonymous=True)
     rp = RavenPlanner([raven_constants.Arm.Left, raven_constants.Arm.Right], thread=True)
     
-    leftCurrPose = Util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Left]),raven_constants.Frames.Link0)
-    rightCurrPose = Util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Right]),raven_constants.Frames.Link0)
+    leftCurrPose = raven_util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Left]),raven_constants.Frames.Link0)
+    rightCurrPose = raven_util.convertToFrame(tfx.pose([0,0,0],frame=rp.toolFrame[raven_constants.Arm.Right]),raven_constants.Frames.Link0)
 
     rp.getTrajectoryFromPose(raven_constants.Arm.Left, leftCurrPose-[0,0.05,0], n_steps=50, approachDir=np.array([0,0,1]), block=False)
     rp.getTrajectoryFromPose(raven_constants.Arm.Right, rightCurrPose-[0,0.05,0], n_steps=50, approachDir=np.array([0,0,1]))
@@ -827,7 +828,7 @@ def testRavenCpp():
     #print('press enter')
     #raw_input()
     
-    startPose = tfx.pose(Util.openraveTransformFromTo(rp.robot, np.eye(4), 'tool_R', '0_link'),frame=raven_constants.Frames.Link0)
+    startPose = tfx.pose(raven_util.openraveTransformFromTo(rp.robot, np.eye(4), 'tool_R', '0_link'),frame=raven_constants.Frames.Link0)
     endPose = tfx.pose(startPose + [0,-.1,0])
     
     raveStartEE = manip.GetEndEffectorTransform()
@@ -835,8 +836,8 @@ def testRavenCpp():
     raveEndEE[0,3] += .1
     
     g = []
-    g += Util.plot_transform(rp.env, raveStartEE)
-    g += Util.plot_transform(rp.env, raveEndEE)
+    g += raven_util.plot_transform(rp.env, raveStartEE)
+    g += raven_util.plot_transform(rp.env, raveEndEE)
     
     box = rave.RaveCreateKinBody(rp.env,'')
     box.SetName('testbox')
