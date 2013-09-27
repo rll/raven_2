@@ -19,16 +19,20 @@ import numpy as np
 import tfx
 
 import threading
+import multiprocessing as mp
 
 from raven_2_utils import raven_util
 from raven_2_utils import raven_constants
 
+import marshal, types
 
 class Stage(object):
     def __init__(self,name,duration,cb):
         self.name = name
         self.duration = rospy.Duration(duration)
-        self.cb = cb
+        self.cb_string = marshal.dumps(cb.func_code)
+        self.cb_closure = cb.func_closure
+        self.cb_defaults = cb.func_defaults
 		
     @staticmethod
     def stageBreaks(stages):
@@ -37,24 +41,36 @@ class Stage(object):
             stageBreaks.append(stage.duration + stageBreaks[-1])
         return stageBreaks
 
+    @property
+    def cb(self):
+        cb_code = marshal.loads(self.cb_string)
+        cb = types.FunctionType(cb_code, globals(), argdefs=self.cb_defaults, closure=self.cb_closure)
+        return cb
+
 class RavenController():
     def __init__(self, arm, closedGraspValue=0.):
         self.arm = arm
 
         self.stopRunning = threading.Event()
+        print self.stopRunning.isSet()
+        self.stopRunning.set()
+        print self.stopRunning.isSet()
 
         # ADDED, initializes the rest
         self.reset()
 		
-			
+        self.queue = mp.Queue()
+            
         self.pubCmd = rospy.Publisher('raven_command', RavenCommand)
+        self.pubQueue = mp.Queue()
 		
         self.stateSub = rospy.Subscriber('raven_state',raven_2_msgs.msg.RavenState,self._stateCallback)
 	
-        self.header = Header()
-        self.header.frame_id = '/0_link'
         
-        self.thread = None
+        #self.thread = None
+        self.header = Header()
+        self.header.frame_id = raven_constants.Frames.Link0
+
         
         # actual grasp value when gripper is closed (in )
         self.closedGraspValue = closedGraspValue*(pi/180.)
@@ -88,15 +104,28 @@ class RavenController():
 
         self.ravenPauseCmd = ravenPauseCmd
         
+        
+        self.thread = mp.Process(target=self.run, args=(self.queue, self.pubQueue))
+        self.thread.daemon = True
+        self.thread.start()
+        
     
     def _stateCallback(self, msg):
         self.currentState = msg
+        self.queue.put({'runlevel':self.currentState.runlevel})
+        self.runlevel.value = self.currentState.runlevel
         for arm in msg.arms:
             if arm.name == self.arm:
                 self.currentPose = tfx.pose(arm.tool.pose, header=msg.header)
                 self.currentGrasp = arm.tool.grasp
 
                 self.currentJoints = dict((joint.type, joint.position) for joint in arm.joints)
+                
+        if not self.pubQueue.empty():
+            self.header.stamp = rospy.Time.now()
+            cmd = self.pubQueue.get()
+            cmd.header = self.header
+            self.pubCmd.publish(cmd)
 
     def getCurrentJoints(self):
         """
@@ -119,7 +148,7 @@ class RavenController():
         called when start is called.
         """
         self.stages = []
-        self.startTime = None
+        self.stagesQueue = mp.Queue()
 
         # cm/sec
         self.defaultPoseSpeed = .01
@@ -136,12 +165,13 @@ class RavenController():
 
 		
         self.currentState = None
+        self.runlevel = mp.Value('d',0.0)
         self.currentPose = None
         self.currentGrasp = None
         self.currentJoints = None
 		
         # ADDED
-        self.stopRunning.clear()
+        #self.stopRunning.clear()
 
 
     def stop(self):
@@ -150,16 +180,29 @@ class RavenController():
 
         Returns False if times out, otherwise True
         """
+        #self.stopRunning.set()
+        self.stopRunning = True
+        self.queue.put({'stopRunning':self.stopRunning})
+        return True
+    
+        if self.thread is None:
+            return True
+        
         self.stopRunning.set()
 
-        rate = rospy.Rate(50)
-        timeout = raven_util.Timeout(999999)
-        timeout.start()
-        while not timeout.hasTimedOut():
-            if not self.thread.isAlive():
-                return True
+        rospy.sleep(.1)
+        
+        self.thread.terminate()
+        self.thread = None
 
-            rate.sleep()
+#         rate = rospy.Rate(50)
+#         timeout = raven_util.Timeout(999999)
+#         timeout.start()
+#         while not timeout.hasTimedOut():
+#             if not self.thread.is_alive():
+#                 return True
+# 
+#             rate.sleep()
 
         return False
 
@@ -169,35 +212,53 @@ class RavenController():
         If playing, this effectively pauses the raven
         """
         self.stages = []
+        self.queue.put({'stages':self.stages})
 
     def start(self):
         """
         Intended use is to call play once at the beginning
         and then add stages to move it
         """
-        if self.thread == None or not self.thread.isAlive():
-            self.reset()
-            #self.thread = thread.start_new_thread(self.run, tuple())
-            self.thread = threading.Thread(target=self.run)
-            self.thread.setDaemon(True)
+        #self.stopRunning.clear()
+        self.stopRunning = False
+        self.queue.put({'stopRunning':self.stopRunning})
+        return True
+    
+        if self.thread is None or not self.thread.is_alive():
+            #self.reset()
+            
+            self.thread = multiprocessing.Process(target=self.run)
+            self.thread.daemon = True
             self.thread.start()
+            
+#           self.thread = threading.Thread(target=self.run)
+#           self.thread.setDaemon(True)
+#           self.thread.start()
 
         return True
 
-    def run(self):
+    def run(self, queue, pubQueue):
         rate = rospy.Rate(50)
-		
+        
         cmd = None
 		
-        while self.currentState is None and not rospy.is_shutdown():
-            rate.sleep()
-        
-        if self.currentState.runlevel == 0:
-            rospy.loginfo("Raven in E-STOP, waiting")
-            while self.currentState.runlevel == 0 and not rospy.is_shutdown():
-                rate.sleep()
-		
-        self.startTime = rospy.Time.now()
+#         print 'waiting for currentState'
+#         while self.currentState is None and not rospy.is_shutdown():
+#             rate.sleep()
+#             print self.currentState
+#             print self.currentState is None
+#         print 'found currentState'
+#         
+#         if self.currentState.runlevel == 0:
+#             rospy.loginfo("Raven in E-STOP, waiting")
+#             while self.currentState.runlevel == 0 and not rospy.is_shutdown():
+#                 rate.sleep()
+# 		
+        header = Header()
+        header.frame_id = raven_constants.Frames.Link0
+
+
+        startTime = rospy.Time.now()
         numStages = 0
 		
         success = None
@@ -205,35 +266,56 @@ class RavenController():
         cmd = self.ravenPauseCmd
 
         # ADDED
-        self.stopRunning.clear()
+        #self.stopRunning.clear()
+        stopRunning = True
+        stages = list()
+        runlevel = 0
 		
         lastStageIndex = -1
+        print 'in rc loop'
         while not rospy.is_shutdown():
+            rate.sleep()
+            
+            while not queue.empty():
+                val = queue.get()
+                if type(val) == dict:
+                    if val.has_key('stopRunning'):
+                        stopRunning = val['stopRunning']
+                    if val.has_key('stages'):
+                        stages = val['stages']
+                    if val.has_key('runlevel'):
+                        runlevel = val['runlevel']
 			
-            if self.currentState.runlevel == 0:
-                rospy.logerr('Raven in E-STOP, exiting')
+            if runlevel == 0:
+                rospy.loginfo('Raven in E-STOP')
                 success = False
-                break
+                continue
 
             # ADDED
-            if self.stopRunning.isSet():
-                self.stopRunning.clear()
+            #print 'stopRunning.isSet: {0}'.format(stopRunning.isSet())
+            if stopRunning:
+                #self.stopRunning.clear()
+                #print 'stopRunning is set'
                 success = True
-                break
+                continue
+            #print 'stopRunning is not set'
 
-            stages = self.stages
+            #stages = self.stages
 
             # when a stage appears, set startTime
             if numStages == 0 and len(stages) > 0:
-                self.startTime = rospy.Time.now()
+                startTime = rospy.Time.now()
 
             numStages = len(stages)
             stageBreaks = Stage.stageBreaks(stages)
             
             now = rospy.Time.now()
+            
+            header.stamp = now
+            cmd.header = header
 
             if numStages > 0:
-                durFromStart = now - self.startTime
+                durFromStart = now - startTime
                 stageIndex = 0
                 for idx,stageBreak in enumerate(stageBreaks):
                     if stageBreak > durFromStart:
@@ -266,13 +348,12 @@ class RavenController():
                 #if cmd.arms[0].tool_command.grasp_option != ToolCommand.GRASP_OFF:
                 #    cmd = self.ravenPauseCmd
                 pass
-
-            self.header.stamp = now
-            cmd.header = self.header
 			
-            self.pubCmd.publish(cmd)
+            #print 'publish'
+            #rospy.loginfo('publishing {0}'.format(cmd))
+            pubQueue.put(cmd)
+            #self.pubCmd.publish(cmd)
 			
-            rate.sleep()
             
         return success
 
@@ -283,6 +364,9 @@ class RavenController():
 
     def addStage(self, name, duration, cb):
         self.stages.append(Stage(name,duration,cb))
+        #import code
+        #code.interact(local=locals())
+        self.queue.put({'stages':self.stages})
 
     def goToPose(self, end, start=None, duration=None, speed=None):
         if start == None:
@@ -299,14 +383,14 @@ class RavenController():
                 speed = self.defaultPoseSpeed
             duration = end.position.distance(start.position) / speed
 
-        def fn(cmd, t):
+        def fn(cmd, t, start=start, end=end, arm=self.arm):
             pose = start.interpolate(end, t)
             
             toolPose = pose.msg.Pose()
 
             # not sure if correct
             cmd.controller = Constants.CONTROLLER_CARTESIAN_SPACE
-            RavenController.addArmPoseCmd(cmd, self.arm, toolPose)
+            RavenController.addArmPoseCmd(cmd, arm, toolPose)
 
         self.addStage('goToPose', duration, fn)
 
