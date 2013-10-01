@@ -60,6 +60,7 @@ class RavenController():
         self.reset()
 		
         self.queue = mp.Queue()
+        self.clearStageQueue = mp.Queue()
             
         self.pubCmd = rospy.Publisher('raven_command', RavenCommand)
         self.pubQueue = mp.Queue()
@@ -105,7 +106,7 @@ class RavenController():
         self.ravenPauseCmd = ravenPauseCmd
         
         
-        self.thread = mp.Process(target=self.run, args=(self.queue, self.pubQueue))
+        self.thread = mp.Process(target=self.run, args=(self.queue, self.pubQueue, self.clearStageQueue))
         self.thread.daemon = True
         self.thread.start()
         
@@ -126,6 +127,13 @@ class RavenController():
             cmd = self.pubQueue.get()
             cmd.header = self.header
             self.pubCmd.publish(cmd)
+            
+        while not self.clearStageQueue.empty():
+            val = self.clearStageQueue.get()
+            if type(val) == dict:
+                if val.has_key('clearStages'):
+                    if val['clearStages']:
+                        self.clearStages()
 
     def getCurrentJoints(self):
         """
@@ -170,9 +178,6 @@ class RavenController():
         self.currentGrasp = None
         self.currentJoints = None
 		
-        # ADDED
-        #self.stopRunning.clear()
-
 
     def stop(self):
         """
@@ -195,15 +200,6 @@ class RavenController():
         self.thread.terminate()
         self.thread = None
 
-#         rate = rospy.Rate(50)
-#         timeout = raven_util.Timeout(999999)
-#         timeout.start()
-#         while not timeout.hasTimedOut():
-#             if not self.thread.is_alive():
-#                 return True
-# 
-#             rate.sleep()
-
         return False
 
 
@@ -219,7 +215,6 @@ class RavenController():
         Intended use is to call play once at the beginning
         and then add stages to move it
         """
-        #self.stopRunning.clear()
         self.stopRunning = False
         self.queue.put({'stopRunning':self.stopRunning})
         return True
@@ -231,29 +226,15 @@ class RavenController():
             self.thread.daemon = True
             self.thread.start()
             
-#           self.thread = threading.Thread(target=self.run)
-#           self.thread.setDaemon(True)
-#           self.thread.start()
 
         return True
 
-    def run(self, queue, pubQueue):
+    def run(self, queue, pubQueue, clearStageQueue):
         rate = rospy.Rate(50)
         
         cmd = None
 		
-#         print 'waiting for currentState'
-#         while self.currentState is None and not rospy.is_shutdown():
-#             rate.sleep()
-#             print self.currentState
-#             print self.currentState is None
-#         print 'found currentState'
-#         
-#         if self.currentState.runlevel == 0:
-#             rospy.loginfo("Raven in E-STOP, waiting")
-#             while self.currentState.runlevel == 0 and not rospy.is_shutdown():
-#                 rate.sleep()
-# 		
+	
         header = Header()
         header.frame_id = raven_constants.Frames.Link0
 
@@ -272,7 +253,6 @@ class RavenController():
         runlevel = 0
 		
         lastStageIndex = -1
-        print 'in rc loop'
         while not rospy.is_shutdown():
             rate.sleep()
             
@@ -291,14 +271,9 @@ class RavenController():
                 success = False
                 continue
 
-            # ADDED
-            #print 'stopRunning.isSet: {0}'.format(stopRunning.isSet())
             if stopRunning:
-                #self.stopRunning.clear()
-                #print 'stopRunning is set'
                 success = True
                 continue
-            #print 'stopRunning is not set'
 
             #stages = self.stages
 
@@ -322,7 +297,8 @@ class RavenController():
                         stageIndex = idx-1
                         break
                 else:
-                    self.clearStages()
+                    #stages = []
+                    clearStageQueue.put({'clearStages' : True})
                     continue
                 stageIndex = min(stageIndex,lastStageIndex + 1)
             
@@ -349,8 +325,6 @@ class RavenController():
                 #    cmd = self.ravenPauseCmd
                 pass
 			
-            #print 'publish'
-            #rospy.loginfo('publishing {0}'.format(cmd))
             pubQueue.put(cmd)
             #self.pubCmd.publish(cmd)
 			
@@ -364,8 +338,6 @@ class RavenController():
 
     def addStage(self, name, duration, cb):
         self.stages.append(Stage(name,duration,cb))
-        #import code
-        #code.interact(local=locals())
         self.queue.put({'stages':self.stages})
 
     def goToPose(self, end, start=None, duration=None, speed=None):
