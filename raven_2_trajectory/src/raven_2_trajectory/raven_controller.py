@@ -182,25 +182,11 @@ class RavenController():
     def stop(self):
         """
         Sets flag to stop executing trajectory
-
-        Returns False if times out, otherwise True
         """
         #self.stopRunning.set()
         self.stopRunning = True
         self.queue.put({'stopRunning':self.stopRunning})
         return True
-    
-        if self.thread is None:
-            return True
-        
-        self.stopRunning.set()
-
-        rospy.sleep(.1)
-        
-        self.thread.terminate()
-        self.thread = None
-
-        return False
 
 
     def clearStages(self):
@@ -253,7 +239,7 @@ class RavenController():
         runlevel = 0
 		
         lastStageIndex = -1
-        while not rospy.is_shutdown():
+        while True:
             rate.sleep()
             
             while not queue.empty():
@@ -271,7 +257,7 @@ class RavenController():
                 success = False
                 continue
 
-            if stopRunning:
+            if stopRunning or rospy.is_shutdown():
                 success = True
                 continue
 
