@@ -560,6 +560,15 @@ class ColorSegmenter(object):
                 color1_lower_pt = self.convertStereo(self.color1.left.lower[0], self.color1.left.lower[1], math.fabs(self.color1.left.lower[0] - self.color1.right.lower[0]))
                 color1_upper_pt = self.convertStereo(self.color1.left.upper[0], self.color1.left.upper[1], math.fabs(self.color1.left.upper[0] - self.color1.right.upper[0]))
                 
+                
+                points = self.get_corrected_points_from_plane(color1_lower_pt, color1_upper_pt, color2_lower_pt, color2_upper_pt)
+               
+                color1_lower_pt = points[0]
+                color1_upper_pt = points[1]
+                color2_lower_pt = points[2]
+                color2_upper_pt = points[3] 
+                
+                
                 color2_vector = []
                 color1_vector = []
                 for i in range(0, 3):
@@ -681,6 +690,23 @@ class ColorSegmenter(object):
         offset_vector = v0 + v1
         offset_vector = self.offset_from_tool_base*(offset_vector/np.linalg.norm(offset_vector))
         return origin + offset_vector
+    
+    def get_corrected_points_from_plane(self,p1,p2,p3,p4):
+        """
+        Uses least squares to compute a plane between all points then recalculates z 
+        component to correct for error in stereo
+        """
+        
+        A = np.array([p1,p2,p3,p4])
+        B = np.array([[1],[1],[1],[1]])
+       
+        plane = np.linalg.lstsq(A,B)
+       
+        p1[2] = (1-plane[0]*p1[0]-plane[1]*p1[1])/plane[2];  
+        p2[2] = (1-plane[0]*p2[0]-plane[1]*p2[1])/plane[2];  
+        p3[2] = (1-plane[0]*p3[0]-plane[1]*p3[1])/plane[2];  
+        p4[2] = (1-plane[0]*p4[0]-plane[1]*p4[1])/plane[2];  
+        return np.array([p1,p2,p3,p4])
 
     def get_orientation_from_lines(self, v0, v1):
         """ 
