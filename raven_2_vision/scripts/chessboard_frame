@@ -5,6 +5,8 @@ roslib.load_manifest('raven_2_vision')
 import rospy
 import tf
 import tf.transformations as tft
+from tf import TransformerROS
+
 from geometry_msgs.msg import *
 from numpy import *
 from numpy.linalg import norm
@@ -128,7 +130,7 @@ def get_tb_angles(R) :
 
 class ChessboardFrame:
 
-	def __init__(self,listener):
+	def __init__(self, listener):
 		self.listener = listener
 		self.pub = rospy.Publisher('camera_pose', PoseStamped)
 		self.pub_cb = rospy.Publisher('chessboard_world_pose', PoseStamped)
@@ -138,36 +140,37 @@ class ChessboardFrame:
 		
                 # reflects the position of the chessboard relative to 0_link using the calibration mount as of 09/05/13
 		self.x_offset = -0.0676
-		self.y_offset = -0.0620
+		self.y_offset = -0.0554
 		self.z_offset= -0.1070
 		
 		self.pos_increment = 0.005
 		
-		self.roll = -pi / 2.0f;
+		self.roll = -pi / 2.0
 		self.pitch = 0
 		self.yaw = 0
 		
 		self.angle_increment = 1 * pi / 180
 		
 		self.invert_tf = False
-
-                self.avg_Tworld_to_cam_p = None
-                self.avg_Tworld_to_cam_q = None
-                self.num_poses = 0
-                self.parent = '0_link'
+		
+		self.avg_Tworld_to_cam_p = None
+		self.avg_Tworld_to_cam_q = None
+		self.num_poses = 0
+		self.parent = '0_link'
+		self.target = None
+		self.target_inverted = False
 
 	def pose_callback(self,msg):
 		frame_id = msg.header
 		pose = msg.pose
 		p = tft.translation_matrix([pose.position.x,pose.position.y,pose.position.z])
 		rot = tft.quaternion_matrix([pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w])
-                self.num_poses = self.num_poses + 1
+		self.num_poses = self.num_poses + 1
 		
 		Tcam_to_cb = dot(p,rot)
-		
-		#Tworld_to_cb = dot(tft.translation_matrix([self.x_offset,self.y_offset,self.z_offset]),tft.euler_matrix(0,0,pi/2))
 		Tworld_to_cb = dot(tft.translation_matrix([self.x_offset,self.y_offset,self.z_offset]),array(tb_to_mat(self.yaw, self.pitch, self.roll)))
-		#print 'Tworld_to_cb',Tworld_to_cb
+		
+		#print "P", tft.inverse_matrix(Tcam_to_cb)[0:3,3]
 		
 		if self.invert_tf:
 			Tworld_to_cb = tft.inverse_matrix(Tworld_to_cb)
@@ -177,12 +180,25 @@ class ChessboardFrame:
 		
 		Tworld_to_cam_p = Tworld_to_cam[0:3,3]
 		Tworld_to_cam_q = tft.quaternion_from_matrix(Tworld_to_cam)
+
+		# we have the transform from parent to the intermediate frame, now get the transformation to the true target frame
+		Tcam_to_target = eye(4)
+		if not self.target == None: 
+			(Tcam_to_target_p, Tcam_to_target_q) = self.listener.lookupTransform(msg.header.frame_id, self.target, rospy.Time(0))
+			transformer = TransformerROS()
+			Tcam_to_target = transformer.fromTranslationRotation(Tcam_to_target_p, Tcam_to_target_q)
+			
+		if self.target_inverted:
+			Tcam_to_target = tft.inverse_matrix(Tcam_to_target)
+		Tworld_to_target = dot(Tworld_to_cam, Tcam_to_target)
+		Tworld_to_target_p = Tworld_to_target[0:3,3]
+		Tworld_to_target_q = tft.quaternion_from_matrix(Tworld_to_target)
 		
 		pub_msg = PoseStamped()
 		pub_msg.header.stamp = msg.header.stamp
 		pub_msg.header.frame_id = self.parent
-		pub_msg.pose.position = Point(*(Tworld_to_cam_p.tolist()))
-		pub_msg.pose.orientation = Quaternion(*(Tworld_to_cam_q.tolist()))
+		pub_msg.pose.position = Point(*(Tworld_to_target_p.tolist()))
+		pub_msg.pose.orientation = Quaternion(*(Tworld_to_target_q.tolist()))
 		
 		#print pub_msg
 		self.pub.publish(pub_msg)
@@ -195,10 +211,10 @@ class ChessboardFrame:
 		
 		self.pub_cb.publish(pub_cb_msg)
 		
-		self.transform = Tworld_to_cam
+		self.transform = Tworld_to_target
 		self.transform_frame = msg.header.frame_id
 
-		self.br.sendTransform(self.Tworld_to_cam_p,self.Tworld_to_cam_q,msg.header.stamp,self.transform_frame,self.parent)
+		self.br.sendTransform(Tworld_to_target_p, Tworld_to_target_q, msg.header.stamp, self.transform_frame, self.parent)
 
 	def pub_tf(self):
 		if self.transform is not None:
