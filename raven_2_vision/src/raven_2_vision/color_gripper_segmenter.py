@@ -289,7 +289,7 @@ class ColorSegmenter(object):
         self.quat_pub = rospy.Publisher('tape_orientation_' + self.arm, Quaternion)
         self.pose_pub = rospy.Publisher('tape_pose_' + self.arm, PoseStamped)
         self.polygon_pub = rospy.Publisher('polygon_' + self.arm, PolygonStamped)
-        
+        self.polygon_pub_base = rospy.Publisher('polygon_base_'+self.arm, PolygonStamped)
         self.gripper_ROI_pub = dict((side,rospy.Publisher('%s_ROI_%s' % (self.arm, side), Image)) for side in self.sides) 
         self.color1_pub = dict((side,rospy.Publisher('%s_%s_%s' % (self.arm, self.color1.name, side), Image)) for side in self.sides)
         self.color2_pub = dict((side,rospy.Publisher('%s_%s_%s' % (self.arm, self.color2.name, side), Image)) for side in self.sides)
@@ -561,6 +561,15 @@ class ColorSegmenter(object):
                 color1_upper_pt = self.convertStereo(self.color1.left.upper[0], self.color1.left.upper[1], math.fabs(self.color1.left.upper[0] - self.color1.right.upper[0]))
                 
                 
+                polygon_points = [color2_lower_pt, color2_upper_pt, color1_upper_pt, color1_lower_pt]
+                polygon_points = [Point32(*x.tolist()) for x in polygon_points]
+                polygon = PolygonStamped()
+                polygon.polygon.points = polygon_points
+                polygon.header.frame_id = "left_BC"
+                polygon.header.stamp = rospy.Time.now()
+                self.polygon_pub_base.publish(polygon)
+                
+                
                 points = self.get_corrected_points_from_plane(color1_lower_pt, color1_upper_pt, color2_lower_pt, color2_upper_pt)
                
                 color1_lower_pt = points[0]
@@ -701,11 +710,12 @@ class ColorSegmenter(object):
         B = np.array([[1],[1],[1],[1]])
        
         plane = np.linalg.lstsq(A,B)
-       
-        p1[2] = (1-plane[0]*p1[0]-plane[1]*p1[1])/plane[2];  
-        p2[2] = (1-plane[0]*p2[0]-plane[1]*p2[1])/plane[2];  
-        p3[2] = (1-plane[0]*p3[0]-plane[1]*p3[1])/plane[2];  
-        p4[2] = (1-plane[0]*p4[0]-plane[1]*p4[1])/plane[2];  
+        
+        p1[2] = (1-plane[0][0,0]*p1[0]-plane[0][1,0]*p1[1])/plane[0][2,0]  
+        p2[2] = (1-plane[0][0,0]*p2[0]-plane[0][1,0]*p2[1])/plane[0][2,0] 
+        p3[2] = (1-plane[0][0,0]*p3[0]-plane[0][1,0]*p3[1])/plane[0][2,0] 
+        p4[2] = (1-plane[0][0,0]*p4[0]-plane[0][1,0]*p4[1])/plane[0][2,0]  
+         
         return np.array([p1,p2,p3,p4])
 
     def get_orientation_from_lines(self, v0, v1):

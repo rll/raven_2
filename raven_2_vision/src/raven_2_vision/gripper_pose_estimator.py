@@ -2,7 +2,7 @@
 import roslib
 roslib.load_manifest('raven_2_vision')
 import rospy
-
+import pickle
 import tf
 import tf.transformations as tft
 import tfx
@@ -25,48 +25,52 @@ class GripperPoseEstimator():
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = False):
         self.arms = arms
-        
+        self.useSystematicError = systematicError 
         self.truthPose = {}
         self.calcPose = {}
         self.calcPoseAtTruth = {}
         self.estimatedPose = defaultdict(lambda: (None,None))
+        if systematicError:
+            trained_data = pickle.load(open('../../raven_calibration/newest_trained_data.pkl'))
+            self.sys_error = dict((arm,trained_data['sys_robot_tf'][arm]) for arm in self.arms)
+        else:    
+            self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
+            self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
+            self.adjustment_side = dict((arm,'post') for arm in self.arms)
+            self.switch_adjustment_update = True
+            self.adjustmentInterpolation = {'pre': 1, 'post': 1}
+            if adjustmentInterpolation is True:
+                self.adjustmentInterpolation['pre'] = self.adjustmentInterpolation['post'] = 0.5
+            elif isinstance(adjustmentInterpolation,dict):
+                self.adjustmentInterpolation['pre'] = adjustmentInterpolation.get('pre',0.5)
+                self.adjustmentInterpolation['post'] = adjustmentInterpolation.get('post',0.5)
+            elif isinstance(adjustmentInterpolation,(list,tuple)):
+                self.adjustmentInterpolation['pre'] = adjustmentInterpolation[0]
+                self.adjustmentInterpolation['post'] = adjustmentInterpolation[1]
+            else:
+                self.adjustmentInterpolation['pre'] = self.adjustmentInterpolation['post'] = adjustmentInterpolation
         
-        self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
-        self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
-        self.adjustment_side = dict((arm,'post') for arm in self.arms)
-        self.switch_adjustment_update = True
-        self.adjustmentInterpolation = {'pre': 1, 'post': 1}
-        if adjustmentInterpolation is True:
-            self.adjustmentInterpolation['pre'] = self.adjustmentInterpolation['post'] = 0.5
-        elif isinstance(adjustmentInterpolation,dict):
-            self.adjustmentInterpolation['pre'] = adjustmentInterpolation.get('pre',0.5)
-            self.adjustmentInterpolation['post'] = adjustmentInterpolation.get('post',0.5)
-        elif isinstance(adjustmentInterpolation,(list,tuple)):
-            self.adjustmentInterpolation['pre'] = adjustmentInterpolation[0]
-            self.adjustmentInterpolation['post'] = adjustmentInterpolation[1]
-        else:
-            self.adjustmentInterpolation['pre'] = self.adjustmentInterpolation['post'] = adjustmentInterpolation
+            self.estimateFromImage = dict()
         
-        self.estimateFromImage = dict()
+            self.calcPosePostAdjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
+            if calcPosePostAdjustment:
+                for k,v in calcPosePostAdjustment:
+                    self.calcPosePostAdjustment[k] = tfx.transform(v,copy=True)
         
-        self.calcPosePostAdjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
-        if calcPosePostAdjustment:
-            for k,v in calcPosePostAdjustment:
-                self.calcPosePostAdjustment[k] = tfx.transform(v,copy=True)
-        
-        self.est_pose_pub = {}
-        self.pose_error_pub = {}
-        self.pre_adj_pub = {}
-        self.post_adj_pub = {}
+            self.est_pose_pub = {}
+            self.pose_error_pub = {}
+            self.pre_adj_pub = {}
+            self.post_adj_pub = {}
+            for arm in self.arms:
+                rospy.Subscriber(raven_constants.GripperTape.Topic+'_'+arm, PoseStamped, partial(self._truthCallback,arm))
+                self.pre_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_pre_adjument_%s'%arm, TransformStamped)
+                self.post_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_post_adjument_%s'%arm, TransformStamped)
+                
         for arm in self.arms:
-            rospy.Subscriber(raven_constants.GripperTape.Topic+'_'+arm, PoseStamped, partial(self._truthCallback,arm))
             self.est_pose_pub[arm] = rospy.Publisher('estimated_gripper_pose_%s'%arm, PoseStamped)
-            self.pose_error_pub[arm] = rospy.Publisher('estimated_gripper_pose_error_%s'%arm, PoseStamped)
-            self.pre_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_pre_adjument_%s'%arm, TransformStamped)
-            self.post_adj_pub[arm] = rospy.Publisher('estimated_gripper_pose_post_adjument_%s'%arm, TransformStamped)
-            
+            self.pose_error_pub[arm] = rospy.Publisher('estimated_gripper_pose_error_%s'%arm, PoseStamped)    
         rospy.Subscriber(raven_constants.RavenTopics.RavenState, RavenState, self._ravenStateCallback)
           
     
@@ -124,19 +128,29 @@ class GripperPoseEstimator():
         self.estimatedPose[arm] = (truthPose,False)
     
     def _ravenStateCallback(self,msg):
-        if self.calcPose:
-            prevTime = self.calcPose.values()[0].stamp
-            if tfx.stamp(msg.header.stamp).seconds - prevTime.seconds < 0.2:
-                return
-        for arm in self.arms:
-            arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]
-            #self.calcPose[arm] = tfx.pose(arm_msg.tool.pose,header=msg.header)
+        
+        if self.useSystematicError:
+            for arm in self.arms:
+                arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
+                joints = dict((j.type,j.position) for j in arm_msg.joints)
+                fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
+                
+                self.estimatedPose[arm] = self.sys_error[arm].dot(fwdArmKinPose)
+        
+        else:
+            if self.calcPose:
+                prevTime = self.calcPose.values()[0].stamp
+                if tfx.stamp(msg.header.stamp).seconds - prevTime.seconds < 0.2:
+                    return
+            for arm in self.arms:
+                arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]
+                #self.calcPose[arm] = tfx.pose(arm_msg.tool.pose,header=msg.header)
             
-            joints = dict((j.type,j.position) for j in arm_msg.joints)
-            fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
-            self.calcPose[arm] = (fwdArmKinPose.as_tf() * self.calcPosePostAdjustment[arm]).as_pose(stamp=msg.header.stamp)
+                joints = dict((j.type,j.position) for j in arm_msg.joints)
+                fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
+                self.calcPose[arm] = (fwdArmKinPose.as_tf() * self.calcPosePostAdjustment[arm]).as_pose(stamp=msg.header.stamp)
             
-            self._updateEstimatedPose(arm)
+                self._updateEstimatedPose(arm)
     
     def _updateEstimatedPose(self,arm):
         calcPose = self.calcPose[arm]
