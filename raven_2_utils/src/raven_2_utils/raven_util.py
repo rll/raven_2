@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Contains general useful functions
 for conversions, etc.
