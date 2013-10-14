@@ -1,7 +1,11 @@
+#!/usr/bin/env python
+
 import numpy as np, numpy.linalg as nlg
 import scipy as scp
+import argparse
 import pickle
 import pylab as pl
+import rospy
 from error_characterization import *
 import IPython
 
@@ -9,8 +13,9 @@ trained_data = {}
 trained_data["sys_robot_tf"] = {}
 trained_data["alphas"] = {}
 trained_data["robot_joints"] = {}
+trained_data["loghyper"] = {}
 
-arm_side = 'R'
+arm_side = 'L'
 
 test_data = {}
 test_data["camera_poses"] = {}
@@ -24,14 +29,29 @@ test_data["robot_joints"][arm_side] = {}
 #sample every sub_sample for testing data 
 sub_sample = 4
 
+# read in arguments from the command line
+parser = argparse.ArgumentParser()
+parser.add_argument('arm',nargs='?')
+parser.add_argument('file_name',nargs='?',default=None)
+args = parser.parse_args(rospy.myargv()[1:])
+arm_side = args.arm or rospy.get_param('~arm','R')
+del args.arm
+data_file_name = args.file_name or None
+del args.file_name 
+    
+
+# open the files
+data = []
+if data_file_name == None:
+    if arm_side == 'R':
+        data = pickle.load(open('right_arm_data.pkl'))
+    else:
+        data = pickle.load(open('left_arm_data.pkl'))
+else:
+    data = pickle.load(data_file_name)
 
 def get_robot_pose(timestamp, robot_poses):
     return min(range(len(robot_poses[arm_side])), key=lambda i: abs(robot_poses[arm_side][i][0] - timestamp))
-
-if arm_side == 'R':
-    data = pickle.load(open('data.pkl'))
-else:
-    data = pickle.load(open('newest_left_arm_data.pkl'))
 
 n_joints = 7 # ignore the last 2 joint (coupled gripper joints)
 camera_to_robot_tf = data['camera_to_robot_tf']
@@ -45,6 +65,8 @@ robot_poses_test = []
 robot_joints_test = []
 
 ts_start = min(data['camera_poses'][arm_side][0][0], data['robot_poses'][arm_side][0][0])
+
+# remove camera outliers, segment data into test and train
 camera_ts = []
 i=1; 
 for ts_pose in data['camera_poses'][arm_side]:
@@ -72,16 +94,14 @@ test_data['camera_to_robot_tf'] = camera_to_robot_tf
 test_data['camera_poses'][arm_side] = camera_poses_test
 test_data['robot_poses'][arm_side] = robot_poses_test
 test_data['robot_joints'][arm_side] = robot_joints_test
-pickle.dump(test_data, open("test_data.pkl", "wb"))
+if arm_side == 'R':
+    pickle.dump(test_data, open("right_test_data.pkl", "wb"))
+else:
+    pickle.dump(test_data, open("left_test_data.pkl", "wb"))
 
 camera_poses = [camera_to_robot_tf.dot(pose) for pose in camera_poses]
 
-
-
-#pl.figure(1)
-#pl.plot(camera_ts, [pose[:3,3] for pose in camera_poses])
-#pl.plot(camera_ts, [pose[:3,3] for pose in robot_poses])
-
+# Cleanup not necessary right now, in fact we want data in which the robot is moving
 """
 # START cleanup
 # remove data points that were collected when the robot was moving
@@ -144,16 +164,13 @@ else:
 
 # systematic corrected robot poses for training data
 sys_robot_poses = [sys_robot_tf.dot(robot_pose) for robot_pose in robot_poses]
+
 # check error against same training data for sanity check
 sys_pose_error = calc_pose_error(camera_poses, sys_robot_poses)
 print "systematic corrected pose error for training data"
 print "mean", np.mean(sys_pose_error, axis=0)
 print "std", np.std(sys_pose_error, axis=0)
 print
-
-#pl.figure(2)
-#pl.plot(camera_ts, [pose[:3,3] for pose in camera_poses])
-#pl.plot(camera_ts, [pose[:3,3] for pose in sys_robot_poses])
 
 
 # Gaussian Process regression to estimate and apply the error as a function of the joint angles
@@ -166,10 +183,15 @@ print
 # alphas = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)
 # gp_robot_poses_test = gp_correct_poses_fast(alphas, robot_joints, sys_robot_poses_test, robot_joints_test)
 
-alphas = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)
+loghyper = None
+if arm_side == 'R':
+    alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)    
+else:
+    alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)
 
 # systematic and GP corrected robot poses for training data
-gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints, sys_robot_poses, robot_joints)
+gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints, sys_robot_poses, robot_joints, loghyper)
+
 # check error against same training data for sanity check
 gp_pose_error = calc_pose_error(camera_poses, gp_robot_poses)
 print "systematic and GP corrected pose error for training data"
@@ -177,16 +199,16 @@ print "mean", np.mean(gp_pose_error, axis=0)
 print "std", np.std(gp_pose_error, axis=0)
 print
 
-#pl.figure(3)
-#pl.plot(camera_ts, [pose[:3,3] for pose in camera_poses])
-#pl.plot(camera_ts, [pose[:3,3] for pose in gp_robot_poses])
-
-
+# plot the translation poses
 plot_translation_poses_nice(camera_ts, camera_poses, camera_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=False)
 
+# organize and save the data
 trained_data["sys_robot_tf"][arm_side] = sys_robot_tf
 trained_data["alphas"][arm_side] = alphas
+trained_data["loghyper"][arm_side] = loghyper
 trained_data["robot_joints"][arm_side] = robot_joints
 
-pickle.dump(trained_data, open("newest_trained_data.pkl", "wb"))
-
+if arm_side == 'R':
+    pickle.dump(trained_data, open("right_train_data.pkl", "wb"))
+else:
+    pickle.dump(trained_data, open("left_train_data.pkl", "wb"))

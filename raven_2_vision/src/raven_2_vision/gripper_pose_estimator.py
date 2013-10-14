@@ -25,16 +25,23 @@ class GripperPoseEstimator():
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = False):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = True):
         self.arms = arms
         self.useSystematicError = systematicError 
         self.truthPose = {}
         self.calcPose = {}
         self.calcPoseAtTruth = {}
+        self.sys_error = {}
+        self.sys_error= {}
+        self.est_pose_pub = {}
+        self.pose_error_pub = {}
+        self.estimateFromImage = dict()
         self.estimatedPose = defaultdict(lambda: (None,None))
         if systematicError:
-            trained_data = pickle.load(open('../../raven_calibration/newest_trained_data.pkl'))
-            self.sys_error = dict((arm,trained_data['sys_robot_tf'][arm]) for arm in self.arms)
+            trained_data_R = pickle.load(open('../../raven_calibration/right_train_data.pkl'))
+            trained_data_L = pickle.load(open('../../raven_calibration/left_train_data.pkl'))
+            self.sys_error['R'] = trained_data_R["sys_robot_tf"]['R']
+            self.sys_error['L'] = trained_data_L["sys_robot_tf"]['L']
         else:    
             self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
@@ -52,15 +59,11 @@ class GripperPoseEstimator():
             else:
                 self.adjustmentInterpolation['pre'] = self.adjustmentInterpolation['post'] = adjustmentInterpolation
         
-            self.estimateFromImage = dict()
-        
             self.calcPosePostAdjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             if calcPosePostAdjustment:
                 for k,v in calcPosePostAdjustment:
                     self.calcPosePostAdjustment[k] = tfx.transform(v,copy=True)
         
-            self.est_pose_pub = {}
-            self.pose_error_pub = {}
             self.pre_adj_pub = {}
             self.post_adj_pub = {}
             for arm in self.arms:
@@ -134,9 +137,9 @@ class GripperPoseEstimator():
                 arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
                 joints = dict((j.type,j.position) for j in arm_msg.joints)
                 fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
-                
-                self.estimatedPose[arm] = self.sys_error[arm].dot(fwdArmKinPose)
-        
+                estPose = tfx.pose(self.sys_error[arm]*fwdArmKinPose.as_tf(),raven_constants.Frames.Link0,stamp=msg.header.stamp)
+                self.estimatedPose[arm] = (estPose,False)
+               
         else:
             if self.calcPose:
                 prevTime = self.calcPose.values()[0].stamp

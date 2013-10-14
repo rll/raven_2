@@ -199,33 +199,41 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # gt_poses_train (list of n_data homogeneous TF matrices)
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
-def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train):
-	pose_error = calc_pose_error(gt_poses_train, poses_train)
-	n_task_vars = 6
-	alphas = []
-	for i_task_var in range(n_task_vars):
-		## data from a noisy GP
-		X = state_train
+def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, logtheta=None):
+    pose_error = calc_pose_error(gt_poses_train, poses_train)
+    n_task_vars = 6
+    alphas = []
+    for i_task_var in range(n_task_vars):
+        ## data from a noisy GP
+        X = state_train
+        ### sample observations from the GP
+        y = pose_error[:,i_task_var]
+        ## DEFINE parameterized covariance funcrion
+        covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
+    
+        ## SET (hyper)parameters
+        if logtheta == None:
+            ## LEARN the hyperparameters if none are provided
+            print 'GP: ...training'
+            ### INITIALIZE (hyper)parameters by -1
+            d = X.shape[1]
+            init = -1*np.ones((d,1))
+            loghyper = np.array([[-1], [-1]])
+            loghyper = np.vstack((init, loghyper))[:,0]
+            print 'initial hyperparameters: ', np.exp(loghyper)
+            ### TRAINING of (hyper)parameters
+            logtheta = gpr.gp_train(loghyper, covfunc, X, y)
+            print 'trained hyperparameters: ',np.exp(logtheta)
 
-		## DEFINE parameterized covariance funcrion
-		covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
-		## SET (hyper)parameters
-		logtheta = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
-
-		#print 'hyperparameters: ', np.exp(logtheta)
-
-		### sample observations from the GP
-		y = pose_error[:,i_task_var]
-
-		## PREDICTION precomputation
-		alphas.append(gp_pred_precompute_alpha(logtheta, covfunc, X, y))
-	return alphas
+        ## PREDICTION precomputation
+        alphas.append(gp_pred_precompute_alpha(logtheta, covfunc, X, y))
+    return alphas, logtheta
 
 # alphas (list of n_task_vars as returned by gp_correct_poses_precompute())
 # state_train (np.array of shape (n_data x d))
 # poses_test (list of n_test homegeneous TF matrices)
 # state_test (np.array of shape (n_test x d))
-def gp_correct_poses_fast(alphas, state_train, poses_test, state_test):
+def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, logtheta=None):
     n_test = len(poses_test)
     n_task_vars = 6
 
@@ -237,8 +245,10 @@ def gp_correct_poses_fast(alphas, state_train, poses_test, state_test):
 
         ## DEFINE parameterized covariance funcrion
         covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
-        ## SET (hyper)parameters
-        logtheta = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
+        
+        ## SET (hyper)parameters if none provided
+        if logtheta == None:
+            logtheta = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
 
         #print 'hyperparameters: ', np.exp(logtheta)
 
@@ -262,7 +272,7 @@ def gp_correct_poses_fast(alphas, state_train, poses_test, state_test):
 # state_train (np.array of shape (n_data x d))
 # poses_test (list of n_test homegeneous TF matrices)
 # state_test (np.array of shape (n_test x d))
-def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state_test):
+def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state_test, logtheta=None):
     print "using gp poses"
     pose_error = calc_pose_error(gt_poses_train, poses_train)
 
@@ -278,8 +288,6 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
 
         ## DEFINE parameterized covariance funcrion
         covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
-        ## SET (hyper)parameters
-        logtheta = np.array([np.log(1.0), np.log(1.0), np.log(np.sqrt(0.01))])
 
         #print 'hyperparameters: ', np.exp(logtheta)
 
@@ -289,20 +297,20 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
         ### TEST POINTS
         Xstar = state_test
 
-        """
-        # ***UNCOMMENT THE FOLLOWING LINES TO DO TRAINING OF HYPERPARAMETERS***
-        ### TRAINING GP
-        print 'GP: ...training'
-        ### INITIALIZE (hyper)parameters by -1
-        d = X.shape[1]
-        init = -1.0*np.ones((d,1))
-        loghyper = np.array([[-1.0], [-1.0]])
-        loghyper = np.vstack((init, loghyper))[:,0]
-        print 'initial hyperparameters: ', np.exp(loghyper)
-        ### TRAINING of (hyper)parameters
-        logtheta = gpr.gp_train(loghyper, covfunc, X, y)
-        print 'trained hyperparameters: ',np.exp(logtheta)
-        """
+        ## LEARN hyperparameters if not provided
+        if logtheta == None:
+            # ***UNCOMMENT THE FOLLOWING LINES TO DO TRAINING OF HYPERPARAMETERS***
+            ### TRAINING GP
+            print 'GP: ...training'
+            ### INITIALIZE (hyper)parameters by -1
+            d = X.shape[1]
+            init = -1.0*np.ones((d,1))
+            loghyper = np.array([[-1.0], [-1.0]])
+            loghyper = np.vstack((init, loghyper))[:,0]
+            print 'initial hyperparameters: ', np.exp(loghyper)
+            ### TRAINING of (hyper)parameters
+            logtheta = gpr.gp_train(loghyper, covfunc, X, y)
+            print 'trained hyperparameters: ',np.exp(logtheta)
 
         ## PREDICTION 
         print 'GP: ...prediction'

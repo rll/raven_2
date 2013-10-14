@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+
 import numpy as np, numpy.linalg as nlg
 import scipy as scp
+import argparse
+import rospy
 import pickle
 import pylab as pl
 import matplotlib
@@ -12,11 +16,34 @@ matplotlib.rcParams['ps.useafm'] = True
 matplotlib.rcParams['pdf.use14corefonts'] = True
 matplotlib.rcParams['text.usetex'] = True
 
-trained_data = pickle.load(open('newest_trained_data.pkl'))
-run_data = pickle.load(open('test_data.pkl'))
-
 arm_side = 'R'
 n_joints = 7
+
+parser = argparse.ArgumentParser()
+parser.add_argument('arm',nargs='?')
+parser.add_argument('train_file_name',nargs='?',default=None)
+parser.add_argument('test_file_name',nargs='?',default=None)
+args = parser.parse_args(rospy.myargv()[1:])
+arm_side = args.arm or rospy.get_param('~arm','R')
+del args.arm
+train_file_name = args.train_file_name or None
+del args.train_file_name
+test_file_name = args.test_file_name or None
+del args.test_file_name
+
+prefix = ''
+if arm_side == 'R':
+    prefix = 'right_'
+else:
+    prefix = 'left_'
+    
+if train_file_name == None:
+    train_file_name = prefix + 'train_data.pkl'
+if test_file_name == None:
+    test_file_name = prefix + 'test_data.pkl'
+    
+trained_data = pickle.load(open(train_file_name))
+run_data = pickle.load(open(test_file_name))
 
 # START load test data
 camera_to_robot_tf = run_data['camera_to_robot_tf']
@@ -48,6 +75,7 @@ sys_robot_tf = trained_data['sys_robot_tf'][arm_side]
 
 # GP correction
 alphas = trained_data['alphas'][arm_side]
+loghyper = trained_data['loghyper'][arm_side]
 robot_joints_train = trained_data['robot_joints'][arm_side]
 # END trained parameters
 
@@ -56,7 +84,7 @@ robot_joints_train = trained_data['robot_joints'][arm_side]
 sys_robot_poses = [sys_robot_tf.dot(robot_pose) for robot_pose in robot_poses]
 
 # systematic and GP corrected robot poses for training data
-gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_poses, robot_joints)
+gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_poses, robot_joints, loghyper)
 
 
 
