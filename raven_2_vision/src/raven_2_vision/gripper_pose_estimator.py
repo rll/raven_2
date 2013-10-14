@@ -137,9 +137,10 @@ class GripperPoseEstimator():
                 arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
                 joints = dict((j.type,j.position) for j in arm_msg.joints)
                 fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
-                estPose = tfx.pose(self.sys_error[arm]*fwdArmKinPose.as_tf(),raven_constants.Frames.Link0,stamp=msg.header.stamp)
+                estPose = tfx.pose(self.sys_error[arm]*fwdArmKinPose.as_tf(),frame=raven_constants.Frames.Link0,stamp=msg.header.stamp)
                 self.estimatedPose[arm] = (estPose,False)
                
+
         else:
             if self.calcPose:
                 prevTime = self.calcPose.values()[0].stamp
