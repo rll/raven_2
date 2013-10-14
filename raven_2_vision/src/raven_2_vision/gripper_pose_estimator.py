@@ -25,7 +25,7 @@ class GripperPoseEstimator():
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = False):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = True):
         self.arms = arms
         self.useSystematicError = systematicError 
         self.truthPose = {}
@@ -134,8 +134,8 @@ class GripperPoseEstimator():
                 arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
                 joints = dict((j.type,j.position) for j in arm_msg.joints)
                 fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
-                
-                self.estimatedPose[arm] = self.sys_error[arm].dot(fwdArmKinPose)
+                est_pose = tfx.pose(self.sys_error[arm].as_tf() * fwdArmKin.as_tf(),raven_constants.Frames.Link0,msg.header.stamp)
+                self.estimatedPose[arm] = (est_pose,False)
         
         else:
             if self.calcPose:
