@@ -610,7 +610,7 @@ def invArmKin(armId, pose, grasp, debug=False):
 
         return None;
 
-def fwdArmKin(armId, joints):
+def fwdArmKin(armId, joints, stamp=None):
     tool_tf = actual_world_to_ik_world(armId) \
                     * Tw2b \
                     * Zs(THS_TO_IK(armId,joints[SHOULDER])) \
@@ -627,7 +627,7 @@ def fwdArmKin(armId, joints):
     
     tool_tf.rotation = tool_tf.rotation * TOOL_POSE_AXES_TRANSFORM
     grasp = ACTUAL_GRASP_FROM_MECH_GRASP(armId,MECH_GRASP_FROM_MECH_FINGERS(armId,joints[GRASP1],joints[GRASP2]))
-    return tool_tf.as_pose(frame='/0_link'), grasp
+    return tool_tf.as_pose(frame='/0_link',stamp=stamp), grasp
 
 
 

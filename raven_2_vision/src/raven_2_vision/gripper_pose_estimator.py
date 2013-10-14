@@ -6,6 +6,7 @@ import pickle
 import tf
 import tf.transformations as tft
 import tfx
+import os.path 
 
 from raven_2_msgs.msg import *
 from geometry_msgs.msg import PoseStamped, TransformStamped
@@ -25,7 +26,7 @@ class GripperPoseEstimator():
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = True):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = False):
         self.arms = arms
         self.useSystematicError = systematicError 
         self.truthPose = {}
@@ -38,10 +39,10 @@ class GripperPoseEstimator():
         self.estimateFromImage = dict()
         self.estimatedPose = defaultdict(lambda: (None,None))
         if systematicError:
-            trained_data_R = pickle.load(open('../../raven_calibration/right_train_data.pkl'))
-            trained_data_L = pickle.load(open('../../raven_calibration/left_train_data.pkl'))
-            self.sys_error['R'] = trained_data_R["sys_robot_tf"]['R']
-            self.sys_error['L'] = trained_data_L["sys_robot_tf"]['L']
+            trained_data_R = pickle.load(open(os.path.join(roslib.packages.get_pkg_subdir('raven_2_params','data/right_arm'),'right_train_data.pkl')))
+            trained_data_L =  pickle.load(open(os.path.join(roslib.packages.get_pkg_subdir('raven_2_params','data/left_arm'),'left_train_data.pkl')))
+            self.sys_error['R'] = tfx.transform(trained_data_R["sys_robot_tf"]['R'])
+            self.sys_error['L'] = tfx.transform(trained_data_L["sys_robot_tf"]['L'])
         else:    
             self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
@@ -129,15 +130,15 @@ class GripperPoseEstimator():
         self.truthPose[arm] = truthPose
         self.calcPoseAtTruth[arm] = calcPose
         self.estimatedPose[arm] = (truthPose,False)
-    
+        
     def _ravenStateCallback(self,msg):
         
         if self.useSystematicError:
             for arm in self.arms:
                 arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
                 joints = dict((j.type,j.position) for j in arm_msg.joints)
-                fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints)
-                estPose = tfx.pose(self.sys_error[arm]*fwdArmKinPose.as_tf(),frame=raven_constants.Frames.Link0,stamp=msg.header.stamp)
+                fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints,stamp=msg.header.stamp)
+                estPose = self.sys_error[arm] * fwdArmKinPose
                 self.estimatedPose[arm] = (estPose,False)
                
 
