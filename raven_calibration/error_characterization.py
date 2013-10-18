@@ -37,7 +37,7 @@ def tf_inv(tf):
 # plots the xyz coordinates of camera_poses, robot_poses, sys_robot_poses and gp_poses in 3 subplots
 # camera_ts are the timestamps of camera poses
 # robot_ts are the timestamps of the other poses (robot poses)
-def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=False):
+def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=False, arm_side='?'):
     f, axarr = pl.subplots(3, sharex=True)
     f.set_size_inches(10, 8, forward=True)
     
@@ -56,7 +56,7 @@ def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, 
     sys_robot_trans = np.array([pose[:3,3] for pose in sys_robot_poses])
     gp_robot_trans = np.array([pose[:3,3] for pose in gp_robot_poses])
 
-    axarr[0].set_title('Errors in the end effector translation estimate', size='large')
+    axarr[0].set_title('Errors in the end effector translation estimate for %s arm' %(arm_side), size='large')
     for i in range(3):
         if split:
             start_split_ind = 0
@@ -76,6 +76,7 @@ def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, 
     #pl.xlim(10, 160)
     pl.xlabel('time (s)', fontsize=12)
     axarr[2].legend(prop={'size':12}, loc='lower left', bbox_to_anchor=(0.75, 0.8)).draggable()
+    pl.show()
 
 def plot_translation_poses(ts, poses, c = 'bgr', l = '-'):
     t = np.array([pose[:3,3] for pose in poses])

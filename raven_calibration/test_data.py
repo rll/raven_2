@@ -10,6 +10,52 @@ import matplotlib
 from error_characterization import *
 import IPython
 
+def get_robot_pose(timestamp, robot_poses):
+    return min(range(len(robot_poses[arm_side])), key=lambda i: abs(robot_poses[arm_side][i][0] - timestamp))
+
+def convert_test_data(data):
+    camera_to_robot_tf = data['camera_to_robot_tf']
+    robot_to_camera_tf = nlg.inv(camera_to_robot_tf)
+    camera_poses = []
+    robot_poses = []
+    robot_joints = np.empty((0,n_joints))
+    
+    camera_poses_test = []
+    robot_poses_test = []
+    robot_joints_test = []
+    
+    ts_start = min(data['camera_poses'][arm_side][0][0], data['robot_poses'][arm_side][0][0])
+    
+    # remove camera outliers, segment data into test and train
+    camera_ts = []
+    i=1; 
+    for ts_pose in data['camera_poses'][arm_side]:
+        # rough way to remove some camera outliers
+        if len(camera_poses)>0 and nlg.norm(camera_poses[-1][:3,3]-camera_pose[:3,3])>0.05:
+            continue
+
+        camera_pose = ts_pose[1]
+        camera_poses_test.append(ts_pose)
+        robot_pose_ind = get_robot_pose(ts_pose[0], data['robot_poses'])
+        robot_poses_test.append(data['robot_poses'][arm_side][robot_pose_ind])
+        robot_joints_test.append(data['robot_joints'][arm_side][robot_pose_ind])
+        i = i+1
+        
+    #Assemble test data 
+    test_data = {}
+    test_data["camera_poses"] = {}
+    test_data["robot_poses"] = {}
+    test_data["robot_joints"] = {}
+    test_data["camera_to_robot_tf"] = {}
+    test_data["camera_poses"][arm_side] = {}
+    test_data["robot_poses"][arm_side] = {}
+    test_data["robot_joints"][arm_side] = {}
+    test_data['camera_to_robot_tf'] = camera_to_robot_tf
+    test_data['camera_poses'][arm_side] = camera_poses_test
+    test_data['robot_poses'][arm_side] = robot_poses_test
+    test_data['robot_joints'][arm_side] = robot_joints_test
+    return test_data
+
 # Type 1 fonts for publication
 # http://nerdjusttyped.blogspot.sg/2010/07/type-1-fonts-and-matplotlib-figures.html
 matplotlib.rcParams['ps.useafm'] = True
@@ -23,6 +69,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('arm',nargs='?')
 parser.add_argument('train_file_name',nargs='?',default=None)
 parser.add_argument('test_file_name',nargs='?',default=None)
+parser.add_argument('convert',nargs='?',default=None)
 args = parser.parse_args(rospy.myargv()[1:])
 arm_side = args.arm or rospy.get_param('~arm','R')
 del args.arm
@@ -45,9 +92,17 @@ if test_file_name == None:
 trained_data = pickle.load(open(train_file_name))
 run_data = pickle.load(open(test_file_name))
 
+if args.convert:
+    run_data = convert_test_data(run_data)
+
 # START load test data
 camera_to_robot_tf = run_data['camera_to_robot_tf']
 robot_to_camera_tf = nlg.inv(camera_to_robot_tf)
+
+# HACK TO GET RID OF LAST CRAPPY DATA POINT
+run_data['camera_poses'][arm_side].pop()
+run_data['robot_poses'][arm_side].pop()
+run_data['robot_joints'][arm_side].pop()
 
 ts_start = min(run_data['camera_poses'][arm_side][0][0], run_data['robot_poses'][arm_side][0][0])
 print len(run_data['camera_poses'][arm_side])
@@ -90,7 +145,7 @@ gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_pos
 
 print "evaluating test data..."
 
-plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, robot_poses, split=True)
+plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=True)
 
 
 # compute various error metrics
