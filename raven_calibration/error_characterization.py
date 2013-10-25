@@ -62,15 +62,15 @@ def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, 
             start_split_ind = 0
             for split_ind in split_inds:
                 if start_split_ind == 0:
-                    axarr[i].plot(camera_ts[start_split_ind:split_ind], camera_trans[start_split_ind:split_ind,i], 'b', label='camera estimate')
+                    axarr[i].plot(camera_ts[start_split_ind:split_ind], camera_trans[start_split_ind:split_ind,i], 'b', label='ground truth')
                 else:
                     axarr[i].plot(camera_ts[start_split_ind:split_ind], camera_trans[start_split_ind:split_ind,i], 'b')
                 start_split_ind = split_ind
         else:
-            axarr[i].plot(camera_ts, camera_trans[:,i], 'b', label='camera estimate')
-        axarr[i].plot(robot_ts, robot_trans[:,i], 'g', label='forward kinematics (FK)')
-        axarr[i].plot(robot_ts, sys_robot_trans[:,i], 'r', label='FK with systematic correction')
-        axarr[i].plot(robot_ts, gp_robot_trans[:,i], 'c', label='FK with systematic and GP correction')
+            axarr[i].plot(camera_ts, camera_trans[:,i], 'b', label='grouth truth')
+        axarr[i].plot(robot_ts, robot_trans[:,i], 'g', label='raw data')
+        axarr[i].plot(robot_ts, sys_robot_trans[:,i], 'r', label='systematic correction')
+        axarr[i].plot(robot_ts, gp_robot_trans[:,i], 'c', label='systematic and GP correction')
         i2coord = {0:'x', 1:'y', 2:'z'}
         axarr[i].set_ylabel(i2coord[i], fontsize=12)
     #pl.xlim(10, 160)
@@ -200,45 +200,67 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # gt_poses_train (list of n_data homogeneous TF matrices)
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
-def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, logtheta=None):
+def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, loghyper=None, subsample=1):
     pose_error = calc_pose_error(gt_poses_train, poses_train)
-    n_task_vars = 6
+    n_task_vars = pose_error.shape[1]
     alphas = []
-    for i_task_var in range(n_task_vars):
-        ## data from a noisy GP
-        X = state_train
-        ### sample observations from the GP
-        y = pose_error[:,i_task_var]
-        ## DEFINE parameterized covariance funcrion
-        covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
+    train_hyper = (loghyper == None)
+    if train_hyper:
+        loghyper = []
     
+    # sample X for hyperparam training
+    n = state_train.shape[0]
+    d = state_train.shape[1]
+
+    ## data from a noisy GP
+    X = state_train
+    X_subsample = np.empty((0, d))
+    y_subsample = np.empty((0, n_task_vars))
+    for i in range(n):
+        if i % subsample == 0:
+            X_subsample = np.r_[X_subsample, state_train[i:(i+1),:]]
+            y_subsample = np.r_[y_subsample, pose_error[i:(i+1),:]]
+            
+    ## DEFINE parameterized covariance funcrion
+    covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
+            
+    # sample y for y training
+    
+    for i_task_var in range(n_task_vars):
+        ### sample observations from the GP
+        y_task_var = y_subsample[:,i_task_var]
+        y = pose_error[:,i_task_var]
+        
         ## SET (hyper)parameters
-        if logtheta == None:
+        if train_hyper:
             ## LEARN the hyperparameters if none are provided
-            print 'GP: ...training'
+            print 'GP: ...training variable ', i_task_var
             ### INITIALIZE (hyper)parameters by -1
             d = X.shape[1]
+                
             init = -1*np.ones((d,1))
-            loghyper = np.array([[-1], [-1]])
-            loghyper = np.vstack((init, loghyper))[:,0]
-            print 'initial hyperparameters: ', np.exp(loghyper)
+            loghyper_var_i = np.array([[-1], [-1]])
+            loghyper_var_i = np.vstack((init, loghyper_var_i))[:,0]
+            print 'initial hyperparameters: ', np.exp(loghyper_var_i)
             ### TRAINING of (hyper)parameters
-            logtheta = gpr.gp_train(loghyper, covfunc, X, y)
-            print 'trained hyperparameters: ',np.exp(logtheta)
+            loghyper_var_i = gpr.gp_train(loghyper_var_i, covfunc, X_subsample, y_task_var)
+            print 'trained hyperparameters: ',np.exp(loghyper_var_i)
+            loghyper.append(loghyper_var_i)
 
         ## PREDICTION precomputation
-        alphas.append(gp_pred_precompute_alpha(logtheta, covfunc, X, y))
-    return alphas, logtheta
+        alphas.append(gp_pred_precompute_alpha(loghyper[i_task_var], covfunc, X, y))
+    return alphas, loghyper
 
 # alphas (list of n_task_vars as returned by gp_correct_poses_precompute())
 # state_train (np.array of shape (n_data x d))
 # poses_test (list of n_test homegeneous TF matrices)
 # state_test (np.array of shape (n_test x d))
-def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, logtheta=None):
+def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, loghyper=None, use_same=False):
     n_test = len(poses_test)
     n_task_vars = 6
 
     MU = np.empty((n_test, n_task_vars))
+    print 'HYPER', loghyper
 
     for i_task_var in range(n_task_vars):
         ## data from a noisy GP
@@ -248,8 +270,13 @@ def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, logtheta=
         covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
         
         ## SET (hyper)parameters if none provided
-        if logtheta == None:
-            logtheta = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
+        loghyper_var_i = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
+        if loghyper != None:
+            if use_same:
+                loghyper_var_i = loghyper
+            else:
+                loghyper_var_i = loghyper[i_task_var] 
+                
 
         #print 'hyperparameters: ', np.exp(logtheta)
 
@@ -261,7 +288,7 @@ def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, logtheta=
 
         ## PREDICTION 
         print 'GP: ...prediction'
-        res = gp_pred_fast(logtheta, covfunc, X, alpha, Xstar) # get predictions for unlabeled data ONLY
+        res = gp_pred_fast(loghyper_var_i, covfunc, X, alpha, Xstar) # get predictions for unlabeled data ONLY
         MU[:,i_task_var] = res
 
     est_gt_poses_test = apply_pose_error(poses_test, MU)
@@ -302,6 +329,7 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
         if logtheta == None:
             # ***UNCOMMENT THE FOLLOWING LINES TO DO TRAINING OF HYPERPARAMETERS***
             ### TRAINING GP
+            print
             print 'GP: ...training'
             ### INITIALIZE (hyper)parameters by -1
             d = X.shape[1]

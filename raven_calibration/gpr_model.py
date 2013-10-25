@@ -8,8 +8,10 @@ import pylab as pl
 import rospy
 import matplotlib
 import collections
+from transformations import euler_from_matrix, euler_matrix
 from error_characterization import *
 import IPython
+from ipdb import launch_ipdb_on_exception
 
 N_JOINTS = 7
 NO_SUBSAMPLING = 1
@@ -17,6 +19,9 @@ TRAINING_SUBSAMPLE = 4
 LEFT = 'L'
 RIGHT = 'R'
 ARMS = [LEFT, RIGHT]
+CAM_TO_FK = 'C'
+FK_TO_CAM = 'F'
+TRAINING_MODES = [CAM_TO_FK, FK_TO_CAM] # learn mapping CAM_TO_FK or vice versa 
 DEF_TRAIN_SAVE = 'error_model.pkl'
 DEF_TEST_SAVE = 'test_data.pkl'
 
@@ -26,21 +31,47 @@ def get_robot_pose(timestamp, robot_poses):
 def get_robot_pose_ind(ts, robot_ts):
     return min(range(len(robot_ts)), key=lambda i: abs(robot_ts[i] - ts))
 
+# returns numpy vector for the pose
+def pose_to_vector(pose):
+    eul = list(euler_from_matrix(pose[:3,:3]))
+    t = pose[:3,3]
+    eul.extend(t)
+    vec = np.array(eul)
+    return vec
+
+# return numpy matrix for the pose vector
+def vector_to_pose(vector):
+    tf = np.eye(4)
+    tf[:3,3] = tf[:3,3] + vector[3:]
+    tf[:3,:3] = euler_matrix(*vector[:3])[:3,:3].dot(tf[:3,:3])
+    return tf
+
+def convert_poses_to_vector(poses):
+    return np.array([pose_to_vector(p) for p in poses])
+
+def convert_vector_to_poses(vector):
+    return np.array([vector_to_pose(v) for v in vector])
+
 class RavenErrorModel(object):
     
-    def __init__(self, modelFile=None, testFile=None):
+    def __init__(self, modelFile=None, testFile=None, mode=CAM_TO_FK):
         self.model_file = modelFile
         self.test_file = testFile
         
         self.camera_to_robot_tf = {}
         self.train_data = {}
         self.test_data = {}
+        self.training_mode = mode
         self.n_joints = N_JOINTS
         
         try:
             if self.model_file:
                 # the training data is used to build a model
                 self.train_data = pickle.load(open(self.model_file))
+                try:
+                    self.training_mode = self.train_data['training_mode']
+                except:
+                    print 'Failed to load training mode for data. Most likely the data is old'
                 
                 #HACK to remove stupid extra L/R keys from old data
                 if len(self.train_data.keys()) > 2:
@@ -127,13 +158,18 @@ class RavenErrorModel(object):
         out_train_data['robot_joints'] = robot_joints_train
         out_train_data['camera_ts'] = camera_ts_train
         
+        # HACK TO REMOVE SHIITY DATA FOR TESTING ONLY
+        camera_poses_test.pop()
+        robot_poses_test.pop()
+        camera_ts_test.pop()
+        robot_ts_test.pop()
+        
         out_test_data['camera_to_robot_tf'] = camera_to_robot_tf
         out_test_data['camera_poses'] = camera_poses_test
         out_test_data['robot_poses'] = robot_poses_test
         out_test_data['robot_joints'] = robot_joints_test
         out_test_data['camera_ts'] = camera_ts_test
         out_test_data['robot_ts'] = robot_ts_test
-        
         return out_test_data, out_train_data
     
     def loadTrainingData(self, filename, arm_side, subsampleRate=None):
@@ -175,8 +211,17 @@ class RavenErrorModel(object):
             # 1. original pose error between camera and FK
             camera_poses = self.train_data[arm_side]['camera_poses']
             robot_poses = self.train_data[arm_side]['robot_poses']
-            robot_joints = self.train_data[arm_side]['robot_joints']
-            orig_pose_error = calc_pose_error(camera_poses, robot_poses)
+            
+            # set the target and samples based on the training mode
+            if self.training_mode == CAM_TO_FK:
+                target_poses = robot_poses
+                sample_poses = camera_poses
+            else:
+                target_poses = camera_poses
+                sample_poses = robot_poses
+            
+            sample_state_vector = convert_poses_to_vector(sample_poses) # convert the poses to state vector for training
+            orig_pose_error = calc_pose_error(target_poses, sample_poses)
             
             # VERBOSE
             print "original pose error for training data"
@@ -186,35 +231,35 @@ class RavenErrorModel(object):
             
             # 2. calculate systematic offset
             if opt_full_tf:
-                sys_robot_tf = sys_correct_tf(camera_poses, robot_poses, np.eye(4))
+                sys_robot_tf = sys_correct_tf(target_poses, sample_poses, np.eye(4))
             else:
-                camera_trans = np.array([pose[:3,3] for pose in camera_poses])
-                robot_trans = np.array([pose[:3,3] for pose in robot_poses])
-                sys_robot_tf = transformationEstimationSVD(robot_trans, camera_trans)
+                target_trans = np.array([pose[:3,3] for pose in target_poses])
+                sample_trans = np.array([pose[:3,3] for pose in sample_poses])
+                sys_correction_tf = transformationEstimationSVD(sample_trans, target_trans)
             
             
             # systematic corrected robot poses for training data
-            self.train_data[arm_side]['sys_robot_tf'] = sys_robot_tf
-            sys_robot_poses = [sys_robot_tf.dot(robot_pose) for robot_pose in robot_poses]
-            self.train_data[arm_side]['sys_robot_poses'] = sys_robot_poses
+            self.train_data[arm_side]['sys_correction_tf'] = sys_correction_tf
+            sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses]
+            self.train_data[arm_side]['sys_predicted_poses'] = sys_predicted_poses
             
             # VERBOSE
             # check error against same training data for sanity check
-            sys_pose_error = calc_pose_error(camera_poses, sys_robot_poses)
+            sys_pose_error = calc_pose_error(target_poses, sys_predicted_poses)
             print "systematic corrected pose error for training data"
             print "mean", np.mean(sys_pose_error, axis=0)
             print "std", np.std(sys_pose_error, axis=0)
             print
             
             # 3. calculate residual error correction function
-            alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints, loghyper)    
+            alphas, loghyper = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=4)    
             
             # systematic and GP corrected robot poses for training data
-            gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints, sys_robot_poses, robot_joints, loghyper)
+            gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, loghyper)
             
             # VERBOSE
             # check error against same training data for sanity check
-            gp_pose_error = calc_pose_error(camera_poses, gp_robot_poses)
+            gp_pose_error = calc_pose_error(target_poses, gp_predicted_poses)
             print "systematic and GP corrected pose error for training data"
             print "mean", np.mean(gp_pose_error, axis=0)
             print "std", np.std(gp_pose_error, axis=0)
@@ -228,7 +273,7 @@ class RavenErrorModel(object):
             # plot the translation poses
             if plot:
                 camera_ts = self.train_data[arm_side]['camera_ts']
-                plot_translation_poses_nice(camera_ts, camera_poses, camera_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=False)
+                plot_translation_poses_nice(camera_ts, target_poses, camera_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=False)
 
             errors[arm_side] = [orig_pose_error, sys_pose_error, gp_pose_error]
             
@@ -237,15 +282,28 @@ class RavenErrorModel(object):
     def test(self, plot=True):
         errors = {}
         for arm_side in self.train_data.keys():
-            sys_robot_tf = self.train_data[arm_side]['sys_robot_tf']
-            
             camera_ts = self.test_data[arm_side]['camera_ts']
             camera_poses = self.test_data[arm_side]['camera_poses']
             robot_ts = self.test_data[arm_side]['robot_ts']
             robot_poses = self.test_data[arm_side]['robot_poses']
-            robot_joints = self.test_data[arm_side]['robot_joints']
+            camera_poses_train = self.train_data[arm_side]['camera_poses']
+            robot_poses_train = self.train_data[arm_side]['robot_poses']
             
-            gp_robot_poses, sys_robot_poses = self.predict(robot_poses, robot_joints, arm_side)
+            # set the target and samples based on the training mode
+            if self.training_mode == CAM_TO_FK:
+                target_poses = robot_poses
+                train_poses = camera_poses_train
+                sample_poses = camera_poses
+                target_ts = robot_ts
+                sample_ts = camera_ts
+            else:
+                target_poses = camera_poses
+                train_poses = robot_poses_train
+                sample_poses = robot_poses
+                target_ts = camera_ts
+                sample_ts = robot_ts
+            
+            gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, train_poses, arm_side)
             
             print "Evaluating test data for arm " + arm_side
             
@@ -255,28 +313,27 @@ class RavenErrorModel(object):
                 matplotlib.rcParams['ps.useafm'] = True
                 matplotlib.rcParams['pdf.use14corefonts'] = True
                 matplotlib.rcParams['text.usetex'] = True
-                plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=True, arm_side=arm_side)
+                plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
 
-            errors[arm_side] = self.calcErrors(camera_poses, robot_poses, sys_robot_poses, gp_robot_poses, camera_ts, robot_ts)
+            errors[arm_side] = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
         return errors
     
-    def predict(self, robot_poses, robot_joints, arm_side):
+    def predict(self, sample_poses, train_poses, arm_side):
         alphas = self.train_data[arm_side]['alphas']
         loghyper = self.train_data[arm_side]['loghyper']
-        robot_joints_train = self.train_data[arm_side]['robot_joints']
-        sys_robot_tf = self.train_data[arm_side]['sys_robot_tf']
+        sample_state_vector = convert_poses_to_vector(sample_poses) # convert the poses to state vector for training
+        train_state_vector = convert_poses_to_vector(train_poses)
+        sys_correction_tf = self.train_data[arm_side]['sys_correction_tf']
                   
         # systematic corrected robot poses for test data
-        sys_robot_poses = [sys_robot_tf.dot(robot_pose) for robot_pose in robot_poses]
+        sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses]
             
         # systematic and GP corrected robot poses for training data
-        gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_poses, robot_joints, loghyper)
-        return gp_robot_poses, sys_robot_poses
+        gp_predicted_poses = gp_correct_poses_fast(alphas, train_state_vector, sys_predicted_poses, sample_state_vector, loghyper)
+        return gp_predicted_poses, sys_predicted_poses
     
         
     def predictFromFile(self, filename, plot=True):
-        gp_robot_poses = []
-        sys_robot_poses = []
         arm_side = 'L' # TODO: change to dynamic
         
         raw_data = pickle.load(open(filename))
@@ -293,9 +350,24 @@ class RavenErrorModel(object):
         camera_poses = test_data['camera_poses']
         robot_ts = test_data['robot_ts']
         robot_poses = test_data['robot_poses']
-        robot_joints = test_data['robot_joints']
+        camera_poses_train = self.train_data[arm_side]['camera_poses']
+        robot_poses_train = self.train_data[arm_side]['robot_poses']
+            
+        # set the target and samples based on the training mode
+        if self.training_mode == CAM_TO_FK:
+            target_poses = robot_poses
+            train_poses = camera_poses_train
+            sample_poses = camera_poses
+            target_ts = robot_ts
+            sample_ts = camera_ts
+        else:
+            target_poses = camera_poses
+            train_poses = robot_poses_train
+            sample_poses = robot_poses
+            target_ts = camera_ts
+            sample_ts = robot_ts
       
-        gp_robot_poses, sys_robot_poses = self.predict(robot_poses, robot_joints, arm_side)
+        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, train_poses, arm_side)
             
         if plot:
             # Type 1 fonts for publication
@@ -303,49 +375,49 @@ class RavenErrorModel(object):
             matplotlib.rcParams['ps.useafm'] = True
             matplotlib.rcParams['pdf.use14corefonts'] = True
             matplotlib.rcParams['text.usetex'] = True
-            plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, sys_robot_poses, gp_robot_poses, split=True, arm_side=arm_side)
+            plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
 
-        self.calcErrors(camera_poses, robot_poses, sys_robot_poses, gp_robot_poses, camera_ts, robot_ts)
-        return gp_robot_poses, sys_robot_poses
+        self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+        return gp_predicted_poses, sys_predicted_poses
     
-    def calcErrors(self, camera_poses, robot_poses, sys_robot_poses, gp_robot_poses, camera_ts, robot_ts):
+    def calcErrors(self, target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, target_ts, sample_ts):
         robot_inds = []
-        for ts in camera_ts:
-            robot_inds.append(get_robot_pose_ind(ts, robot_ts))
+        for ts in target_ts:
+            robot_inds.append(get_robot_pose_ind(ts, sample_ts))
         
         # CALCULATE THE ERROR
-        camera_trans = np.array([pose[:3,3] for pose in camera_poses])
-        robot_trans = np.array([pose[:3,3] for pose in robot_poses])
-        sys_robot_trans = np.array([pose[:3,3] for pose in sys_robot_poses])
-        gp_robot_trans = np.array([pose[:3,3] for pose in gp_robot_poses])
+        target_trans = np.array([pose[:3,3] for pose in target_poses])
+        sample_trans = np.array([pose[:3,3] for pose in sample_poses])
+        sys_sample_trans = np.array([pose[:3,3] for pose in sys_predicted_poses])
+        gp_sample_trans = np.array([pose[:3,3] for pose in gp_predicted_poses])
         
         # VERBOSE
         # pose error between camera and FK
-        orig_pose_error = calc_pose_error(camera_poses, [robot_poses[ind] for ind in robot_inds])
+        orig_pose_error = calc_pose_error(target_poses, [sample_poses[ind] for ind in robot_inds])
         print "original pose error for test data"
         print "mean", np.mean(orig_pose_error, axis=0)
         print "std", np.std(orig_pose_error, axis=0)
-        fk_err = (camera_trans - robot_trans[robot_inds,:]).reshape(-1,1)
+        fk_err = (target_trans - sample_trans[robot_inds,:]).reshape(-1,1)
         fk_rms_err = np.sqrt((fk_err**2).mean())
         print "xyz rms error", fk_rms_err
         print
         
         # systematic corrected robot poses for test data
-        sys_pose_error = calc_pose_error(camera_poses, [sys_robot_poses[ind] for ind in robot_inds])
+        sys_pose_error = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
         print "systematic corrected pose error for test data"
         print "mean", np.mean(sys_pose_error, axis=0)
         print "std", np.std(sys_pose_error, axis=0)
-        sys_err = (camera_trans - sys_robot_trans[robot_inds,:]).reshape(-1,1)
+        sys_err = (target_trans - sys_sample_trans[robot_inds,:]).reshape(-1,1)
         sys_rms_err = np.sqrt((sys_err**2).mean())
         print "xyz rms error", sys_rms_err
         print
         
         # systematic and GP corrected robot poses for test data
-        gp_pose_error = calc_pose_error(camera_poses, [gp_robot_poses[ind] for ind in robot_inds])
+        gp_pose_error = calc_pose_error(target_poses, [gp_predicted_poses[ind] for ind in robot_inds])
         print "systematic and GP corrected pose error for test data"
         print "mean", np.mean(gp_pose_error, axis=0)
         print "std", np.std(gp_pose_error, axis=0)
-        gp_err = (camera_trans - gp_robot_trans[robot_inds,:]).reshape(-1,1)
+        gp_err = (target_trans - gp_sample_trans[robot_inds,:]).reshape(-1,1)
         gp_rms_err = np.sqrt((gp_err**2).mean())
         print "xyz rms error", gp_rms_err
         print
@@ -372,23 +444,24 @@ if __name__ == '__main__':
     model_data = args.model_data
     del args.model_data
     
-    if mode == 'train':
-        r = RavenErrorModel()
-        if left_arm_data:
-            r.loadTrainingData(left_arm_data, LEFT, TRAINING_SUBSAMPLE)
-        if right_arm_data:
-            r.loadTrainingData(right_arm_data, RIGHT, TRAINING_SUBSAMPLE)
-        r.train(loghyper = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))]))
-        r.test()
-        r.save()
-    elif mode == 'test':
-        r = RavenErrorModel(model_data)
-        if left_arm_data:
-            r.predictFromFile(left_arm_data)
-        if right_arm_data:
-            r.predictFromFile(right_arm_data)
-    else:
-        print "Please specify a valid mode: train or test"
+    with launch_ipdb_on_exception():
+        if mode == 'train':
+            r = RavenErrorModel()
+            if left_arm_data:
+                r.loadTrainingData(left_arm_data, LEFT, TRAINING_SUBSAMPLE)
+            if right_arm_data:
+                r.loadTrainingData(right_arm_data, RIGHT, TRAINING_SUBSAMPLE)
+            r.train()#loghyper = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))]))
+            r.test()
+            r.save()
+        elif mode == 'test':
+            r = RavenErrorModel(model_data)
+            if left_arm_data:
+                r.predictFromFile(left_arm_data)
+            if right_arm_data:
+                r.predictFromFile(right_arm_data)
+        else:
+            print "Please specify a valid mode: train or test"
     
     
     
