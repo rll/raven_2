@@ -12,6 +12,7 @@ from transformations import euler_from_matrix, euler_matrix
 from error_characterization import *
 import IPython
 from ipdb import launch_ipdb_on_exception
+from operator import itemgetter
 
 N_JOINTS = 7
 NO_SUBSAMPLING = 1
@@ -69,9 +70,12 @@ class RavenErrorModel(object):
                 # the training data is used to build a model
                 self.train_data = pickle.load(open(self.model_file))
                 try:
-                    self.training_mode = self.train_data['training_mode']
+                    self.training_mode = self.train_data[LEFT]['training_mode']
                 except:
-                    print 'Failed to load training mode for data. Most likely the data is old'
+                    try:
+                        self.training_mode = self.train_data[RIGHT]['training_mode']
+                    except:
+                        print 'Failed to load training mode for data. Most likely the data is old'
                 
                 #HACK to remove stupid extra L/R keys from old data
                 if len(self.train_data.keys()) > 2:
@@ -117,20 +121,51 @@ class RavenErrorModel(object):
         camera_ts_test = []
         robot_ts_test = []
         robot_joints_test = np.empty((0, self.n_joints))
-        
-        ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
+        low_pass_robot = []; 
+        low_pass_camera = []; 
+        low_pass_strength = 6; 
                 
+        ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
+        data_cp = data['camera_poses']
+        data_cp.sort(key=itemgetter(0))
+        
         # remove camera outliers, segment data into test and train
         i=1; 
-        for ts_pose in data['camera_poses']:
-            # rough way to remove some camera outliers
-            if len(camera_poses_train)>0 and nlg.norm(camera_poses_train[-1][:3,3]-camera_pose_robot_frame[:3,3])>0.05:
-                continue
+        for ts_pose in data_cp:
+            
             ts_cam = ts_pose[0] - ts_start
             camera_pose_robot_frame = camera_to_robot_tf.dot(ts_pose[1])
             robot_pose_ind = get_robot_pose(ts_pose[0], data['robot_poses'])
             ts_robot = data['robot_poses'][robot_pose_ind][0] - ts_start
             robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
+            
+            
+            #Moving Average filter 
+            if len(low_pass_camera)>0 and nlg.norm(low_pass_camera[-1]-camera_pose_robot_frame[:3,3]) > 0.15:
+                   continue
+           
+            if(len(low_pass_camera)>low_pass_strength):
+                low_pass_robot.pop(0)
+                low_pass_camera.pop(0)
+                
+            low_pass_camera.append(camera_pose_robot_frame[:3,3])
+            low_pass_robot.append(robot_pose_robot_frame[:3,3])
+            t=0; 
+            pose_avg_cam = np.array([0, 0, 0])
+            pose_avg_robot = np.array([0, 0, 0])
+            for pose in low_pass_camera:     
+                pose_avg_cam = pose + pose_avg_cam
+                pose_avg_robot = low_pass_robot[t]+ pose_avg_robot;                
+                t = t+1;
+                
+            if(len(low_pass_camera)>0):
+                pose_avg_cam = 1/float(len(low_pass_camera)) * pose_avg_cam
+                pose_avg_robot = 1/float(len(low_pass_robot)) * pose_avg_robot
+                
+                
+            camera_pose_robot_frame[:3,3] = pose_avg_cam; 
+            robot_pose_robot_frame[:3,3] = pose_avg_robot; 
+            # rough way to remove some camera outliers                
             
             if i % subsampleRate != 0:
                 camera_ts_train.append(ts_cam)
@@ -147,7 +182,7 @@ class RavenErrorModel(object):
                 robot_joints_test = np.r_[robot_joints_test, \
                                           np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
             i = i+1
-                  
+                         
         #Assemble test data
         out_train_data = {}
         out_test_data = {}
@@ -205,6 +240,7 @@ class RavenErrorModel(object):
         Compute a systematic and residual error correction model for each of the training data sets loaded
         """
         errors = {}
+        hyperparams = {}
         for arm_side in self.train_data.keys():
             print "Training models for arm " + arm_side
             
@@ -228,10 +264,9 @@ class RavenErrorModel(object):
             print "mean", np.mean(orig_pose_error, axis=0)
             print "std", np.std(orig_pose_error, axis=0)
             print
-            
             # 2. calculate systematic offset
             if opt_full_tf:
-                sys_robot_tf = sys_correct_tf(target_poses, sample_poses, np.eye(4))
+                sys_correction_tf = sys_correct_tf(target_poses, sample_poses, np.eye(4))
             else:
                 target_trans = np.array([pose[:3,3] for pose in target_poses])
                 sample_trans = np.array([pose[:3,3] for pose in sample_poses])
@@ -252,10 +287,10 @@ class RavenErrorModel(object):
             print
             
             # 3. calculate residual error correction function
-            alphas, loghyper = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=4)    
+            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=4)    
             
             # systematic and GP corrected robot poses for training data
-            gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, loghyper)
+            gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, hyperparams[arm_side])
             
             # VERBOSE
             # check error against same training data for sanity check
@@ -267,13 +302,13 @@ class RavenErrorModel(object):
 
             # update the internal models
             self.train_data[arm_side]["alphas"] = alphas
-            self.train_data[arm_side]["loghyper"] = loghyper
-
+            self.train_data[arm_side]["loghyper"] = hyperparams[arm_side]
+            self.train_data[arm_side]['training_mode'] = self.training_mode
 
             # plot the translation poses
             if plot:
                 camera_ts = self.train_data[arm_side]['camera_ts']
-                plot_translation_poses_nice(camera_ts, target_poses, camera_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=False)
+                plot_translation_poses_nice(camera_ts, target_poses, camera_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=False, arm_side=arm_side)
 
             errors[arm_side] = [orig_pose_error, sys_pose_error, gp_pose_error]
             
@@ -333,9 +368,7 @@ class RavenErrorModel(object):
         return gp_predicted_poses, sys_predicted_poses
     
         
-    def predictFromFile(self, filename, plot=True):
-        arm_side = 'L' # TODO: change to dynamic
-        
+    def predictFromFile(self, filename, arm_side='L', plot=True):
         raw_data = pickle.load(open(filename))
         cleaned_data = self.__cleanOldData(raw_data, arm_side)
         if cleaned_data:
@@ -368,7 +401,7 @@ class RavenErrorModel(object):
             sample_ts = robot_ts
       
         gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, train_poses, arm_side)
-            
+        
         if plot:
             # Type 1 fonts for publication
             # http://nerdjusttyped.blogspot.sg/2010/07/type-1-fonts-and-matplotlib-figures.html
@@ -426,6 +459,7 @@ class RavenErrorModel(object):
     def save(self, train_filename=DEF_TRAIN_SAVE, test_filename=DEF_TEST_SAVE):
         pickle.dump(self.train_data, open(train_filename, "wb"))
         pickle.dump(self.test_data, open(test_filename, "wb"))
+        print "saved"
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -457,9 +491,11 @@ if __name__ == '__main__':
         elif mode == 'test':
             r = RavenErrorModel(model_data)
             if left_arm_data:
-                r.predictFromFile(left_arm_data)
+                print "Testing arm ", LEFT
+                r.predictFromFile(left_arm_data, LEFT)
             if right_arm_data:
-                r.predictFromFile(right_arm_data)
+                print "Testing arm ", RIGHT
+                r.predictFromFile(right_arm_data, RIGHT)
         else:
             print "Please specify a valid mode: train or test"
     

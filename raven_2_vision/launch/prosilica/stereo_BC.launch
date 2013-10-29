@@ -7,7 +7,7 @@ You can uncomment the viewer at bottom if you want to view the image stream.
 <launch>	
   <node pkg="tf" type="static_transform_publisher" name="BC_L2R" args="0.0466 0 0 0 0 0 left_BC right_BC 100" />
   <node pkg="tf" type="static_transform_publisher" name="zero_link_left_BC" args="-0.040 0.243 0.029 -3.123 0.018 -2.077 0_link left_BC 100" />
-  <node pkg="tf" type="static_transform_publisher" name="zero_link_camera_link" args="-0.001 0.269 0.148 -1.500 0.589 0.052 0_link camera_link 100" />
+
   <arg name="left_ip_address" default="" /> 
   <arg name="right_ip_address" default="" /> 
 

@@ -52,10 +52,7 @@ class RavenController():
         self.arm = arm
 
         self.stopRunning = threading.Event()
-        print self.stopRunning.isSet()
         self.stopRunning.set()
-        print self.stopRunning.isSet()
-
         # ADDED, initializes the rest
         self.reset()
 		
@@ -253,7 +250,7 @@ class RavenController():
                         runlevel = val['runlevel']
 			
             if runlevel == 0:
-                rospy.loginfo('Raven in E-STOP')
+                #rospy.loginfo('Raven in E-STOP')
                 success = False
                 continue
 

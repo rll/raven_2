@@ -42,16 +42,16 @@ ROI_size = namedtuple('ROI_size','width height')
 ########################################
 
 # right gripper
-GREEN_LOWER = (38, 40, 50) #THESE ARE THE GREEN PAPER VALUES
+GREEN_LOWER = (60, 60, 85) #THESE ARE THE GREEN PAPER VALUES
 GREEN_UPPER = (105, 255, 255)
-ORANGE_LOWER = (6, 60, 155) # THESE ARE THE ORANGE PAPER VALUES
+ORANGE_LOWER = (5, 130, 155) # THESE ARE THE ORANGE PAPER VALUES
 ORANGE_UPPER = (35, 255, 255)
 
 # left gripper
-PURPLE_LOWER = (125, 20, 100)
+PURPLE_LOWER = (120, 65, 105)
 PURPLE_UPPER = (170, 255, 255)
-BLUE_LOWER = (106, 55, 60)
-BLUE_UPPER = (125, 255, 255)
+BLUE_LOWER = (105, 105, 90)
+BLUE_UPPER = (135, 255, 255)
 
 # TEMP: since only for one gripper at a time
 #GREEN_LOWER = PURPLE_LOWER
@@ -815,12 +815,12 @@ def main():
     del args.camera_name    
 
     if arm == 'R':
-        color1_name = 'orange'
-        color1_lower = ORANGE_LOWER
-        color1_upper = ORANGE_UPPER
-        color2_name = 'green'
-        color2_lower = GREEN_LOWER
-        color2_upper = GREEN_UPPER
+        color2_name = 'orange'
+        color2_lower = ORANGE_LOWER
+        color2_upper = ORANGE_UPPER
+        color1_name = 'green'
+        color1_lower = GREEN_LOWER
+        color1_upper = GREEN_UPPER
     else:
         color1_name = 'blue'
         color1_lower = BLUE_LOWER

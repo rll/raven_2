@@ -26,7 +26,7 @@ class GripperPoseEstimator():
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = False):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = True):
         self.arms = arms
         self.useSystematicError = systematicError 
         self.truthPose = {}
@@ -43,6 +43,8 @@ class GripperPoseEstimator():
             trained_data_L =  pickle.load(open(os.path.join(roslib.packages.get_pkg_subdir('raven_2_params','data/left_arm'),'left_train_data.pkl')))
             self.sys_error['R'] = tfx.transform(trained_data_R["sys_robot_tf"]['R'])
             self.sys_error['L'] = tfx.transform(trained_data_L["sys_robot_tf"]['L'])
+            print self.sys_error['R']
+            print self.sys_error['L']
         else:    
             self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
@@ -126,21 +128,28 @@ class GripperPoseEstimator():
             
             self.pre_adj_pub[arm].publish(self.pre_adjustment[arm].msg.TransformStamped(stamp=truthPose.stamp, check_frame=False))
             self.post_adj_pub[arm].publish(self.post_adjustment[arm].msg.TransformStamped(stamp=truthPose.stamp, check_frame=False))
-        
+    
         self.truthPose[arm] = truthPose
         self.calcPoseAtTruth[arm] = calcPose
         self.estimatedPose[arm] = (truthPose,False)
-        
+    i =1    
     def _ravenStateCallback(self,msg):
         
         if self.useSystematicError:
+            
             for arm in self.arms:
+                if self.estimatedPose.has_key(arm):
+                    if tfx.stamp(msg.header.stamp) - self.estimatedPose[arm][0].stamp < 0.2:
+                        return
+                
                 arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
                 joints = dict((j.type,j.position) for j in arm_msg.joints)
                 fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints,stamp=msg.header.stamp)
-                estPose = self.sys_error[arm] * fwdArmKinPose
+                estPose = tfx.pose(self.sys_error[arm] * fwdArmKinPose,frame='0_link',stamp = msg.header.stamp)
+                estPose.frame = '0_link' # TEMP
                 self.estimatedPose[arm] = (estPose,False)
-               
+             
+                self.est_pose_pub[arm].publish(estPose.msg.PoseStamped())
 
         else:
             if self.calcPose:
@@ -171,9 +180,10 @@ class GripperPoseEstimator():
         deltaCalcPose = prevCalcPose.inverse().as_tf() * calcPose.as_tf()
         deltaPose = pre_adjustment * deltaCalcPose * post_adjustment
         estPose = tfx.pose(prevTruthPose.as_tf() * deltaPose,frame=calcPose.frame,stamp=calcPose.stamp)
+        self.est_pose_pub[arm].publish(estPose.msg.PoseStamped())
         self.estimatedPose[arm] = (estPose,True)
         
-        self.est_pose_pub[arm].publish(estPose.msg.PoseStamped())
+       
     
     def getGripperPose(self, armName, full=False):
         """

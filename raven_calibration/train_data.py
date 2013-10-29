@@ -63,6 +63,7 @@ robot_joints = np.empty((0,n_joints))
 camera_poses_test = []
 robot_poses_test = []
 robot_joints_test = []
+low_pass = []
 
 ts_start = min(data['camera_poses'][arm_side][0][0], data['robot_poses'][arm_side][0][0])
 
@@ -73,6 +74,9 @@ for ts_pose in data['camera_poses'][arm_side]:
     # rough way to remove some camera outliers
     if len(camera_poses)>0 and nlg.norm(camera_poses[-1][:3,3]-camera_pose[:3,3])>0.05:
         continue
+    
+    #low pass filter 
+    
     if i % sub_sample  != 0:
         camera_ts.append(ts_pose[0]-ts_start)
         camera_pose = ts_pose[1]
@@ -187,7 +191,7 @@ loghyper = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
 if arm_side == 'R':
     alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)    
 else:
-    alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints, loghyper)
+    alphas, loghyper = gp_correct_poses_precompute(camera_poses, sys_robot_poses, robot_joints)
 
 # systematic and GP corrected robot poses for training data
 gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints, sys_robot_poses, robot_joints, loghyper)

@@ -139,7 +139,7 @@ robot_joints_train = trained_data['robot_joints'][arm_side]
 sys_robot_poses = [sys_robot_tf.dot(robot_pose) for robot_pose in robot_poses]
 
 # systematic and GP corrected robot poses for training data
-gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_poses, robot_joints, loghyper)
+gp_robot_poses = gp_correct_poses_fast(alphas, robot_joints_train, sys_robot_poses, robot_joints, loghyper, use_same=True)
 
 
 
