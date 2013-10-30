@@ -127,9 +127,7 @@ class RavenErrorModel(object):
         camera_ts_test = []
         robot_ts_test = []
         robot_joints_test = np.empty((0, self.n_joints))
-        low_pass_robot = []; 
-        low_pass_camera = []; 
-        low_pass_strength = 4; 
+ 
                 
         ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
         data_cp = data['camera_poses']
@@ -145,45 +143,7 @@ class RavenErrorModel(object):
             ts_robot = data['robot_poses'][robot_pose_ind][0] - ts_start
             robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
             
-            
-            #Moving Average filter 
-            if len(low_pass_camera)>0 and nlg.norm(low_pass_camera[-1]-camera_pose_robot_frame[:3,3]) > 0.15:
-                continue
 
-            low_pass_camera.append(camera_pose_robot_frame[:3,3].copy())
-            low_pass_robot.append(robot_pose_robot_frame[:3,3][:])
-
-            if(len(low_pass_camera)>low_pass_strength):
-                low_pass_robot.pop(0)
-                low_pass_camera.pop(0)
- 
-                
-            
-            t=0; 
-            
-            #list_pose = low_pass_camera[:]
-            #list_pose.sort(cmp = comp_array)
-            
-            
-            pose_avg_cam = np.array([0, 0, 0])
-            pose_avg_robot = np.array([0, 0, 0])
-            for pose in low_pass_camera:     
-                pose_avg_cam = pose + pose_avg_cam
-                pose_avg_robot = low_pass_robot[t]+ pose_avg_robot;                
-                t = t+1;
-                
-            if(len(low_pass_camera)>0):
-                pose_avg_cam = 1/float(len(low_pass_camera)) * pose_avg_cam
-                pose_avg_robot = 1/float(len(low_pass_robot)) * pose_avg_robot
-                
-     
-            #if( i > 2):     
-            camera_pose_robot_frame[:3,3] = pose_avg_cam; 
-               
-            
-            #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
-            # rough way to remove some camera outliers                
-            
             if i % subsampleRate != 0:
                 camera_ts_train.append(ts_cam)
                 camera_poses_train.append(camera_pose_robot_frame)
