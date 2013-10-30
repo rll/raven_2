@@ -127,7 +127,8 @@ class RavenErrorModel(object):
         camera_ts_test = []
         robot_ts_test = []
         robot_joints_test = np.empty((0, self.n_joints))
- 
+        low_pass_camera = []; 
+        low_pass_strength = 3; 
                 
         ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
         data_cp = data['camera_poses']
@@ -143,7 +144,22 @@ class RavenErrorModel(object):
             ts_robot = data['robot_poses'][robot_pose_ind][0] - ts_start
             robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
             
+            
+            #Camera Outliers
+            if len(low_pass_camera)>0 and nlg.norm(low_pass_camera[-1]-camera_pose_robot_frame[:3,3]) > 0.02:
+                continue
 
+            low_pass_camera.append(camera_pose_robot_frame[:3,3].copy())
+
+            if(len(low_pass_camera)>low_pass_strength):
+                low_pass_camera.pop(0)
+ 
+
+               
+            
+            #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
+            # rough way to remove some camera outliers                
+            
             if i % subsampleRate != 0:
                 camera_ts_train.append(ts_cam)
                 camera_poses_train.append(camera_pose_robot_frame)
