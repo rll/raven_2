@@ -13,6 +13,7 @@ from error_characterization import *
 import IPython
 from ipdb import launch_ipdb_on_exception
 from operator import itemgetter
+import csv
 
 N_JOINTS = 7
 NO_SUBSAMPLING = 1
@@ -25,6 +26,8 @@ FK_TO_CAM = 'F'
 TRAINING_MODES = [CAM_TO_FK, FK_TO_CAM] # learn mapping CAM_TO_FK or vice versa 
 DEF_TRAIN_SAVE = 'error_model.pkl'
 DEF_TEST_SAVE = 'test_data.pkl'
+CSV_HEADER = ['Arm', 'Homing Procedures', 'FK RMS Test Error (m)', 'FK+Sys RMS Test Error (m)', 'FK+Sys+GP RMS Test Error (m)', \
+               'Mean X Error (m)', 'Std X Error (m)', 'Mean Y Error (m)', 'Std Y Error (m)', 'Mean Z Error (m)', 'Std Z Error (m)', 'Mean Yaw Error (rad)', 'Std Yaw Error (rad)', 'Mean Pitch Error (rad)', 'Std Pitch Error (rad)', 'Mean Roll Error (rad)', 'Std Roll Error (rad)']
 
 def get_robot_pose(timestamp, robot_poses):
     return min(range(len(robot_poses)), key=lambda i: abs(robot_poses[i][0] - timestamp))
@@ -115,7 +118,7 @@ class RavenErrorModel(object):
             return None
         return clean_data
     
-    def __convertRawData(self, data, camera_to_robot_tf, subsampleRate=NO_SUBSAMPLING):
+    def __convertRawData(self, data, camera_to_robot_tf, subsampleRate=20):
         camera_poses_train = []
         robot_poses_train = []
         camera_ts_train = []
@@ -361,7 +364,8 @@ class RavenErrorModel(object):
         return gp_predicted_poses, sys_predicted_poses
     
         
-    def predictFromFile(self, filename, arm_side='L', plot=True):
+
+    def predictFromFile(self, filename, arm_side='L', plot=True, outfilename=None):
         raw_data = pickle.load(open(filename))
         cleaned_data = self.__cleanOldData(raw_data, arm_side)
         if cleaned_data:
@@ -403,9 +407,12 @@ class RavenErrorModel(object):
             matplotlib.rcParams['text.usetex'] = True
             plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
 
-        self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+        errors = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+
+        if outfilename is not None:
+            self.saveErrors(errors, outfilename, arm_side)
         return gp_predicted_poses, sys_predicted_poses
-    
+
     def calcErrors(self, target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, target_ts, sample_ts):
         robot_inds = []
         for ts in target_ts:
@@ -420,9 +427,11 @@ class RavenErrorModel(object):
         # VERBOSE
         # pose error between camera and FK
         orig_pose_error = calc_pose_error(target_poses, [sample_poses[ind] for ind in robot_inds])
+        fk_mean_err = np.mean(orig_pose_error, axis=0)
+        fk_std_err = np.std(orig_pose_error, axis=0)
         print "original pose error for test data"
-        print "mean", np.mean(orig_pose_error, axis=0)
-        print "std", np.std(orig_pose_error, axis=0)
+        print "mean", fk_mean_err
+        print "std", fk_std_err
         fk_err = (target_trans - sample_trans[robot_inds,:]).reshape(-1,1)
         fk_rms_err = np.sqrt((fk_err**2).mean())
         print "xyz rms error", fk_rms_err
@@ -430,9 +439,11 @@ class RavenErrorModel(object):
         
         # systematic corrected robot poses for test data
         sys_pose_error = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
+        sys_mean_err = np.mean(sys_pose_error, axis=0) 
+        sys_std_err = np.std(sys_pose_error, axis=0)
         print "systematic corrected pose error for test data"
-        print "mean", np.mean(sys_pose_error, axis=0)
-        print "std", np.std(sys_pose_error, axis=0)
+        print "mean", sys_mean_err
+        print "std", sys_std_err
         sys_err = (target_trans - sys_sample_trans[robot_inds,:]).reshape(-1,1)
         sys_rms_err = np.sqrt((sys_err**2).mean())
         print "xyz rms error", sys_rms_err
@@ -440,26 +451,61 @@ class RavenErrorModel(object):
         
         # systematic and GP corrected robot poses for test data
         gp_pose_error = calc_pose_error(target_poses, [gp_predicted_poses[ind] for ind in robot_inds])
+        gp_mean_err = np.mean(gp_pose_error, axis=0)
+        gp_std_err = np.std(gp_pose_error, axis=0)
         print "systematic and GP corrected pose error for test data"
-        print "mean", np.mean(gp_pose_error, axis=0)
-        print "std", np.std(gp_pose_error, axis=0)
+        print "mean", gp_mean_err
+        print "std", gp_std_err
         gp_err = (target_trans - gp_sample_trans[robot_inds,:]).reshape(-1,1)
         gp_rms_err = np.sqrt((gp_err**2).mean())
         print "xyz rms error", gp_rms_err
         print
-        return [fk_rms_err, sys_rms_err, gp_rms_err]
+
+        # put the output into a nice lil dictionary (RMS, MEAN, STD)
+        error_dict = {}
+        error_dict['fk'] = [fk_rms_err, fk_mean_err, fk_std_err]
+        error_dict['sys'] = [sys_rms_err, sys_mean_err, sys_std_err]
+        error_dict['gp'] = [gp_rms_err, gp_mean_err, gp_std_err]
+        return error_dict
     
     def save(self, train_filename=DEF_TRAIN_SAVE, test_filename=DEF_TEST_SAVE):
         pickle.dump(self.train_data, open(train_filename, "wb"))
         pickle.dump(self.test_data, open(test_filename, "wb"))
         print "saved"
+
+    def saveErrors(self, error_dict, filename, arm_side):
+        try:
+            test = open(filename, 'r')
+            with open(filename, 'a') as csvfile:
+                data_writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                data_writer.writerow([arm_side, 0, error_dict['fk'][0], error_dict['sys'][0], error_dict['gp'][0], \
+                                      error_dict['gp'][1][0], error_dict['gp'][2][0],
+                                      error_dict['gp'][1][1], error_dict['gp'][2][1],
+                                      error_dict['gp'][1][2], error_dict['gp'][2][2],
+                                      error_dict['gp'][1][3], error_dict['gp'][2][3],
+                                      error_dict['gp'][1][4], error_dict['gp'][2][4],
+                                      error_dict['gp'][1][5], error_dict['gp'][2][5] ])
+
+        except IOError as e:
+            # File not found, create it
+            with open(filename, 'w') as csvfile:
+                data_writer = csv.writer(csvfile)
+                data_writer.writerow(CSV_HEADER)
+                data_writer.writerow([arm_side, 0, error_dict['fk'][0], error_dict['sys'][0], error_dict['gp'][0], \
+                                      error_dict['gp'][1][0], error_dict['gp'][2][0],
+                                      error_dict['gp'][1][1], error_dict['gp'][2][1],
+                                      error_dict['gp'][1][2], error_dict['gp'][2][2],
+                                      error_dict['gp'][1][3], error_dict['gp'][2][3],
+                                      error_dict['gp'][1][4], error_dict['gp'][2][4],
+                                      error_dict['gp'][1][5], error_dict['gp'][2][5] ])
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode',nargs='?',default=None)
-    parser.add_argument('-l', '--left_arm_data',nargs='?',default=None)
-    parser.add_argument('-r', '--right_arm_data',nargs='?',default=None)
-    parser.add_argument('-d', '--model_data',nargs='?',default=None)
+    parser.add_argument('-l', '--left-arm-data',nargs='?',default=None)
+    parser.add_argument('-r', '--right-arm-data',nargs='?',default=None)
+    parser.add_argument('-d', '--model-data',nargs='?',default=None)
+    parser.add_argument('-s', '--spreadsheet',nargs='?',default=None)
     
     args = parser.parse_args(rospy.myargv()[1:])
     mode = args.mode
@@ -470,8 +516,11 @@ if __name__ == '__main__':
     del args.right_arm_data
     model_data = args.model_data
     del args.model_data
+    spreadsheet = args.spreadsheet
+    del args.spreadsheet
     
-    with launch_ipdb_on_exception():
+#    with launch_ipdb_on_exception():
+    if True:
         if mode == 'train':
             r = RavenErrorModel()
             if left_arm_data:
@@ -485,10 +534,10 @@ if __name__ == '__main__':
             r = RavenErrorModel(model_data)
             if left_arm_data:
                 print "Testing arm ", LEFT
-                r.predictFromFile(left_arm_data, LEFT)
+                r.predictFromFile(left_arm_data, LEFT, outfilename=spreadsheet)
             if right_arm_data:
                 print "Testing arm ", RIGHT
-                r.predictFromFile(right_arm_data, RIGHT)
+                r.predictFromFile(right_arm_data, RIGHT, outfilename=spreadsheet)
         else:
             print "Please specify a valid mode: train or test"
     
