@@ -21,14 +21,16 @@ import IPython
 from collections import defaultdict
 from functools import partial
 
+ERROR_CORRECTION_MODES = ['NONE', 'PRE_POST', 'SYS', 'GPR']
+
 class GripperPoseEstimator():
     """
     Used to estimate gripper pose by image processing
     """
 
-    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True,systematicError = True):
+    def __init__(self, arms = ['L','R'], calcPosePostAdjustment=None, adjustmentInterpolation=True, errorCorrectionMode='NONE'):
         self.arms = arms
-        self.useSystematicError = systematicError 
+        self.errorCorrectionMode = errorCorrectionMode
         self.truthPose = {}
         self.calcPose = {}
         self.calcPoseAtTruth = {}
@@ -38,14 +40,14 @@ class GripperPoseEstimator():
         self.pose_error_pub = {}
         self.estimateFromImage = dict()
         self.estimatedPose = defaultdict(lambda: (None,None))
-        if systematicError:
+        if self.errorCorrectionMode == 'SYS':
             trained_data_R = pickle.load(open(os.path.join(roslib.packages.get_pkg_subdir('raven_2_params','data/right_arm'),'right_train_data.pkl')))
             trained_data_L =  pickle.load(open(os.path.join(roslib.packages.get_pkg_subdir('raven_2_params','data/left_arm'),'left_train_data.pkl')))
             self.sys_error['R'] = tfx.transform(trained_data_R["sys_robot_tf"]['R'])
             self.sys_error['L'] = tfx.transform(trained_data_L["sys_robot_tf"]['L'])
             print self.sys_error['R']
             print self.sys_error['L']
-        else:    
+        elif self.errorCorrectionMode == 'PRE_POST':    
             self.pre_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             self.post_adjustment = dict((arm,tfx.identity_tf()) for arm in self.arms)
             self.adjustment_side = dict((arm,'post') for arm in self.arms)
@@ -135,7 +137,19 @@ class GripperPoseEstimator():
     i =1    
     def _ravenStateCallback(self,msg):
         
-        if self.useSystematicError:
+        if self.errorCorrectionMode == 'NONE':
+            for arm in self.arms:
+                if self.estimatedPose.has_key(arm):
+                    if tfx.stamp(msg.header.stamp) - self.estimatedPose[arm][0].stamp < 0.2:
+                        return
+                
+                fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints,stamp=msg.header.stamp)
+                estPose = tfx.pose(fwdArmKinPose,frame='0_link',stamp = msg.header.stamp)
+                estPose.frame = '0_link' # TEMP
+                self.estimatedPose[arm] = (estPose,False)             
+                self.est_pose_pub[arm].publish(estPose.msg.PoseStamped())
+
+        elif self.errorCorrectionMode == 'SYS':
             
             for arm in self.arms:
                 if self.estimatedPose.has_key(arm):
@@ -151,7 +165,7 @@ class GripperPoseEstimator():
              
                 self.est_pose_pub[arm].publish(estPose.msg.PoseStamped())
 
-        else:
+        elif self.errorCorrectionMode == 'PRE_POST':
             if self.calcPose:
                 prevTime = self.calcPose.values()[0].stamp
                 if tfx.stamp(msg.header.stamp).seconds - prevTime.seconds < 0.2:

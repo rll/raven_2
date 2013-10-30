@@ -272,7 +272,7 @@ class RavenErrorModel(object):
             # systematic corrected robot poses for training data
             self.train_data[arm_side]['sys_correction_tf'] = sys_correction_tf
             sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses]
-            self.train_data[arm_side]['sys_predicted_poses'] = sys_predicted_poses
+            self.train_data[arm_side]['sys_predictd_poses'] = sys_predicted_poses
             
             # VERBOSE
             # check error against same training data for sanity check
@@ -334,7 +334,7 @@ class RavenErrorModel(object):
                 target_ts = camera_ts
                 sample_ts = robot_ts
             
-            gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, train_poses, arm_side)
+            gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
             
             print "Evaluating test data for arm " + arm_side
             
@@ -349,9 +349,22 @@ class RavenErrorModel(object):
             errors[arm_side] = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
         return errors
     
-    def predict(self, sample_poses, train_poses, arm_side):
+    def predictSinglePose(self, pose, arm_side):
+        gpList, sysList = self.predict([pose], arm_side)
+        return gplist[0], sysList[0]
+
+    def predict(self, sample_poses, arm_side, train_poses=None):
         alphas = self.train_data[arm_side]['alphas']
         loghyper = self.train_data[arm_side]['loghyper']
+
+        if train_poses is None:
+            if self.training_mode == CAM_TO_FK:
+                train_poses = self.train_data[arm_side]['camera_poses']
+            elif self.training_mode == FK_TO_CAM:
+                train_poses = self.train_data[arm_side]['robot_poses']
+            else:
+                print 'Invalid training mode!'
+
         sample_state_vector = convert_poses_to_vector(sample_poses) # convert the poses to state vector for training
         train_state_vector = convert_poses_to_vector(train_poses)
         sys_correction_tf = self.train_data[arm_side]['sys_correction_tf']
@@ -397,7 +410,7 @@ class RavenErrorModel(object):
             target_ts = camera_ts
             sample_ts = robot_ts
       
-        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, train_poses, arm_side)
+        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
         
         if plot:
             # Type 1 fonts for publication
