@@ -143,6 +143,8 @@ class GripperPoseEstimator():
                     if tfx.stamp(msg.header.stamp) - self.estimatedPose[arm][0].stamp < 0.2:
                         return
                 
+                arm_msg = [msg_arm for msg_arm in msg.arms if msg_arm.name == arm][0]           
+                joints = dict((j.type,j.position) for j in arm_msg.joints)
                 fwdArmKinPose, grasp = kinematics.fwdArmKin(arm,joints,stamp=msg.header.stamp)
                 estPose = tfx.pose(fwdArmKinPose,frame='0_link',stamp = msg.header.stamp)
                 estPose.frame = '0_link' # TEMP

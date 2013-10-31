@@ -15,6 +15,10 @@ from ipdb import launch_ipdb_on_exception
 from operator import itemgetter
 import csv
 
+import tfx
+import tf
+import tf.transformations as tft
+
 N_JOINTS = 7
 NO_SUBSAMPLING = 1
 TRAINING_SUBSAMPLE = 4
@@ -67,13 +71,13 @@ class RavenErrorModel(object):
     def __init__(self, modelFile=None, testFile=None, mode=CAM_TO_FK):
         self.model_file = modelFile
         self.test_file = testFile
-        
+ 
         self.camera_to_robot_tf = {}
         self.train_data = {}
         self.test_data = {}
         self.training_mode = mode
         self.n_joints = N_JOINTS
-        
+
         try:
             if self.model_file:
                 # the training data is used to build a model
@@ -118,7 +122,7 @@ class RavenErrorModel(object):
             return None
         return clean_data
     
-    def __convertRawData(self, data, camera_to_robot_tf, subsampleRate=20):
+    def __convertRawData(self, data, camera_to_robot_tf, subsampleRate=1):
         camera_poses_train = []
         robot_poses_train = []
         camera_ts_train = []
@@ -136,30 +140,22 @@ class RavenErrorModel(object):
         ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
         data_cp = data['camera_poses']
         data_cp.sort(key=itemgetter(0))
+        prev_cam_pose = camera_to_robot_tf.dot(data_cp[0][1])
         
         # remove camera outliers, segment data into test and train
-        i=1; 
+        i=0; 
         for ts_pose in data_cp:
-            
+            i = i + 1
             ts_cam = ts_pose[0] - ts_start
             camera_pose_robot_frame = camera_to_robot_tf.dot(ts_pose[1])
             robot_pose_ind = get_robot_pose(ts_pose[0], data['robot_poses'])
             ts_robot = data['robot_poses'][robot_pose_ind][0] - ts_start
             robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
-            
-            
+
             #Camera Outliers
-            if len(low_pass_camera)>0 and nlg.norm(low_pass_camera[-1]-camera_pose_robot_frame[:3,3]) > 0.02:
+            if nlg.norm(prev_cam_pose[:3,3]-camera_pose_robot_frame[:3,3]) > 0.02:
                 continue
-
-            low_pass_camera.append(camera_pose_robot_frame[:3,3].copy())
-
-            if(len(low_pass_camera)>low_pass_strength):
-                low_pass_camera.pop(0)
- 
-
-               
-            
+                        
             #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
             # rough way to remove some camera outliers                
             
@@ -177,8 +173,8 @@ class RavenErrorModel(object):
                 robot_poses_test.append(robot_pose_robot_frame)
                 robot_joints_test = np.r_[robot_joints_test, \
                                           np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
-            i = i+1
-                         
+            prev_cam_pose = camera_pose_robot_frame
+                        
         #Assemble test data
         out_train_data = {}
         out_test_data = {}
@@ -350,9 +346,14 @@ class RavenErrorModel(object):
         return errors
     
     def predictSinglePose(self, pose, arm_side):
-        gpList, sysList = self.predict([pose], arm_side)
-        return gplist[0], sysList[0]
+        # Convert pose to numpy matrix
+        p = tft.translation_matrix([pose.position.x,pose.position.y,pose.position.z])
+        rot = tft.quaternion_matrix([pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w])
+        sample_pose = np.dot(p,rot)
 
+        gpList, sysList = self.predict([sample_pose], arm_side)
+        return tfx.pose(gpList[0], frame=pose.frame, stamp=pose.stamp), tfx.pose(sysList[0], frame=pose.frame, stamp=pose.stamp)
+    
     def predict(self, sample_poses, arm_side, train_poses=None):
         alphas = self.train_data[arm_side]['alphas']
         loghyper = self.train_data[arm_side]['loghyper']
