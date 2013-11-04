@@ -26,7 +26,7 @@ class RavenArm:
     Class for controlling the end effectors of the Raven
     """
 
-    def __init__ (self, armName, closedGraspValue=0.):
+    def __init__ (self, armName, closedGraspValue=0.,defaultPoseSpeed=.01):
         self.armName = armName
 
         if armName == raven_constants.Arm.Left:
@@ -36,7 +36,7 @@ class RavenArm:
             
         self.commandFrame = raven_constants.Frames.Link0
         
-        self.ravenController = RavenController(self.armName, closedGraspValue=closedGraspValue)
+        self.ravenController = RavenController(self.armName, closedGraspValue=closedGraspValue, defaultPoseSpeed=defaultPoseSpeed)
 
  
     #############################

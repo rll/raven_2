@@ -48,13 +48,36 @@ class Stage(object):
         return cb
 
 class RavenController():
-    def __init__(self, arm, closedGraspValue=0.):
+    def __init__(self, arm, closedGraspValue=0.,defaultPoseSpeed=.01):
         self.arm = arm
 
         self.stopRunning = threading.Event()
         self.stopRunning.set()
         # ADDED, initializes the rest
-        self.reset()
+        
+        self.stages = []
+        self.stagesQueue = mp.Queue()
+
+        # cm/sec
+        self.defaultPoseSpeed = defaultPoseSpeed
+        # rad/sec
+        #self.defaultJointSpeed = pi/30
+
+        self.defaultJointSpeed = {Constants.JOINT_TYPE_SHOULDER      : pi/16,
+                                  Constants.JOINT_TYPE_ELBOW         : pi/25,
+                                  Constants.JOINT_TYPE_INSERTION     : pi/512,
+                                  Constants.JOINT_TYPE_ROTATION      : pi/4,
+                                  Constants.JOINT_TYPE_PITCH         : pi/16,
+                                  Constants.JOINT_TYPE_GRASP_FINGER1 : pi/16,
+                                  Constants.JOINT_TYPE_GRASP_FINGER2 : pi/16}
+
+        
+        self.currentState = None
+        self.runlevel = mp.Value('d',0.0)
+        self.currentPose = None
+        self.currentGrasp = None
+        self.currentJoints = None
+        
 		
         self.queue = mp.Queue()
         self.clearStageQueue = mp.Queue()
@@ -146,36 +169,6 @@ class RavenController():
     # start, stop, and resetting of the raven arm #
     ###############################################
 
-    def reset(self):
-        """
-        Resets player, allows for reuse.
-        Never needs to be called by user, is automatically
-        called when start is called.
-        """
-        self.stages = []
-        self.stagesQueue = mp.Queue()
-
-        # cm/sec
-        self.defaultPoseSpeed = .01
-        # rad/sec
-        #self.defaultJointSpeed = pi/30
-
-        self.defaultJointSpeed = {Constants.JOINT_TYPE_SHOULDER      : pi/16,
-                                  Constants.JOINT_TYPE_ELBOW         : pi/25,
-                                  Constants.JOINT_TYPE_INSERTION     : pi/512,
-                                  Constants.JOINT_TYPE_ROTATION      : pi/4,
-                                  Constants.JOINT_TYPE_PITCH         : pi/16,
-                                  Constants.JOINT_TYPE_GRASP_FINGER1 : pi/16,
-                                  Constants.JOINT_TYPE_GRASP_FINGER2 : pi/16}
-
-		
-        self.currentState = None
-        self.runlevel = mp.Value('d',0.0)
-        self.currentPose = None
-        self.currentGrasp = None
-        self.currentJoints = None
-		
-
     def stop(self):
         """
         Sets flag to stop executing trajectory
@@ -203,8 +196,6 @@ class RavenController():
         return True
     
         if self.thread is None or not self.thread.is_alive():
-            #self.reset()
-            
             self.thread = multiprocessing.Process(target=self.run)
             self.thread.daemon = True
             self.thread.start()
