@@ -1,19 +1,25 @@
 #!/usr/bin/env python
 
+# Import required Python code.
+import rospy
+
 import numpy as np, numpy.linalg as nlg
 import scipy as scp
+
+from error_characterization import *
+
 import argparse
+import collections
+import matplotlib
 import pickle
 import pylab as pl
-import rospy
-import matplotlib
-import collections
 from transformations import euler_from_matrix, euler_matrix
-from error_characterization import *
+
+import csv
+from operator import itemgetter
+
 import IPython
 from ipdb import launch_ipdb_on_exception
-from operator import itemgetter
-import csv
 
 import tfx
 import tf
@@ -279,7 +285,7 @@ class RavenErrorModel(object):
             print
             
             # 3. calculate residual error correction function
-            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=4)    
+            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=3)    
             
             # systematic and GP corrected robot poses for training data
             gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, hyperparams[arm_side])

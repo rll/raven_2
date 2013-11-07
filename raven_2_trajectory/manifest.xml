@@ -19,6 +19,7 @@
   <depend package="raven_2_msgs"/>
   <depend package="raven_2_utils"/>
   <depend package="raven_2_control"/>
+  <depend package="raven_2_calibration"/>
 
 </package>
 

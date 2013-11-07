@@ -1,3 +1,7 @@
+# Import required Python code.
+import roslib
+roslib.load_manifest('raven_2_calibration')
+
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
 from GPR import gpr
