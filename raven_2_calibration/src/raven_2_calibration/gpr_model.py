@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
 # Import required Python code.
+import roslib
+roslib.load_manifest('raven_2_calibration')
+
 import rospy
 
 import numpy as np, numpy.linalg as nlg

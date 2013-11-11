@@ -1,0 +1,18 @@
+<package>
+  <description brief="raven_2_calibration">
+
+     raven_2_calibration
+
+  </description>
+  <author>Jeff Mahler</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/raven_2_calibration</url>
+  <depend package="roscpp"/>
+  <depend package="rospy"/>
+  <depend package="tf"/>
+  <depend package="tfx"/> <!-- https://bitbucket.org/benkehoe/tfx -->
+
+</package>
+
+
