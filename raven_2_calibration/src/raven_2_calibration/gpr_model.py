@@ -30,7 +30,8 @@ import tf.transformations as tft
 
 N_JOINTS = 7
 NO_SUBSAMPLING = 1
-TRAINING_SUBSAMPLE = 4
+TRAINING_SUBSAMPLE = 5
+TRAINING_RATIO = 0.75
 LEFT = 'L'
 RIGHT = 'R'
 ARMS = [LEFT, RIGHT]
@@ -50,10 +51,18 @@ def get_robot_pose_ind(ts, robot_ts):
 
 # returns numpy vector for the pose
 def pose_to_vector(pose):
-    eul = list(euler_from_matrix(pose[:3,:3]))
     t = pose[:3,3]
-    eul.extend(t)
-    vec = np.array(eul)
+    eul = euler_from_matrix(pose[:3,:3])
+    
+    # correct euler angles to face the camera
+    eul = list(eul)
+    for i in range(3):
+        if eul[i] > np.pi / 2.0:
+            eul[i] = eul[i] - np.pi
+        elif eul[i] < np.pi / 2.0:
+            eul[i] = eul[i] + np.pi
+    
+    vec = np.r_[t, eul]
     return vec
 
 # return numpy matrix for the pose vector
@@ -131,7 +140,7 @@ class RavenErrorModel(object):
             return None
         return clean_data
     
-    def __convertRawData(self, data, camera_to_robot_tf, subsampleRate=1):
+    def __convertRawData(self, data, camera_to_robot_tf, trainingRatio=TRAINING_RATIO, subsampleRate=1):
         camera_poses_train = []
         robot_poses_train = []
         camera_ts_train = []
@@ -152,7 +161,11 @@ class RavenErrorModel(object):
         prev_cam_pose = camera_to_robot_tf.dot(data_cp[0][1])
         
         # remove camera outliers, segment data into test and train
-        i=0; 
+        
+        i=0;
+        n_datapoints = len(data_cp)
+        n_training = trainingRatio * n_datapoints
+        
         for ts_pose in data_cp:
             i = i + 1
             ts_cam = ts_pose[0] - ts_start
@@ -162,28 +175,29 @@ class RavenErrorModel(object):
             robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
 
             #Camera Outliers
-            if nlg.norm(prev_cam_pose[:3,3]-camera_pose_robot_frame[:3,3]) > 0.02:
+            if nlg.norm(prev_cam_pose[:3,3]-camera_pose_robot_frame[:3,3]) > 0.03:
                 continue
                         
             #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
             # rough way to remove some camera outliers                
             
-            if i % subsampleRate != 0:
-                camera_ts_train.append(ts_cam)
-                camera_poses_train.append(camera_pose_robot_frame)
-                robot_ts_train.append(ts_robot)
-                robot_poses_train.append(robot_pose_robot_frame)
-                robot_joints_train = np.r_[robot_joints_train, \
-                                           np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
-            else:
-                camera_ts_test.append(ts_cam)
-                camera_poses_test.append(camera_pose_robot_frame)
-                robot_ts_test.append(ts_robot)
-                robot_poses_test.append(robot_pose_robot_frame)
-                robot_joints_test = np.r_[robot_joints_test, \
-                                          np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
-            prev_cam_pose = camera_pose_robot_frame
-                        
+            if i % subsampleRate == 0:
+                if i < n_training:
+                    camera_ts_train.append(ts_cam)
+                    camera_poses_train.append(camera_pose_robot_frame)
+                    robot_ts_train.append(ts_robot)
+                    robot_poses_train.append(robot_pose_robot_frame)
+                    robot_joints_train = np.r_[robot_joints_train, \
+                                               np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
+                else:
+                    camera_ts_test.append(ts_cam)
+                    camera_poses_test.append(camera_pose_robot_frame)
+                    robot_ts_test.append(ts_robot)
+                    robot_poses_test.append(robot_pose_robot_frame)
+                    robot_joints_test = np.r_[robot_joints_test, \
+                                              np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
+                prev_cam_pose = camera_pose_robot_frame
+  
         #Assemble test data
         out_train_data = {}
         out_test_data = {}
@@ -206,6 +220,28 @@ class RavenErrorModel(object):
         out_test_data['robot_joints'] = robot_joints_test
         out_test_data['camera_ts'] = camera_ts_test
         out_test_data['robot_ts'] = robot_ts_test
+        
+        f, axarr = pl.subplots(3, sharex=True)
+        f.set_size_inches(10, 8, forward=True)
+        
+        camera_poses = convert_poses_to_vector(camera_poses_test)
+        robot_poses = convert_poses_to_vector(robot_poses_test)
+        camera_rot = camera_poses[:,3:6]
+        robot_rot = robot_poses[:,3:6]
+        
+ #       camera_rot[camera_rot[:,0] > np.pi/2, 0] = np.pi camera_rot[:,0] 
+        
+        axarr[0].set_title('Errors in the end effector translation estimate for arm', size='large')
+        for i in range(3):
+            axarr[i].plot(camera_ts_test, camera_rot[:,i], 'b', label='ground truth')
+            axarr[i].plot(robot_ts_test, robot_rot[:,i], 'g', label='raw data')
+            i2coord = {0:'x', 1:'y', 2:'z'}
+            axarr[i].set_ylabel(i2coord[i], fontsize=12)
+        #pl.xlim(10, 160)
+        pl.xlabel('time (s)', fontsize=12)
+        axarr[2].legend(prop={'size':12}, loc='lower left', bbox_to_anchor=(0.75, 0.8)).draggable()
+        pl.show()
+        
         return out_test_data, out_train_data
     
     def loadTrainingData(self, filename, arm_side, subsampleRate=None):
@@ -231,7 +267,7 @@ class RavenErrorModel(object):
             if subsampleRate == None:
                 subsampleRate = TRAINING_SUBSAMPLE
             self.test_data[arm_side], self.train_data[arm_side] = \
-                self.__convertRawData(self.raw_data[arm_side], self.camera_to_robot_tf[arm_side], subsampleRate)
+                self.__convertRawData(self.raw_data[arm_side], self.camera_to_robot_tf[arm_side], subsampleRate=subsampleRate)
         except IOError as e:
             print "ERROR:", e
             print "Failed to load raw data file " + filename
@@ -288,7 +324,7 @@ class RavenErrorModel(object):
             print
             
             # 3. calculate residual error correction function
-            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=3)    
+            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, loghyper, subsample=2)    
             
             # systematic and GP corrected robot poses for training data
             gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, hyperparams[arm_side])
@@ -315,7 +351,7 @@ class RavenErrorModel(object):
             
         return errors
     
-    def test(self, plot=True):
+    def test(self, plot=True, outfilename=None):
         errors = {}
         for arm_side in self.train_data.keys():
             camera_ts = self.test_data[arm_side]['camera_ts']
@@ -352,6 +388,8 @@ class RavenErrorModel(object):
                 plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
 
             errors[arm_side] = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+            if outfilename is not None:
+                self.saveErrors(errors[arm_side], outfilename, arm_side) 
         return errors
     
     def predictSinglePose(self, pose, arm_side):
@@ -397,7 +435,7 @@ class RavenErrorModel(object):
         camera_to_robot_tf = raw_data['camera_to_robot_tf']
             
         test_data, train_data = \
-            self.__convertRawData(raw_data,camera_to_robot_tf)
+            self.__convertRawData(raw_data,camera_to_robot_tf, trainingRatio=0)
 
         camera_ts = test_data['camera_ts']
         camera_poses = test_data['camera_poses']
@@ -436,6 +474,54 @@ class RavenErrorModel(object):
             self.saveErrors(errors, outfilename, arm_side)
         return gp_predicted_poses, sys_predicted_poses
 
+    def buildMixtureModel(self, filename, arm_side='L', min_c=2, max_c=10):
+        raw_data = pickle.load(open(filename))
+        cleaned_data = self.__cleanOldData(raw_data, arm_side)
+        if cleaned_data:
+            raw_data = cleaned_data[arm_side]
+            
+        camera_to_robot_tf = raw_data['camera_to_robot_tf']
+                
+        test_data, train_data = \
+            self.__convertRawData(raw_data,camera_to_robot_tf, trainingRatio=0)
+            
+        camera_poses_test = test_data['camera_poses']
+        robot_poses_test = test_data['robot_poses']
+        camera_ts_test = test_data['camera_ts']
+        robot_ts_test = test_data['robot_ts']
+        camera_poses_train = self.train_data[arm_side]['camera_poses']
+        robot_poses_train = self.train_data[arm_side]['robot_poses']
+            
+        # set the target and samples based on the training mode
+        if self.training_mode == CAM_TO_FK:
+            train_poses = camera_poses_train
+            target_poses = robot_poses_test
+            target_ts = robot_ts_test
+            sample_poses = camera_poses_test
+            sample_ts = camera_ts_test
+        else:
+            train_poses = robot_poses_train
+            target_poses = camera_poses_test
+            target_ts = camera_ts_test
+            sample_poses = robot_poses_test
+            sample_ts = robot_ts_test
+            
+        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
+            
+        # get corresponding robot indices
+        robot_inds = []
+        for ts in target_ts:
+            robot_inds.append(get_robot_pose_ind(ts, sample_ts))
+                
+        sys_residuals = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
+        target_pose_vectors = convert_poses_to_vector(target_poses)
+        
+        plot_componentwise_residuals(sys_residuals, target_pose_vectors)
+        
+        gmm = build_mixture_model(sys_residuals, target_pose_vectors, min_components = min_c, max_components = max_c, plot=True)
+            
+        return gmm
+      
     def calcErrors(self, target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, target_ts, sample_ts):
         robot_inds = []
         for ts in target_ts:
@@ -528,6 +614,7 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--left-arm-data',nargs='?',default=None)
     parser.add_argument('-r', '--right-arm-data',nargs='?',default=None)
     parser.add_argument('-d', '--model-data',nargs='?',default=None)
+    parser.add_argument('-t', '--test-data',nargs='?',default=None)   # original test data used to build the model, used for the mixture models
     parser.add_argument('-s', '--spreadsheet',nargs='?',default=None)
     
     args = parser.parse_args(rospy.myargv()[1:])
@@ -539,19 +626,20 @@ if __name__ == '__main__':
     del args.right_arm_data
     model_data = args.model_data
     del args.model_data
+    test_data = args.test_data
+    del args.test_data
     spreadsheet = args.spreadsheet
     del args.spreadsheet
     
-#    with launch_ipdb_on_exception():
-    if True:
+    with launch_ipdb_on_exception():
         if mode == 'train':
             r = RavenErrorModel()
             if left_arm_data:
                 r.loadTrainingData(left_arm_data, LEFT, TRAINING_SUBSAMPLE)
             if right_arm_data:
                 r.loadTrainingData(right_arm_data, RIGHT, TRAINING_SUBSAMPLE)
-            r.train()#loghyper = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))]))
-            r.test()
+            r.train()
+            r.test(outfilename=spreadsheet)
             r.save()
         elif mode == 'test':
             r = RavenErrorModel(model_data)
@@ -561,6 +649,14 @@ if __name__ == '__main__':
             if right_arm_data:
                 print "Testing arm ", RIGHT
                 r.predictFromFile(right_arm_data, RIGHT, outfilename=spreadsheet)
+        elif mode == 'mixture':
+            r = RavenErrorModel(model_data, test_data)
+            if left_arm_data:
+                print "Building mixture for arm ", LEFT
+                r.buildMixtureModel(left_arm_data, arm_side=LEFT, min_c=1, max_c = 20)
+            if right_arm_data:
+                print "Building mixture for arm ", RIGHT
+                r.buildMixtureModel(right_arm_data, arm_side=RIGHT, min_c=1, max_c = 20)
         else:
             print "Please specify a valid mode: train or test"
     

@@ -4,11 +4,20 @@ roslib.load_manifest('raven_2_calibration')
 
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
+from sklearn import mixture
+
 from GPR import gpr
 from Tools.general import feval
 import openravepy as rave
 from transformations import euler_from_matrix, euler_matrix
+
+import matplotlib as mpl
+from mpl_toolkits.mplot3d import Axes3D
+from scipy import linalg
 import pylab as pl
+import itertools
+
+import IPython
 
 def tf_to_vec(tf):
     return tf[:3,:].reshape(-1,1)
@@ -353,6 +362,168 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
 
     est_gt_poses_test = apply_pose_error(poses_test, MU)
     return est_gt_poses_test
+
+def plot_componentwise_residuals(residuals, poses, state_space_grid=2):
+
+    # for now, plot along x,y plane    
+    n_dim = residuals.shape[1]
+    n_bins = state_space_grid**3
+    xy_poses = poses[:,0:2]
+    
+    x_min = np.min(poses[:,0])
+    x_max = np.max(poses[:,0])
+    y_min = np.min(poses[:,1])
+    y_max = np.max(poses[:,1])
+    z_min = np.min(poses[:,2])
+    z_max = np.max(poses[:,2])
+    
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    z_range = z_max - z_min
+    
+    x_bounds = [x_min]
+    y_bounds = [y_min]
+    z_bounds = [z_min]
+    
+    for i in xrange(state_space_grid):
+        x_bounds.append(x_min + (((i+1)*x_range) / state_space_grid))
+        y_bounds.append(y_min + (((i+1)*y_range) / state_space_grid))
+        z_bounds.append(z_min + (((i+1)*z_range) / state_space_grid))
+    
+    residual_min = np.min(residuals,0)
+    residual_max = np.max(residuals,0)
+    
+    for j in xrange(n_dim):     
+        fig = pl.figure(j)
+        i = 0
+        #IPython.embed()
+        for x in xrange(state_space_grid):
+            for y in xrange(state_space_grid):
+                for z in xrange(state_space_grid):
+                    pl.subplot(4, n_bins/4, i+1)
+                    x_indices = (poses[:,0] >= x_bounds[x]) & (poses[:,0] <= x_bounds[x+1])
+                    y_indices = (poses[:,1] >= y_bounds[y]) & (poses[:,1] <= y_bounds[y+1])
+                    z_indices = (poses[:,2] >= z_bounds[z]) & (poses[:,2] <= z_bounds[z+1])
+                    #IPython.embed()
+                    
+                    bin_residuals = residuals[x_indices & y_indices & z_indices,:]
+                    pl.hist(bin_residuals[:,j], bins = 1000, range = (residual_min[j], residual_max[j]) )
+                    title = 'Histogram of residual error for dimension %d in bin %d' %(j, i)
+                    pl.title(title)
+                    i = i+1
+        """
+        for i in xrange(n_dim):
+            ax = fig.add_subplot(np.floor(np.sqrt(n_dim)), np.ceil(np.sqrt(n_dim)), i)
+            residual_components = residuals[:,i]
+            ax.hist()
+            ax.set_title('Error Components for dimension %d' %i)
+            ax.set_xlabel('Dimension')
+            ax.set_ylabel('Residual')
+        """
+            
+    pl.show()
+        
+
+def build_mixture_model(residuals, poses, min_components=2, max_components=10, plot=False, plot_ellipses=False):
+    if min_components > max_components:
+        raise Exception('Illegal range for number of mixture components')
+    
+    # create data matrix
+    r_shape = residuals.shape
+    p_shape = poses.shape
+    X = residuals
+    #X = np.append(X, poses, 1)
+    
+    n_components_range = range(min_components, max_components)
+    lowest_bic = np.infty
+    bic = []
+    cv_types = ['spherical', 'tied', 'diag', 'full']
+    for cv_type in cv_types:
+        for n_components in n_components_range:
+            gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+            gmm.fit(X)
+            bic.append(gmm.bic(X))
+            if bic[-1] < lowest_bic:
+                lowest_bic = bic[-1]
+                best_gmm = gmm
+            
+#    IPython.embed()
+    fig = pl.figure()
+    if plot:
+        
+        # Plot the BIC scores
+        bic = np.array(bic)
+        color_iter = itertools.cycle(['k', 'r', 'g', 'b', 'c', 'm', 'y'])
+        clf = best_gmm
+        bars = []
+        
+        spl = fig.add_subplot(2,1,1)
+        for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
+            xpos = np.array(n_components_range) + 0.2*(i - 2)
+            bars.append(pl.bar(xpos, bic[i * len(n_components_range):
+                                 (i + 1) * len(n_components_range)],
+                       width=.2, color=color))
+        pl.xticks(n_components_range)
+        pl.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
+        pl.title('BIC score per model')
+        xpos = np.mod(bic.argmin(), len(n_components_range)) + .65 +\
+            .2 * np.floor(bic.argmin() / len(n_components_range))
+        pl.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
+        spl.set_xlabel('Number of components')
+        spl.legend([b[0] for b in bars], cv_types)
+        IPython.embed()
+        # Plot the points in 3D space with ellipsoids
+        splot = fig.add_subplot(2, 1, 2, projection='3d')
+        Y_ = clf.predict(X)
+  
+        clist = []
+        mlist = []
+        for (i, color) in zip(xrange(clf.n_components), color_iter):
+            clist.append(color)
+            mlist.append(i)
+            print "Color ", i, color
+            print "Mean ", i, clf.means_[i]
+            print "Cov ", i, clf.covars_[i]
+            
+            if not np.any(Y_ == i):
+                continue
+            X_3d_loc = poses[Y_ == i, :3]
+            mean = np.mean(X_3d_loc, 0)
+            covar = np.cov(np.transpose(X_3d_loc))
+            
+            l = "mixture%d" %(i)
+            splot.scatter(X_3d_loc[:,0], X_3d_loc[:,1], X_3d_loc[:,2], s=1.5, color=color, label=l)
+            if plot_ellipses:
+                plot_ellipsoid(splot, mean, covar, color)
+        
+        handles, labels = splot.get_legend_handles_labels()
+        splot.legend(handles, labels)
+        
+        splot.set_xlabel('X (m)')
+        splot.set_ylabel('Y (m)')
+        splot.set_zlabel('Z (m)')
+        splot.set_xlim(np.min(poses[:,0]), np.max(poses[:,0]))
+        splot.set_ylim(np.min(poses[:,1]), np.max(poses[:,1]))
+        splot.set_zlim(np.min(poses[:,2]), np.max(poses[:,2]))
+        pl.title('Selected GMM: full model')
+        # pl.subplots_adjust(hspace=.35, bottom=.02)
+        pl.show()
+    return gmm
+
+def plot_ellipsoid(ax, mean, covar, color):
+    U, s, rotation = linalg.svd(covar)
+    radii = np.sqrt(s)
+    # now carry on with EOL's answer
+    u = np.linspace(0.0, 2.0 * np.pi, 100)
+    v = np.linspace(0.0, np.pi, 100)
+    x = radii[0] * np.outer(np.cos(u), np.sin(v))
+    y = radii[1] * np.outer(np.sin(u), np.sin(v))
+    z = radii[2] * np.outer(np.ones_like(u), np.cos(v))
+    for i in range(len(x)):
+        for j in range(len(x)):
+            [x[i,j],y[i,j],z[i,j]] = np.dot([x[i,j],y[i,j],z[i,j]], rotation) + mean
+            
+    ax.plot_surface(x, y, z,  rstride=4, cstride=4, color=color, alpha=0.2)
 
 def print_formatted_error_stat(error):
 	error_stat = ""
