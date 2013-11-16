@@ -68,8 +68,8 @@ def pose_to_vector(pose):
 # return numpy matrix for the pose vector
 def vector_to_pose(vector):
     tf = np.eye(4)
-    tf[:3,3] = tf[:3,3] + vector[3:]
-    tf[:3,:3] = euler_matrix(*vector[:3])[:3,:3].dot(tf[:3,:3])
+    tf[:3,3] = tf[:3,3] + vector[:3]
+    tf[:3,:3] = euler_matrix(*vector[3:])[:3,:3].dot(tf[:3,:3])
     return tf
 
 def convert_poses_to_vector(poses):
