@@ -32,6 +32,10 @@ target_link_libraries(${PROJECT_NAME} boost_program_options)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 
+rosbuild_find_ros_package(dynamic_reconfigure)
+include(${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)
+gencfg()
+
 rosbuild_add_executable(test_capture src/test_capture.cpp)
 target_link_libraries(test_capture ${PROJECT_NAME})
 
@@ -46,3 +50,7 @@ target_link_libraries(chessboard_tracker ${PROJECT_NAME})
 rosbuild_add_executable(stereo_error_characterizer src/stereo_error_characterizer_node.cpp)
 rosbuild_link_boost(stereo_error_characterizer thread system signals)
 target_link_libraries(stereo_error_characterizer ${PROJECT_NAME})
+
+rosbuild_add_executable(stereo_postprocessing src/stereo_postprocessing_node.cpp)
+rosbuild_link_boost(stereo_postprocessing thread system signals)
+target_link_libraries(stereo_postprocessing ${PROJECT_NAME})
