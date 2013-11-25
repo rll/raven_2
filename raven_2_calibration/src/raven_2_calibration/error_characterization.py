@@ -17,6 +17,8 @@ from scipy import linalg
 import pylab as pl
 import itertools
 
+import csv
+
 import IPython
 
 def tf_to_vec(tf):
@@ -213,13 +215,16 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # gt_poses_train (list of n_data homogeneous TF matrices)
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
-def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, loghyper=None, subsample=1):
+def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_hyper=True, hyper_seed=None, subsample=1):
     pose_error = calc_pose_error(gt_poses_train, poses_train)
     n_task_vars = pose_error.shape[1]
     alphas = []
-    train_hyper = (loghyper == None)
+    loghyper = hyper_seed
     if train_hyper:
         loghyper = []
+        
+    if hyper_seed == None:
+        hyper_seed = [-1] * n_task_vars
     
     # sample X for hyperparam training
     n = state_train.shape[0]
@@ -238,7 +243,6 @@ def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, loghyp
     covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
             
     # sample y for y training
-    
     for i_task_var in range(n_task_vars):
         ### sample observations from the GP
         y_task_var = y_subsample[:,i_task_var]
@@ -251,8 +255,9 @@ def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, loghyp
             ### INITIALIZE (hyper)parameters by -1
             d = X.shape[1]
                 
-            init = -1*np.ones((d,1))
-            loghyper_var_i = np.array([[-1], [-1]])
+            h = hyper_seed[i_task_var]
+            init = h*np.ones((d,1))
+            loghyper_var_i = np.array([[h], [h]])
             loghyper_var_i = np.vstack((init, loghyper_var_i))[:,0]
             print 'initial hyperparameters: ', np.exp(loghyper_var_i)
             ### TRAINING of (hyper)parameters
@@ -363,7 +368,7 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
     est_gt_poses_test = apply_pose_error(poses_test, MU)
     return est_gt_poses_test
 
-def plot_componentwise_residuals(residuals, poses, state_space_grid=2):
+def plot_componentwise_residuals(residuals, poses, state_space_grid=3, n_components=1, cv_type='diag'):
 
     # for now, plot along x,y plane    
     n_dim = residuals.shape[1]
@@ -393,34 +398,67 @@ def plot_componentwise_residuals(residuals, poses, state_space_grid=2):
     residual_min = np.min(residuals,0)
     residual_max = np.max(residuals,0)
     
+    hist_data = {}
+    means = []
+    covs = []
+    hist_n_bins = 100
+    
     for j in xrange(n_dim):     
-        fig = pl.figure(j)
+        #IPython.embed()
         i = 0
+        pl.figure(j)
+        means.append([])
+        covs.append([])
         #IPython.embed()
         for x in xrange(state_space_grid):
             for y in xrange(state_space_grid):
                 for z in xrange(state_space_grid):
-                    pl.subplot(4, n_bins/4, i+1)
+                    pl.subplot(state_space_grid, n_bins/state_space_grid, i+1)
                     x_indices = (poses[:,0] >= x_bounds[x]) & (poses[:,0] <= x_bounds[x+1])
                     y_indices = (poses[:,1] >= y_bounds[y]) & (poses[:,1] <= y_bounds[y+1])
                     z_indices = (poses[:,2] >= z_bounds[z]) & (poses[:,2] <= z_bounds[z+1])
                     #IPython.embed()
+                    means[j].append([])
+                    covs[j].append([])
+        
+                    bin_residuals = residuals[x_indices & y_indices & z_indices, j]
+                    n, b, p = mpl.pyplot.hist(bin_residuals, bins=hist_n_bins, range=(residual_min[j], residual_max[j]), normed=True)
                     
-                    bin_residuals = residuals[x_indices & y_indices & z_indices,:]
-                    pl.hist(bin_residuals[:,j], bins = 1000, range = (residual_min[j], residual_max[j]) )
+                    if bin_residuals.shape[0] > 0:
+                        gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type, min_covar = 1e-7)
+                        gmm.fit(bin_residuals)
+                        
+                        #print 'Dimension %d, bin %d' %(j, i)
+                        vals = np.linspace(residual_min[j], residual_max[j], hist_n_bins)
+                        
+                        for a in xrange(n_components):
+                            mean = gmm.means_[a]
+                            sigma = np.sqrt(gmm.covars_[a])
+                            means[j][i].append(mean[0])
+                            covs[j][i].append(sigma[0])
+                            
+                            #print 'mean %f \t covariance %f' %(mean, sigma)
+                            pl.plot(vals, mpl.mlab.normpdf(vals, mean, sigma))
+                    
                     title = 'Histogram of residual error for dimension %d in bin %d' %(j, i)
                     pl.title(title)
                     i = i+1
-        """
-        for i in xrange(n_dim):
-            ax = fig.add_subplot(np.floor(np.sqrt(n_dim)), np.ceil(np.sqrt(n_dim)), i)
-            residual_components = residuals[:,i]
-            ax.hist()
-            ax.set_title('Error Components for dimension %d' %i)
-            ax.set_xlabel('Dimension')
-            ax.set_ylabel('Residual')
-        """
+    hist_data['means'] = means
+    hist_data['covs'] = covs
+    
+    import pickle
+    pickle.dump(hist_data, open('hist_data.pkl', "wb"))
+    
+    # save in a nice lil csv file
+    for j in xrange(n_components):
+        with open('hist_data_comp%d.csv' %(j), 'w') as csvfile:
+            data_writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            data_writer.writerow(['Bin', 'X Mean Error (m)', 'X Std Error (m)', 'Y Mean Error (m)', 'Y Std Error (m)', 'Z Mean Error (m)', 'Z Std Error (m)', \
+                                  'Yaw Mean Error (rad)', 'Yaw Std Error (rad)', 'Pitch Mean Error (rad)', 'Pitch Std Error (rad)', 'Roll Mean Error (rad)', 'Roll Std Error (rad)',])
             
+            for i in xrange(n_bins):
+                data_writer.writerow([i, means[0][i][j], covs[0][i][j], means[1][i][j], covs[1][i][j], means[2][i][j], covs[2][i][j], means[3][i][j], covs[3][i][j], means[4][i][j], covs[4][i][j], means[5][i][j], covs[5][i][j]])
+    print 'Saved CSV!'
     pl.show()
         
 
@@ -447,10 +485,9 @@ def build_mixture_model(residuals, poses, min_components=2, max_components=10, p
                 lowest_bic = bic[-1]
                 best_gmm = gmm
             
-#    IPython.embed()
+
     fig = pl.figure()
     if plot:
-        
         # Plot the BIC scores
         bic = np.array(bic)
         color_iter = itertools.cycle(['k', 'r', 'g', 'b', 'c', 'm', 'y'])
