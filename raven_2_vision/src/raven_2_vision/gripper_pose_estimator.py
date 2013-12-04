@@ -19,6 +19,7 @@ from raven_2_control import kinematics
 import IPython
 
 from collections import defaultdict
+from collections import deque
 from functools import partial
 
 ERROR_CORRECTION_MODES = ['NONE', 'PRE_POST', 'SYS', 'GPR']
