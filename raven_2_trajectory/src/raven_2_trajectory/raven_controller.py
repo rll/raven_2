@@ -14,7 +14,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import *
 
 import numpy as np
-
+import IPython
 
 import tfx
 
@@ -37,7 +37,9 @@ class Stage(object):
     @staticmethod
     def stageBreaks(stages):
         stageBreaks = [rospy.Duration(0)]
-        for stage in stages:
+        if len(stages) > 0:
+            stage = stages[0]
+        #for stage in stages:
             stageBreaks.append(stage.duration + stageBreaks[-1])
         return stageBreaks
 
@@ -154,6 +156,9 @@ class RavenController():
                 if val.has_key('clearStages'):
                     if val['clearStages']:
                         self.clearStages()
+                if val.has_key('popStage'):
+                    if val['popStage']:
+                        self.popStage()
 
     def getCurrentJoints(self):
         """
@@ -185,6 +190,13 @@ class RavenController():
         """
         self.stages = []
         self.queue.put({'stages':self.stages})
+        
+    def popStage(self):
+        """
+        Remove the first stage
+        """
+        self.stages.pop(0)
+        self.queue.put({'updatedStages':self.stages})
 
     def start(self):
         """
@@ -207,16 +219,14 @@ class RavenController():
         rate = rospy.Rate(50)
         
         cmd = None
-		
-	
         header = Header()
         header.frame_id = raven_constants.Frames.Link0
 
 
         startTime = rospy.Time.now()
         numStages = 0
-		
         success = None
+        stageIndex = -1
 
         cmd = self.ravenPauseCmd
 
@@ -225,7 +235,7 @@ class RavenController():
         stopRunning = False
         stages = list()
         runlevel = 0
-		
+        
         lastStageIndex = -1
         while True:
             rate.sleep()
@@ -237,65 +247,96 @@ class RavenController():
                         stopRunning = val['stopRunning']
                     if val.has_key('stages'):
                         stages = val['stages']
+                        print "NEW STAGES", self.arm
+                        if stageIndex == -1 and len(stages) > 0:
+                            print "FRESH", self.arm
+                            startTime = rospy.Time.now()
+                            stageIndex = 0
+                    if val.has_key('updatedStages'):
+                        stages = val['updatedStages']
                     if val.has_key('runlevel'):
                         runlevel = val['runlevel']
-			
+            
             if runlevel == 0:
                 #rospy.loginfo('Raven in E-STOP')
                 success = False
                 continue
 
+
+            print "STAGES", stages, self.arm
             if stopRunning or rospy.is_shutdown():
                 success = True
                 break
-
-            #stages = self.stages
-
+            if stageIndex > -1 and len(stages) > 0:
+                # print stageIndex
+                stage = stages[stageIndex]
+                now = rospy.Time.now()
+                durFromStart = now - startTime
+                
+                header.stamp = now
+                cmd.header = header
+                
+                if durFromStart > stage.duration:
+                    print "INCREMENTING STAGE", self.arm
+                    stageIndex = stageIndex + 1
+                    startTime = rospy.Time.now()
+                    if stageIndex >= len(stages):
+                        print "CLEARING STAGES", self.arm
+                        clearStageQueue.put({'clearStages' : True})
+                        stageIndex = -1
+                    continue
+               
+                if stage.duration.is_zero():
+                    t = 1
+                else:
+                    t = min((durFromStart).to_sec() / stage.duration.to_sec(), 1)
+                print "Sending command", self.arm, t, stage.name, stage.duration, stageIndex
+                cmd = RavenCommand()
+                cmd.pedal_down = True
+            
+                stage.cb(cmd,t)
+                """
+            now = rospy.Time.now()
+            durFromStart = now - startTime
+               
             # when a stage appears, set startTime
             if numStages == 0 and len(stages) > 0:
                 startTime = rospy.Time.now()
-
+    
             numStages = len(stages)
             stageBreaks = Stage.stageBreaks(stages)
-            
             now = rospy.Time.now()
-            
+                
             header.stamp = now
             cmd.header = header
-
+    
             if numStages > 0:
                 durFromStart = now - startTime
                 stageIndex = 0
+                    
+                # find new stage
                 for idx,stageBreak in enumerate(stageBreaks):
                     if stageBreak > durFromStart:
                         stageIndex = idx-1
                         break
                 else:
-                    #stages = []
                     clearStageQueue.put({'clearStages' : True})
                     continue
+                # get the index of the stage to execute
                 stageIndex = min(stageIndex,lastStageIndex + 1)
-            
                 lastStageIndex = stageIndex
-            
                 stage = stages[stageIndex]
-                
-                """
-                print
-                print 'STAGE!!!!!!!!!!!!!!!    ', self.arm, stage.name
-                print
-                """
+                    
                 if stage.duration.is_zero():
                     t = 1
                 else:
                     t = (durFromStart - stageBreaks[stageIndex]).to_sec() / stage.duration.to_sec()
-            
-            
+                print "Sending command", t
                 cmd = RavenCommand()
                 cmd.pedal_down = True
-            
+                
                 stage.cb(cmd,t)
-            
+                   """
             else:
                 # no stages
                 #cmd = self.ravenPauseCmd
@@ -306,16 +347,15 @@ class RavenController():
 			
             pubQueue.put(cmd)
             #self.pubCmd.publish(cmd)
-			
+        print 'Raven Controller Thread Exited...'
         return success
-
+    
 
     ############################
     # Commanding the raven arm #
     ############################
 
     def addStage(self, name, duration, cb):
-        print 'Adding stage ', name
         self.stages.append(Stage(name,duration,cb))
         self.queue.put({'stages':self.stages})
 
@@ -333,9 +373,7 @@ class RavenController():
             if speed is None:
                 speed = self.defaultPoseSpeed
             duration = end.position.distance(start.position) / speed
-            
-            print 'Duration!!!!!!!!      ',duration
-            
+        
         def fn(cmd, t, start=start, end=end, arm=self.arm):
             pose = start.interpolate(end, t)
             
@@ -495,9 +533,6 @@ class RavenController():
         
 
         
-
-
-
 def test_gripperMove():
     rospy.init_node('raven_controller',anonymous=True)
     leftArm = RavenController(raven_constants.Arm.Left)
