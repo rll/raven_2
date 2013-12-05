@@ -59,10 +59,6 @@ ARM = "ONE_ARM" # or "TWO_ARM"
 MODEL_NAME = "ravenII_2arm_simulator.xml" 
 DEBUG = True
 
-CAM_FOCAL = 417.
-CAM_CENTER_X = 166.8675
-CAM_CENTER_Y= 123.7225
-
 # wtf is this
 X_SCALE=0.0003
 Y_SCALE=0.0003
@@ -148,14 +144,14 @@ IM_H = IM_H / DOWNSAMPLE
 
 #========================= RAVEN CONTROLLER CLASS ==========================================================#
 class RavenSimulator:
-    def __init__(self, arm_mode=ARM, x_scale=X_SCALE, y_scale=Y_SCALE, z_scale=Z_SCALE, frame=None, relative_orientation=False, camera_frame=False):
+    def __init__(self, arm_mode=ARM, x_scale=X_SCALE, y_scale=Y_SCALE, z_scale=Z_SCALE, initPose=None, initGrasp=0, frame=None, relative_orientation=False, camera_frame=False):
         self.raven_pub = rospy.Publisher('raven_command', RavenCommand)
         self.arm_mode = arm_mode
         self.x_scale = x_scale
         self.y_scale = y_scale
         self.z_scale = z_scale 
         self.active = False
-        self.configureOREnv()  
+        self.configureOREnv(initPose, initGrasp)  
 
     def updateActive(self, a):
         if self.active != a:
@@ -167,7 +163,7 @@ class RavenSimulator:
 
     #========================== OPEN RAVE COMMANDS ================================#
 
-    def configureOREnv(self):
+    def configureOREnv(self, initPose=None, initGrasp=0):
         """ This function is called once at the begin to set up the openrave environment with the robot """
         self.env = rave.Environment()
         
@@ -182,18 +178,23 @@ class RavenSimulator:
         JointValues = [joint.GetValues()[0] for joint in allJoints]
 
         #These are the starting joints for the left arm; they are halfway between each limit
-        leftJoints = [  (SHOULDER_MAX_LIMIT+SHOULDER_MIN_LIMIT)/2.0,
-                        (ELBOW_MAX_LIMIT+ELBOW_MIN_LIMIT)/2.0,    
-                        #(Z_INS_MAX_LIMIT+Z_INS_MIN_LIMIT)/2.0,
-                        -0.1,
-                        0,
-                        (TOOL_ROLL_MAX_LIMIT+TOOL_ROLL_MIN_LIMIT)/2.0,
-                        (TOOL_WRIST_MAX_LIMIT+TOOL_WRIST_MIN_LIMIT)/2.0,
-                        (TOOL_GRASP1_MAX_LIMIT+TOOL_GRASP1_MIN_LIMIT)/2.0,
-                        (TOOL_GRASP2_MAX_LIMIT+TOOL_GRASP2_MIN_LIMIT)/2.0,
-                        0,
-                        0
-                        ]
+        leftJoints = []
+        if initPose is None:
+            leftJoints = [  (SHOULDER_MAX_LIMIT+SHOULDER_MIN_LIMIT)/2.0,
+                            (ELBOW_MAX_LIMIT+ELBOW_MIN_LIMIT)/2.0,    
+                            #(Z_INS_MAX_LIMIT+Z_INS_MIN_LIMIT)/2.0,
+                            -0.1,
+                            0,
+                            (TOOL_ROLL_MAX_LIMIT+TOOL_ROLL_MIN_LIMIT)/2.0,
+                            (TOOL_WRIST_MAX_LIMIT+TOOL_WRIST_MIN_LIMIT)/2.0,
+                            (TOOL_GRASP1_MAX_LIMIT+TOOL_GRASP1_MIN_LIMIT)/2.0,
+                            (TOOL_GRASP2_MAX_LIMIT+TOOL_GRASP2_MIN_LIMIT)/2.0,
+                            0,
+                            initGrasp
+                            ]
+        else:
+            leftJoints = invArmKin(raven_constants.Arm.Left, initPose, initGrasp, True)
+        
         self.prevLeftJoints = leftJoints
         self.prevRightJoints = None 
         self.prevPose = fwdArmKin(raven_constants.Arm.Left, leftJoints)[0] #FIXME: look at this
@@ -207,40 +208,6 @@ class RavenSimulator:
         self.sensor.Configure(rave.Sensor.ConfigureCommand.RenderDataOn)
         
         #self.env.SetViewer('qtcoin')
-        """
-        olddata = self.sensor.GetSensorData(rave.Sensor.Type.Laser)
-        while True:
-            data = self.sensor.GetSensorData(self.sensor.Type.Laser)
-            if data.stamp != olddata.stamp:
-                break
-            time.sleep(0.05)
-        
-        points = data.ranges
-        
- #       tfm_points = np.r_[points.T, np.atleast_2d(np.ones(points.shape[0]))]
-        org_points = points.T#np.linalg.inv(tfm).dot(tfm_points) # why is it the inverse???????
-        
-        org_points_proj = org_points[0:3,:]
-        depths = org_points[2,:]
-        
-        K = np.array([[1671.22765, 0.0, 667.47155], [0.0, 1667.28134, 494.89699], [0.0, 0.0, 1.0]])
-        K = K / 4
-
-        org_points_proj = K.dot(org_points_proj)
-        org_points_proj = org_points_proj / depths
-        org_points_proj = np.round(org_points_proj)
-        
-        depth_im = np.zeros((240, 320))
-        for i in range(org_points_proj.shape[1]):
-            p = org_points_proj[:,i]
-            if p[0] >= 0 and p[0] < 320 and p[1] >= 0 and p[1] < 240:
-                depth_im[p[1], p[0]] = depths[i]
-    
-        plt.imshow(depth_im)
-        plt.show()
-        
-        IPython.embed()
-        """
 
     def publishORCommand(self, joints, joints_array_indices):
         """ Publish a command to the robot; sets joints directly"""
@@ -253,15 +220,15 @@ class RavenSimulator:
         return joints, joints_array_indices
 
 
-    def getExpectedMeasurement(self, pose, arm=raven_constants.Arm.Left):
+    def getExpectedMeasurement(self, pose, grasp=0, arm=raven_constants.Arm.Left, disp=False):
         """ Transforms the simulated Raven by the expected pose and raycasts to get the expected measurement"""
-        success, joints, joints_array_indices = self.calculateJoints(pose, arm)
+        success, joints, joints_array_indices = self.calculateJoints(pose, arm, grasp)
         if success:
             self.publishORCommand(joints, self.indices)
             start = time.clock()
-            depth_im = self.getSensorData(disp=True)
+            depth_im = self.getSensorData(disp=disp)
             stop = time.clock()
-            print "ELAPSED:", stop-start
+            print "Simulator query time (sec):", stop-start
         return depth_im
     
     def getSensorData(self, disp = False):
@@ -275,27 +242,16 @@ class RavenSimulator:
                 break
             time.sleep(0.05)
         """
-        stop = time.clock()
-        print "Part 1", stop-start
-        start = stop
         # get points from data buffer    
         points = data.ranges
         points_proj = points.T
         depths = points_proj[2,:]
-        
-        stop = time.clock()
-        print "Part 2", stop-start
-        start = stop
         
         # project points into imaging plane
         K = CAMERA_INTRINSICS
         points_proj = K.dot(points_proj)
         points_proj = points_proj / depths
         points_proj = np.round(points_proj)
-        
-        stop = time.clock()
-        print "Part 3", stop-start
-        start = stop
         
         # place valid points in image
         depth_im = np.zeros((IM_H, IM_W))
@@ -306,17 +262,13 @@ class RavenSimulator:
             if p[0] >= 0 and p[0] < IM_W and p[1] >= 0 and p[1] < IM_H:
                 depth_im[p[1], p[0]] = depths[i]
         
-        stop = time.clock()
-        print "Part 4", stop-start
-        start = stop
-        
         if disp:
             plt.imshow(depth_im)
             plt.show()
         return depth_im
 
     #====================== OPEN RAVE HELPER FUNCTIONS =============================#
-    def calculateJoints(self, pose, arm, grasp=1.0):
+    def calculateJoints(self, pose, arm, grasp=0.0):
         #pose = ROBOT_TRANSFORM.dot(pose)
         try:
             result_joints_dict = invArmKin(arm, pose, grasp, True)
@@ -354,7 +306,7 @@ def plot_transform(env, T, s=0.1):
 def main():
     # Create a sample simulator
     print "1"
-    simulator = RavenSimulator()
+    simulator = RavenSimulator(initGrasp=1.2)
     
     print "2"
     rospy.loginfo('Press enter to move ')
@@ -363,7 +315,7 @@ def main():
     cur_pose = simulator.prevPose
     pose = cur_pose + np.array([-0.01, -0.01, -0.01])
     #IPython.embed()
-    simulator.getExpectedMeasurement(pose)
+    simulator.getExpectedMeasurement(pose, grasp=1.2, disp=True)
     
     rospy.loginfo('Press enter to move ')
     raw_input()
