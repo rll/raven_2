@@ -1,0 +1,893 @@
+#!/usr/bin/env python
+
+# Import required Python code.
+import roslib
+roslib.load_manifest('raven_2_calibration')
+
+import rospy
+
+import numpy as np, numpy.linalg as nlg
+import scipy as scp
+
+from error_characterization import *
+
+import argparse
+import collections
+import matplotlib
+import pickle
+import pylab as pl
+from transformations import euler_from_matrix, euler_matrix
+
+import csv
+from operator import itemgetter
+
+import IPython
+from ipdb import launch_ipdb_on_exception
+
+import tfx
+import tf
+import tf.transformations as tft
+
+N_JOINTS = 7
+NO_SUBSAMPLING = 1
+TRAINING_SUBSAMPLE = 5
+TRAINING_RATIO = 0.75
+LEFT = 'L'
+RIGHT = 'R'
+ARMS = [LEFT, RIGHT]
+CAM_TO_FK = 'C'
+FK_TO_CAM = 'F'
+TRAINING_MODES = [CAM_TO_FK, FK_TO_CAM] # learn mapping CAM_TO_FK or vice versa 
+DEF_TRAIN_SAVE = 'error_model.pkl'
+DEF_TEST_SAVE = 'test_data.pkl'
+CSV_HEADER = ['Arm', 'Homing Procedures', 'FK RMS Test Error (m)', 'FK+Sys RMS Test Error (m)', 'FK+Sys+GP RMS Test Error (m)', \
+               'Mean X Error (m)', 'Std X Error (m)', 'Mean Y Error (m)', 'Std Y Error (m)', 'Mean Z Error (m)', 'Std Z Error (m)', 'Mean Yaw Error (rad)', 'Std Yaw Error (rad)', 'Mean Pitch Error (rad)', 'Std Pitch Error (rad)', 'Mean Roll Error (rad)', 'Std Roll Error (rad)']
+
+def get_robot_pose(timestamp, robot_poses):
+    return min(range(len(robot_poses)), key=lambda i: abs(robot_poses[i][0] - timestamp))
+
+def get_robot_pose_ind(ts, robot_ts):
+    return min(range(len(robot_ts)), key=lambda i: abs(robot_ts[i] - ts))
+
+# returns numpy vector for the pose
+def pose_to_vector(pose):
+    t = pose[:3,3]
+    eul = euler_from_matrix(pose[:3,:3])
+    
+    # correct euler angles to face the camera
+    eul = list(eul)
+    for i in range(3):
+        if eul[i] > np.pi / 2.0:
+            eul[i] = eul[i] - np.pi
+        elif eul[i] < np.pi / 2.0:
+            eul[i] = eul[i] + np.pi
+    
+    vec = np.r_[t, eul]
+    return vec
+
+# return numpy matrix for the pose vector
+def vector_to_pose(vector):
+    tf = np.eye(4)
+    tf[:3,3] = tf[:3,3] + vector[:3]
+    tf[:3,:3] = euler_matrix(*vector[3:])[:3,:3].dot(tf[:3,:3])
+    return tf
+
+def convert_poses_to_vector(poses):
+    return np.array([pose_to_vector(p) for p in poses])
+
+def convert_vector_to_poses(vector):
+    return np.array([vector_to_pose(v) for v in vector])
+
+def comp_array(x,y):
+    if(nlg.norm(x) > nlg.norm(y)):
+        return True
+   
+    return False
+
+class RavenErrorModel(object):
+    
+    def __init__(self, modelFile=None, testFile=None, mode=CAM_TO_FK):
+        self.model_file = modelFile
+        self.test_file = testFile
+ 
+        self.camera_to_robot_tf = {}
+        self.train_data = {}
+        self.test_data = {}
+        self.training_mode = mode
+        self.n_joints = N_JOINTS
+
+        try:
+            if self.model_file:
+                # the training data is used to build a model
+                self.train_data = pickle.load(open(self.model_file))
+                try:
+                    self.training_mode = self.train_data[LEFT]['training_mode']
+                except:
+                    try:
+                        self.training_mode = self.train_data[RIGHT]['training_mode']
+                    except:
+                        print 'Failed to load training mode for data. Most likely the data is old'
+                
+                #HACK to remove stupid extra L/R keys from old data
+                if len(self.train_data.keys()) > 2:
+                    temp = {}
+                    temp[LEFT] = {}
+                    temp[RIGHT] = {}
+                    for k in self.train_data.keys():
+                        for arm in self.train_data[k].keys():
+                            temp[arm] = self.train_data[k][arm] # TODO: Remove when data is valid
+                    self.train_data = temp
+            if self.test_file:
+                self.test_data = pickle.load(open(self.test_file))
+        except IOError as e:
+            print "ERROR:", e
+            print "Failed to load previous testing and training data file"
+    
+    def __cleanOldData(self, data, arm_side):
+        clean_data = {}
+        clean_data[LEFT] = {}
+        clean_data[RIGHT] = {}
+        try:
+            for k in data.keys():
+                #HACK
+                if k != 'camera_to_robot_tf':
+                    for arm in data[k].keys():
+                        clean_data[arm][k] = data[k][arm]
+                else:
+                    clean_data[arm_side][k] = data[k]
+        except:
+            print "Data could not be cleaned. Aborting"
+            return None
+        return clean_data
+    
+    def __convertRawData(self, data, camera_to_robot_tf, trainingRatio=TRAINING_RATIO, subsampleRate=1):
+        camera_poses_train = []
+        robot_poses_train = []
+        camera_ts_train = []
+        robot_ts_train = []
+        robot_joints_train = np.empty((0, self.n_joints))
+                
+        camera_poses_test = []
+        robot_poses_test = []
+        camera_ts_test = []
+        robot_ts_test = []
+        robot_joints_test = np.empty((0, self.n_joints))
+        low_pass_camera = []; 
+        low_pass_strength = 3; 
+                
+        ts_start = min(data['camera_poses'][0][0], data['robot_poses'][0][0])
+        data_cp = data['camera_poses']
+        data_cp.sort(key=itemgetter(0))
+        prev_cam_pose = camera_to_robot_tf.dot(data_cp[0][1])
+        
+        # remove camera outliers, segment data into test and train
+        
+        i=0;
+        n_datapoints = len(data_cp)
+        n_training = trainingRatio * n_datapoints
+        for ts_pose in data_cp:
+            i = i + 1
+            ts_cam = ts_pose[0] - ts_start
+            camera_pose_robot_frame = camera_to_robot_tf.dot(ts_pose[1])
+            robot_pose_ind = get_robot_pose(ts_pose[0], data['robot_poses'])
+            ts_robot = data['robot_poses'][robot_pose_ind][0] - ts_start
+            robot_pose_robot_frame = data['robot_poses'][robot_pose_ind][1]
+
+            #Camera Outliers
+            if nlg.norm(prev_cam_pose[:3,3]-camera_pose_robot_frame[:3,3]) > 0.04:
+                continue
+                        
+            #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
+            # rough way to remove some camera outliers                
+            
+            if i % subsampleRate == 0:
+                if i < n_training:
+                    camera_ts_train.append(ts_cam)
+                    camera_poses_train.append(camera_pose_robot_frame)
+                    robot_ts_train.append(ts_robot)
+                    robot_poses_train.append(robot_pose_robot_frame)
+                    robot_joints_train = np.r_[robot_joints_train, \
+                                               np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
+                else:
+                    camera_ts_test.append(ts_cam)
+                    camera_poses_test.append(camera_pose_robot_frame)
+                    robot_ts_test.append(ts_robot)
+                    robot_poses_test.append(robot_pose_robot_frame)
+                    robot_joints_test = np.r_[robot_joints_test, \
+                                              np.array([data['robot_joints'][robot_pose_ind][1][0:self.n_joints]])]
+                prev_cam_pose = camera_pose_robot_frame
+  
+        #Assemble test data
+        out_train_data = {}
+        out_test_data = {}
+        
+        out_train_data['camera_to_robot_tf'] = camera_to_robot_tf
+        out_train_data['camera_poses'] = camera_poses_train
+        out_train_data['robot_poses'] = robot_poses_train
+        out_train_data['robot_joints'] = robot_joints_train
+        out_train_data['camera_ts'] = camera_ts_train
+        
+        # HACK TO REMOVE SHIITY DATA FOR TESTING ONLY
+        camera_poses_test.pop()
+        robot_poses_test.pop()
+        camera_ts_test.pop()
+        robot_ts_test.pop()
+        
+        out_test_data['camera_to_robot_tf'] = camera_to_robot_tf
+        out_test_data['camera_poses'] = camera_poses_test
+        out_test_data['robot_poses'] = robot_poses_test
+        out_test_data['robot_joints'] = robot_joints_test
+        out_test_data['camera_ts'] = camera_ts_test
+        out_test_data['robot_ts'] = robot_ts_test
+        
+        """
+        f, axarr = pl.subplots(3, sharex=True)
+        f.set_size_inches(10, 8, forward=True)
+        
+        camera_poses = convert_poses_to_vector(camera_poses_test)
+        robot_poses = convert_poses_to_vector(robot_poses_test)
+        camera_rot = camera_poses[:,3:6]
+        robot_rot = robot_poses[:,3:6]
+        
+ #       camera_rot[camera_rot[:,0] > np.pi/2, 0] = np.pi camera_rot[:,0] 
+        
+        axarr[0].set_title('Errors in the end effector translation estimate for arm', size='large')
+        for i in range(3):
+            axarr[i].plot(camera_ts_test, camera_rot[:,i], 'b', label='ground truth')
+            axarr[i].plot(robot_ts_test, robot_rot[:,i], 'g', label='raw data')
+            i2coord = {0:'x', 1:'y', 2:'z'}
+            axarr[i].set_ylabel(i2coord[i], fontsize=12)
+        #pl.xlim(10, 160)
+        pl.xlabel('time (s)', fontsize=12)
+        axarr[2].legend(prop={'size':12}, loc='lower left', bbox_to_anchor=(0.75, 0.8)).draggable()
+        pl.show()
+        """
+        
+        return out_test_data, out_train_data
+    
+    def loadTrainingData(self, filename, arm_side, subsampleRate=None):
+        """
+        Load a raw data file from data_recorder for building a new GPR model. Parititions the data into training
+        and test data given a subsample rate. This should not be used to load 'training data' that has already
+        been recorded; loadModel serves this purpose
+        """
+        if arm_side not in ARMS:
+            print "ERROR: Illegal arm side provided. Acceptable values are:"
+            for arm in ARMS:
+                print "\t" + arm
+            return
+        
+        self.raw_data = {}
+        try:
+            
+            self.raw_data[arm_side] = pickle.load(open(filename))
+            cleaned_data = self.__cleanOldData(self.raw_data[arm_side], arm_side)
+            if cleaned_data:
+                self.raw_data[arm_side] = cleaned_data[arm_side]
+            self.camera_to_robot_tf[arm_side] = self.raw_data[arm_side]['camera_to_robot_tf']
+            
+            if subsampleRate == None:
+                subsampleRate = TRAINING_SUBSAMPLE
+            self.test_data[arm_side], self.train_data[arm_side] = \
+                self.__convertRawData(self.raw_data[arm_side], self.camera_to_robot_tf[arm_side], subsampleRate=subsampleRate)
+            """
+            self.test_data[arm_side] = pickle.load(open('right_test_data.pkl'))
+            self.train_data[arm_side] = pickle.load(open('right_train_data.pkl'))
+       """
+        except IOError as e:
+            print "ERROR:", e
+            print "Failed to load raw data file " + filename
+    
+    def train(self, plot=True, opt_full_tf=False, loghyper=None, cross_validate=True):
+        """
+        Compute a systematic and residual error correction model for each of the training data sets loaded
+        """
+        errors = {}
+        train_errors = {}
+        test_errors = {}
+        hyperparams = {}
+        for arm_side in self.train_data.keys():
+            print "Training models for arm " + arm_side
+            
+            # 1. original pose error between camera and FK
+            camera_poses = self.train_data[arm_side]['camera_poses']
+            robot_poses = self.train_data[arm_side]['robot_poses']
+            test_camera_poses = self.test_data[arm_side]['camera_poses']
+            test_robot_poses = self.test_data[arm_side]['robot_poses']
+            
+            # set the target and samples based on the training mode
+            if self.training_mode == CAM_TO_FK:
+                target_poses = robot_poses
+                sample_poses = camera_poses
+                test_target_poses = test_robot_poses
+                test_sample_poses = test_camera_poses
+            else:
+                target_poses = camera_poses
+                sample_poses = robot_poses
+                test_target_poses = test_camera_poses
+                test_sample_poses = test_robot_poses
+            sample_state_vector = convert_poses_to_vector(sample_poses) # convert the poses to state vector for training
+            test_sample_state_vector = convert_poses_to_vector(test_sample_poses) # convert the poses to state vector for training
+            
+            """
+            
+            state_space_grid = 2
+            n_dim = 6
+            n_bins = state_space_grid**3
+            poses = convert_poses_to_vector(target_poses)
+            test_poses = convert_poses_to_vector(test_target_poses)
+            x_min = np.min(poses[:,0])
+            x_max = np.max(poses[:,0])
+            y_min = np.min(poses[:,1])
+            y_max = np.max(poses[:,1])
+            z_min = np.min(poses[:,2])
+            z_max = np.max(poses[:,2])
+            
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            z_range = z_max - z_min
+            
+            x_bounds = [x_min]
+            y_bounds = [y_min]
+            z_bounds = [z_min]
+            
+            for i in xrange(state_space_grid):
+                x_bounds.append(x_min + (((i+1)*x_range) / state_space_grid))
+                y_bounds.append(y_min + (((i+1)*y_range) / state_space_grid))
+                z_bounds.append(z_min + (((i+1)*z_range) / state_space_grid))
+            
+            train_errors[arm_side] = []
+            test_errors[arm_side] = []
+            #IPython.embed()
+            self.train_data[arm_side]['sys_predicted_poses'] = []
+            self.train_data[arm_side]["alphas"] = []
+            self.train_data[arm_side]["loghyper"] = []
+            
+            
+                        
+            for x in xrange(state_space_grid):
+                for y in xrange(state_space_grid):
+                    for z in xrange(state_space_grid):
+                        x_indices = (poses[:,0] >= x_bounds[x]) & (poses[:,0] <= x_bounds[x+1])
+                        y_indices = (poses[:,1] >= y_bounds[y]) & (poses[:,1] <= y_bounds[y+1])
+                        z_indices = (poses[:,2] >= z_bounds[z]) & (poses[:,2] <= z_bounds[z+1])
+                        indices = x_indices&y_indices&z_indices
+                            
+                        sample_poses_bin = [sample_poses[s] for s in xrange(len(sample_poses)) if indices[s]]
+                        target_poses_bin = [target_poses[s] for s in xrange(len(target_poses)) if indices[s]]
+                        sample_state_vector_bin = sample_state_vector[indices, :]
+                        
+                        x_indices = (test_poses[:,0] >= x_bounds[x]) & (test_poses[:,0] <= x_bounds[x+1])
+                        y_indices = (test_poses[:,1] >= y_bounds[y]) & (test_poses[:,1] <= y_bounds[y+1])
+                        z_indices = (test_poses[:,2] >= z_bounds[z]) & (test_poses[:,2] <= z_bounds[z+1])
+                        test_indices = x_indices&y_indices&z_indices
+                            
+                        test_sample_poses_bin = [test_sample_poses[s] for s in xrange(len(test_sample_poses)) if test_indices[s]]
+                        test_target_poses_bin = [test_target_poses[s] for s in xrange(len(test_target_poses)) if test_indices[s]]
+                        test_sample_state_vector_bin = test_sample_state_vector[test_indices, :]
+                        
+                        orig_pose_error = calc_pose_error(target_poses_bin, sample_poses_bin)
+            
+                        # VERBOSE
+                        print "original pose error for training data"
+                        print "mean", np.mean(orig_pose_error, axis=0)
+                        print "std", np.std(orig_pose_error, axis=0)
+                        print
+                        # 2. calculate systematic offset
+                        if opt_full_tf:
+                            sys_correction_tf = sys_correct_tf(target_poses_bin, sample_poses_bin, np.eye(4))
+                        else:
+                            target_trans = np.array([pose[:3,3] for pose in target_poses_bin])
+                            sample_trans = np.array([pose[:3,3] for pose in sample_poses_bin])
+                            sys_correction_tf = transformationEstimationSVD(sample_trans, target_trans)
+                        
+                        
+                        # systematic corrected robot poses for training data
+                        self.train_data[arm_side]['sys_correction_tf'] = sys_correction_tf
+                        sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses_bin]
+                        self.train_data[arm_side]['sys_predicted_poses'].append(sys_predicted_poses)
+                        
+                        # VERBOSE
+                        # check error against same training data for sanity check
+                        sys_pose_error = calc_pose_error(target_poses_bin, sys_predicted_poses)
+                        print "systematic corrected pose error for training data"
+                        print "mean", np.mean(sys_pose_error, axis=0)
+                        print "std", np.std(sys_pose_error, axis=0)
+                        print
+                        
+                        # 3. calculate residual error correction function
+                        alphas, h = gp_correct_poses_precompute(target_poses_bin, sys_predicted_poses, sample_state_vector_bin, loghyper, subsample=3)
+                        
+                        # systematic and GP corrected robot poses for training data
+                        gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector_bin, sys_predicted_poses, sample_state_vector_bin, h)
+                        
+                        # VERBOSE
+                        # check error against same training data for sanity check
+                        gp_pose_error = calc_pose_error(target_poses_bin, gp_predicted_poses)
+                        print "systematic and GP corrected pose error for training data"
+                        print "mean", np.mean(gp_pose_error, axis=0)
+                        print "std", np.std(gp_pose_error, axis=0)
+                        print
+            
+                        # update the internal models
+                        self.train_data[arm_side]["alphas"].append(alphas)
+                        self.train_data[arm_side]["loghyper"].append(h)
+                        self.train_data[arm_side]['training_mode'] = self.training_mode
+            
+                        # plot the translation poses
+                        if plot:
+                            camera_ts = [self.train_data[arm_side]['camera_ts'][s] for s in xrange(len(self.train_data[arm_side]['camera_ts'])) if indices[s]]
+                            plot_translation_poses_nice(camera_ts, target_poses_bin, camera_ts, sample_poses_bin, sys_predicted_poses, gp_predicted_poses, split=False, arm_side=arm_side)
+                        
+                        train_errors[arm_side].append([orig_pose_error, sys_pose_error, gp_pose_error])
+                        
+                        # TEST!!!!
+                        # systematic corrected robot poses for test data
+                        sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in test_sample_poses_bin]
+                            
+                        # systematic and GP corrected robot poses for training data
+                        gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector_bin, sys_predicted_poses, test_sample_state_vector_bin, h)
+                        
+                        camera_ts = [self.test_data[arm_side]['camera_ts'][s] for s in xrange(len(self.test_data[arm_side]['camera_ts'])) if test_indices[s]]
+                        robot_ts = [self.test_data[arm_side]['robot_ts'][s] for s in xrange(len(self.test_data[arm_side]['robot_ts'])) if test_indices[s]]
+                            
+                        test_errors[arm_side].append(self.calcErrors(test_target_poses_bin, test_sample_poses_bin, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts))
+                        
+                        i = i+1
+            
+            # GET THE TOTALS
+            total_fk_rms = 0
+            total_sys_rms = 0
+            total_gp_rms = 0
+            total_n = 0
+            for i in range(len(test_errors[arm_side])):
+                e = test_errors[arm_side][i]
+                fk_rms = e['fk'][0]
+                sys_rms = e['sys'][0]
+                gp_rms = e['gp'][0]
+                n = e['n'] 
+                total_fk_rms = np.sqrt((total_n*total_fk_rms**2 + n*fk_rms**2) / (total_n + n))
+                total_sys_rms = np.sqrt((total_n*total_sys_rms**2 + n*sys_rms**2) / (total_n + n))
+                total_gp_rms = np.sqrt((total_n*total_gp_rms**2 + n*gp_rms**2) / (total_n + n))
+                total_n = total_n + n
+            print 'Total FK RMS Error: ', total_fk_rms
+            print 'Total FK RMS Error: ', total_sys_rms
+            print 'Total FK RMS Error: ', total_gp_rms
+        """
+            orig_pose_error = calc_pose_error(target_poses, sample_poses)
+            
+            # VERBOSE
+            print "original pose error for training data"
+            print "mean", np.mean(orig_pose_error, axis=0)
+            print "std", np.std(orig_pose_error, axis=0)
+            print
+            # 2. calculate systematic offset
+            if opt_full_tf:
+                sys_correction_tf = sys_correct_tf(target_poses, sample_poses, np.eye(4))
+            else:
+                target_trans = np.array([pose[:3,3] for pose in target_poses])
+                sample_trans = np.array([pose[:3,3] for pose in sample_poses])
+                sys_correction_tf = transformationEstimationSVD(sample_trans, target_trans)
+            
+            
+            # systematic corrected robot poses for training data
+            self.train_data[arm_side]['sys_correction_tf'] = sys_correction_tf
+            sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses]
+            self.train_data[arm_side]['sys_predicted_poses'] = sys_predicted_poses
+            
+            # VERBOSE
+            # check error against same training data for sanity check
+            sys_pose_error = calc_pose_error(target_poses, sys_predicted_poses)
+            print "systematic corrected pose error for training data"
+            print "mean", np.mean(sys_pose_error, axis=0)
+            print "std", np.std(sys_pose_error, axis=0)
+            print
+            
+            # 3. cross-validate to find the max-likelihood parameters 
+            train_hyper = True
+            hyper_seed = None
+            if cross_validate:
+                print 'Running cross-validation...'
+                test_hyperparams = [-0.5, -1, -1.5, -2, -3, -5, -7.5, -10]
+                training_percent = 0.25
+                hyper_seed = self.crossValidate(test_hyperparams, target_poses, sys_predicted_poses, sample_state_vector, training_percent)
+                print 'Validated hyperparams ', hyper_seed
+                
+            # 4. calculate residual error correction function
+            alphas, hyperparams[arm_side] = gp_correct_poses_precompute(target_poses, sys_predicted_poses, sample_state_vector, train_hyper, hyper_seed=hyper_seed, subsample=1)    
+            
+            # systematic and GP corrected robot poses for training data
+            gp_predicted_poses = gp_correct_poses_fast(alphas, sample_state_vector, sys_predicted_poses, sample_state_vector, hyperparams[arm_side])
+            
+            # VERBOSE
+            # check error against same training data for sanity check
+            gp_pose_error = calc_pose_error(target_poses, gp_predicted_poses)
+            print "systematic and GP corrected pose error for training data"
+            print "mean", np.mean(gp_pose_error, axis=0)
+            print "std", np.std(gp_pose_error, axis=0)
+            print
+
+            # update the internal models
+            self.train_data[arm_side]["alphas"] = alphas
+            self.train_data[arm_side]["loghyper"] = hyperparams[arm_side]
+            self.train_data[arm_side]['training_mode'] = self.training_mode
+
+            # 5. plot the translation poses
+            if plot:
+                camera_ts = self.train_data[arm_side]['camera_ts']
+                plot_translation_poses_nice(camera_ts, target_poses, camera_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=False, arm_side=arm_side)
+
+            errors[arm_side] = [orig_pose_error, sys_pose_error, gp_pose_error]
+            
+        return errors
+    
+    def crossValidate(self, test_hyperparams, target_poses, sys_predicted_poses, sample_state_vector, training_percent):
+        train_hyper = True    
+        n_dim = sample_state_vector.shape[1]
+        
+        # generate indices for training, validation set
+        indices = np.linspace(0, len(target_poses)-1, len(target_poses))
+        np.random.shuffle(indices)
+        indices = [int(i) for i in indices]
+        
+        training_size = int(training_percent*(len(target_poses)-1))
+        training_indices = indices[:training_size]
+        validation_indices = indices[training_size:]
+        
+        # partition the training / validation poses    
+        target_poses_np = np.array(target_poses)
+        sys_pred_poses_np = np.array(sys_predicted_poses)
+        target_training_poses = target_poses_np[training_indices]
+        sys_predicted_training_poses = sys_pred_poses_np[training_indices]
+        sample_state_training_vector = sample_state_vector[training_indices]
+            
+        target_validation_poses = target_poses_np[validation_indices]
+        sys_predicted_validation_poses = sys_pred_poses_np[validation_indices]
+        sample_state_validation_vector = sample_state_vector[validation_indices]
+        
+        # compute the mean and std errors for each task variable
+        validation_mean_errors = []
+        validation_std_errors = []
+        for i in range(len(test_hyperparams)):
+            hyper_seed = [test_hyperparams[i]] * n_dim
+            alphas_cv, hypers_cv = gp_correct_poses_precompute(target_training_poses, sys_predicted_training_poses, sample_state_training_vector, train_hyper, hyper_seed=hyper_seed, subsample=1)   
+                
+            gp_predicted_validation_poses = gp_correct_poses_fast(alphas_cv, sample_state_training_vector, sys_predicted_validation_poses, sample_state_validation_vector, hypers_cv)
+            validation_error = calc_pose_error(target_validation_poses, gp_predicted_validation_poses)
+            validation_mean_errors.append(np.mean(validation_error, axis=0))
+            validation_std_errors.append(np.std(validation_error, axis=0))
+            print 'Mean error for loghyper = %f:' %(hyper_seed[0]), validation_mean_errors[-1]
+            print 'Std error for loghyper = %f:' %(hyper_seed[0]), validation_std_errors[-1]
+            print
+        
+        # loop through all choices of hyperparameters and find the minimum error choice for each task variable 
+        validated_hyperparams = []    
+        for j in range(n_dim):
+            lowest_error = np.Infinity
+            lowest_error_hyperparam = 0
+            
+            # find the hyperparameter for this variable with the lowest error
+            for i in range(len(validation_mean_errors)):
+                if np.abs(validation_mean_errors[i][j]) < lowest_error:
+                    lowest_error = np.abs(validation_mean_errors[i][j])
+                    lowest_error_hyperparam = test_hyperparams[i]
+            
+            validated_hyperparams.append(lowest_error_hyperparam)
+        
+        return validated_hyperparams
+            
+    def test(self, plot=True, outfilename=None):
+        errors = {}
+        for arm_side in self.train_data.keys():
+            camera_ts = self.test_data[arm_side]['camera_ts']
+            camera_poses = self.test_data[arm_side]['camera_poses']
+            robot_ts = self.test_data[arm_side]['robot_ts']
+            robot_poses = self.test_data[arm_side]['robot_poses']
+            camera_poses_train = self.train_data[arm_side]['camera_poses']
+            robot_poses_train = self.train_data[arm_side]['robot_poses']
+            
+            # set the target and samples based on the training mode
+            if self.training_mode == CAM_TO_FK:
+                target_poses = robot_poses
+                train_poses = camera_poses_train
+                sample_poses = camera_poses
+                target_ts = robot_ts
+                sample_ts = camera_ts
+            else:
+                target_poses = camera_poses
+                train_poses = robot_poses_train
+                sample_poses = robot_poses
+                target_ts = camera_ts
+                sample_ts = robot_ts
+            
+            gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
+            
+            print "Evaluating test data for arm " + arm_side
+            
+            if plot:
+                # Type 1 fonts for publication
+                # http://nerdjusttyped.blogspot.sg/2010/07/type-1-fonts-and-matplotlib-figures.html
+                matplotlib.rcParams['ps.useafm'] = True
+                matplotlib.rcParams['pdf.use14corefonts'] = True
+                matplotlib.rcParams['text.usetex'] = True
+                plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
+
+            errors[arm_side] = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+            if outfilename is not None:
+                self.saveErrors(errors[arm_side], outfilename, arm_side) 
+        return errors
+    
+    def predictSinglePose(self, pose, arm_side):
+        # Convert pose to numpy matrix
+        p = tft.translation_matrix([pose.position.x,pose.position.y,pose.position.z])
+        rot = tft.quaternion_matrix([pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w])
+        sample_pose = np.dot(p,rot)
+
+        gpList, sysList = self.predict([sample_pose], arm_side)
+        return tfx.pose(gpList[0], frame=pose.frame, stamp=pose.stamp), tfx.pose(sysList[0], frame=pose.frame, stamp=pose.stamp)
+    
+    def predict(self, sample_poses, arm_side, train_poses=None):
+        alphas = self.train_data[arm_side]['alphas']
+        loghyper = self.train_data[arm_side]['loghyper']
+
+        if train_poses is None:
+            if self.training_mode == CAM_TO_FK:
+                train_poses = self.train_data[arm_side]['camera_poses']
+            elif self.training_mode == FK_TO_CAM:
+                train_poses = self.train_data[arm_side]['robot_poses']
+            else:
+                print 'Invalid training mode!'
+
+        sample_state_vector = convert_poses_to_vector(sample_poses) # convert the poses to state vector for training
+        train_state_vector = convert_poses_to_vector(train_poses)
+        sys_correction_tf = self.train_data[arm_side]['sys_correction_tf']
+                  
+        # systematic corrected robot poses for test data
+        sys_predicted_poses = [sys_correction_tf.dot(sample_pose) for sample_pose in sample_poses]
+            
+        # systematic and GP corrected robot poses for training data
+        gp_predicted_poses = gp_correct_poses_fast(alphas, train_state_vector, sys_predicted_poses, sample_state_vector, loghyper)
+        return gp_predicted_poses, sys_predicted_poses
+    
+        
+
+    def predictFromFile(self, filename, arm_side='L', plot=True, outfilename=None):
+        raw_data = pickle.load(open(filename))
+        cleaned_data = self.__cleanOldData(raw_data, arm_side)
+        if cleaned_data:
+            raw_data = cleaned_data[arm_side]
+        
+        camera_to_robot_tf = raw_data['camera_to_robot_tf']
+            
+        test_data, train_data = \
+            self.__convertRawData(raw_data,camera_to_robot_tf, trainingRatio=0)
+
+        camera_ts = test_data['camera_ts']
+        camera_poses = test_data['camera_poses']
+        robot_ts = test_data['robot_ts']
+        robot_poses = test_data['robot_poses']
+        camera_poses_train = self.train_data[arm_side]['camera_poses']
+        robot_poses_train = self.train_data[arm_side]['robot_poses']
+            
+        # set the target and samples based on the training mode
+        if self.training_mode == CAM_TO_FK:
+            target_poses = robot_poses
+            train_poses = camera_poses_train
+            sample_poses = camera_poses
+            target_ts = robot_ts
+            sample_ts = camera_ts
+        else:
+            target_poses = camera_poses
+            train_poses = robot_poses_train
+            sample_poses = robot_poses
+            target_ts = camera_ts
+            sample_ts = robot_ts
+      
+        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
+        
+        if plot:
+            # Type 1 fonts for publication
+            # http://nerdjusttyped.blogspot.sg/2010/07/type-1-fonts-and-matplotlib-figures.html
+            matplotlib.rcParams['ps.useafm'] = True
+            matplotlib.rcParams['pdf.use14corefonts'] = True
+            matplotlib.rcParams['text.usetex'] = True
+            plot_translation_poses_nice(target_ts, target_poses, sample_ts, sample_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
+
+        errors = self.calcErrors(target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+
+        if outfilename is not None:
+            self.saveErrors(errors, outfilename, arm_side)
+        return gp_predicted_poses, sys_predicted_poses
+
+    def buildMixtureModel(self, filename, arm_side='L', min_c=2, max_c=10):
+        test_data = pickle.load(open(filename))
+        """
+        cleaned_data = self.__cleanOldData(raw_data, arm_side)
+        if cleaned_data:
+            raw_data = cleaned_data[arm_side]
+            
+        camera_to_robot_tf = raw_data['camera_to_robot_tf']
+                
+        test_data, train_data = \
+            self.__convertRawData(raw_data,camera_to_robot_tf, trainingRatio=0)
+        
+        pickle.dump(test_data, open('right_gmm_data.pkl', "wb"))
+    """
+        camera_poses_test = test_data['camera_poses']
+        robot_poses_test = test_data['robot_poses']
+        camera_ts_test = test_data['camera_ts']
+        robot_ts_test = test_data['robot_ts']
+        camera_poses_train = self.train_data[arm_side]['camera_poses']
+        robot_poses_train = self.train_data[arm_side]['robot_poses']
+            
+        # set the target and samples based on the training mode
+        if self.training_mode == CAM_TO_FK:
+            train_poses = camera_poses_train
+            target_poses = robot_poses_test
+            target_ts = robot_ts_test
+            sample_poses = camera_poses_test
+            sample_ts = camera_ts_test
+        else:
+            train_poses = robot_poses_train
+            target_poses = camera_poses_test
+            target_ts = camera_ts_test
+            sample_poses = robot_poses_test
+            sample_ts = robot_ts_test
+            
+        gp_predicted_poses, sys_predicted_poses = self.predict(sample_poses, arm_side, train_poses=train_poses)
+            
+        # get corresponding robot indices
+        robot_inds = []
+        for ts in target_ts:
+            robot_inds.append(get_robot_pose_ind(ts, sample_ts))
+                
+        sys_residuals = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
+        target_pose_vectors = convert_poses_to_vector(target_poses)
+        
+        plot_componentwise_residuals(sys_residuals, target_pose_vectors)
+        
+        gmm = build_mixture_model(sys_residuals, target_pose_vectors, min_components = min_c, max_components = max_c, plot=True)
+            
+        return gmm
+      
+    def calcErrors(self, target_poses, sample_poses, sys_predicted_poses, gp_predicted_poses, target_ts, sample_ts):
+        robot_inds = []
+        for ts in target_ts:
+            robot_inds.append(get_robot_pose_ind(ts, sample_ts))
+        
+        # CALCULATE THE ERROR
+        target_trans = np.array([pose[:3,3] for pose in target_poses])
+        sample_trans = np.array([pose[:3,3] for pose in sample_poses])
+        sys_sample_trans = np.array([pose[:3,3] for pose in sys_predicted_poses])
+        gp_sample_trans = np.array([pose[:3,3] for pose in gp_predicted_poses])
+        
+        # VERBOSE
+        # pose error between camera and FK
+        orig_pose_error = calc_pose_error(target_poses, [sample_poses[ind] for ind in robot_inds])
+        fk_mean_err = np.mean(orig_pose_error, axis=0)
+        fk_std_err = np.std(orig_pose_error, axis=0)
+        print "original pose error for test data"
+        print "mean", fk_mean_err
+        print "std", fk_std_err
+        fk_err = (target_trans - sample_trans[robot_inds,:]).reshape(-1,1)
+        fk_rms_err = np.sqrt((fk_err**2).mean())
+        print "xyz rms error", fk_rms_err
+        print
+        
+        # systematic corrected robot poses for test data
+        sys_pose_error = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
+        sys_mean_err = np.mean(sys_pose_error, axis=0) 
+        sys_std_err = np.std(sys_pose_error, axis=0)
+        print "systematic corrected pose error for test data"
+        print "mean", sys_mean_err
+        print "std", sys_std_err
+        sys_err = (target_trans - sys_sample_trans[robot_inds,:]).reshape(-1,1)
+        sys_rms_err = np.sqrt((sys_err**2).mean())
+        print "xyz rms error", sys_rms_err
+        print
+        
+        # systematic and GP corrected robot poses for test data
+        gp_pose_error = calc_pose_error(target_poses, [gp_predicted_poses[ind] for ind in robot_inds])
+        gp_mean_err = np.mean(gp_pose_error, axis=0)
+        gp_std_err = np.std(gp_pose_error, axis=0)
+        print "systematic and GP corrected pose error for test data"
+        print "mean", gp_mean_err
+        print "std", gp_std_err
+        gp_err = (target_trans - gp_sample_trans[robot_inds,:]).reshape(-1,1)
+        gp_rms_err = np.sqrt((gp_err**2).mean())
+        print "xyz rms error", gp_rms_err
+        print
+
+        # put the output into a nice lil dictionary (RMS, MEAN, STD)
+        error_dict = {}
+        error_dict['n'] = len(target_poses)
+        error_dict['fk'] = [fk_rms_err, fk_mean_err, fk_std_err]
+        error_dict['sys'] = [sys_rms_err, sys_mean_err, sys_std_err]
+        error_dict['gp'] = [gp_rms_err, gp_mean_err, gp_std_err]
+        return error_dict
+    
+    def save(self, train_filename=DEF_TRAIN_SAVE, test_filename=DEF_TEST_SAVE):
+        pickle.dump(self.train_data, open(train_filename, "wb"))
+        pickle.dump(self.test_data, open(test_filename, "wb"))
+        print "saved"
+
+    def saveErrors(self, error_dict, filename, arm_side):
+        try:
+            test = open(filename, 'r') # check to see if the file is there!
+            with open(filename, 'a') as csvfile:
+                data_writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                data_writer.writerow([arm_side, 0, error_dict['fk'][0], error_dict['sys'][0], error_dict['gp'][0], \
+                                      error_dict['gp'][1][0], error_dict['gp'][2][0],
+                                      error_dict['gp'][1][1], error_dict['gp'][2][1],
+                                      error_dict['gp'][1][2], error_dict['gp'][2][2],
+                                      error_dict['gp'][1][3], error_dict['gp'][2][3],
+                                      error_dict['gp'][1][4], error_dict['gp'][2][4],
+                                      error_dict['gp'][1][5], error_dict['gp'][2][5] ])
+
+        except IOError as e:
+            # File not found, create it
+            with open(filename, 'w') as csvfile:
+                data_writer = csv.writer(csvfile)
+                data_writer.writerow(CSV_HEADER)
+                data_writer.writerow([arm_side, 0, error_dict['fk'][0], error_dict['sys'][0], error_dict['gp'][0], \
+                                      error_dict['gp'][1][0], error_dict['gp'][2][0],
+                                      error_dict['gp'][1][1], error_dict['gp'][2][1],
+                                      error_dict['gp'][1][2], error_dict['gp'][2][2],
+                                      error_dict['gp'][1][3], error_dict['gp'][2][3],
+                                      error_dict['gp'][1][4], error_dict['gp'][2][4],
+                                      error_dict['gp'][1][5], error_dict['gp'][2][5] ])
+        
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--mode',nargs='?',default=None)
+    parser.add_argument('-l', '--left-arm-data',nargs='?',default=None)
+    parser.add_argument('-r', '--right-arm-data',nargs='?',default=None)
+    parser.add_argument('-d', '--model-data',nargs='?',default=None)
+    parser.add_argument('-t', '--test-data',nargs='?',default=None)   # original test data used to build the model, used for the mixture models
+    parser.add_argument('-s', '--spreadsheet',nargs='?',default='backup.csv')
+    
+    args = parser.parse_args(rospy.myargv()[1:])
+    mode = args.mode
+    del args.mode
+    left_arm_data = args.left_arm_data
+    del args.left_arm_data
+    right_arm_data = args.right_arm_data
+    del args.right_arm_data
+    model_data = args.model_data
+    del args.model_data
+    test_data = args.test_data
+    del args.test_data
+    spreadsheet = args.spreadsheet
+    del args.spreadsheet
+    
+    with launch_ipdb_on_exception():
+        if mode == 'train':
+            r = RavenErrorModel()
+            if left_arm_data:
+                r.loadTrainingData(left_arm_data, LEFT, TRAINING_SUBSAMPLE)
+            if right_arm_data:
+                r.loadTrainingData(right_arm_data, RIGHT, TRAINING_SUBSAMPLE)
+            r.train()
+            r.test(outfilename=spreadsheet)
+            r.save()
+        elif mode == 'test':
+            r = RavenErrorModel(model_data)
+            if left_arm_data:
+                print "Testing arm ", LEFT
+                r.predictFromFile(left_arm_data, LEFT, outfilename=spreadsheet)
+            if right_arm_data:
+                print "Testing arm ", RIGHT
+                r.predictFromFile(right_arm_data, RIGHT, outfilename=spreadsheet)
+        elif mode == 'mixture':
+            r = RavenErrorModel(model_data, test_data)
+            if left_arm_data:
+                print "Building mixture for arm ", LEFT
+                r.buildMixtureModel(left_arm_data, arm_side=LEFT, min_c=1, max_c = 20)
+            if right_arm_data:
+                print "Building mixture for arm ", RIGHT
+                r.buildMixtureModel(right_arm_data, arm_side=RIGHT, min_c=1, max_c = 20)
+        else:
+            print "Please specify a valid mode: train or test"
+    
+    
+    

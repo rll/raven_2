@@ -1,0 +1,24 @@
+<robot> 
+   <robot file="ravenII_2arm.dae"></robot> 
+   <manipulator name="left_arm">   
+     <base>base_link_L</base>   
+     <effector>grasper1_L</effector>
+   </manipulator>
+   <manipulator name="right_arm">   
+     <base>base_link_R</base>   
+     <effector>grasper1_R</effector>
+   </manipulator>
+  <AttachedSensor name="myflashlaser">
+    <link>0_link</link>
+    <translation>-0.039 0.245 0.027</translation>
+    <rotationaxis>-0.0032 -0.8591 0.5118 178.4191</rotationaxis>
+    <sensor type="BaseFlashLidar3D">
+      <maxrange>1.0</maxrange>
+      <scantime>0.01</scantime>
+      <KK>160 120 160 120</KK>
+      <width>320</width>
+      <height>240</height>
+      <color>1 1 0</color>
+    </sensor>
+  </AttachedSensor>
+</robot>

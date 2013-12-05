@@ -15,11 +15,13 @@
   <depend package="geometry_msgs"/>
   <depend package="image_geometry"/>
   <depend package="sensor_msgs"/>
+  <depend package="stereo_image_proc"/>
   <depend package="tf"/>
   <depend package='tfx'/> <!-- https://bitbucket.org/benkehoe/tfx -->
   <depend package='raven_2_control'/>
   <depend package="raven_2_utils"/>
 
+  <depend package="dynamic_reconfigure"/>
 
 </package>
 

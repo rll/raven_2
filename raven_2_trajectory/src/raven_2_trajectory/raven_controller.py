@@ -222,7 +222,7 @@ class RavenController():
 
         # ADDED
         #self.stopRunning.clear()
-        stopRunning = True
+        stopRunning = False
         stages = list()
         runlevel = 0
 		
@@ -247,7 +247,7 @@ class RavenController():
 
             if stopRunning or rospy.is_shutdown():
                 success = True
-                continue
+                break
 
             #stages = self.stages
 
@@ -279,7 +279,12 @@ class RavenController():
                 lastStageIndex = stageIndex
             
                 stage = stages[stageIndex]
-            
+                
+                """
+                print
+                print 'STAGE!!!!!!!!!!!!!!!    ', self.arm, stage.name
+                print
+                """
                 if stage.duration.is_zero():
                     t = 1
                 else:
@@ -302,7 +307,6 @@ class RavenController():
             pubQueue.put(cmd)
             #self.pubCmd.publish(cmd)
 			
-            
         return success
 
 
@@ -311,6 +315,7 @@ class RavenController():
     ############################
 
     def addStage(self, name, duration, cb):
+        print 'Adding stage ', name
         self.stages.append(Stage(name,duration,cb))
         self.queue.put({'stages':self.stages})
 
@@ -328,7 +333,9 @@ class RavenController():
             if speed is None:
                 speed = self.defaultPoseSpeed
             duration = end.position.distance(start.position) / speed
-
+            
+            print 'Duration!!!!!!!!      ',duration
+            
         def fn(cmd, t, start=start, end=end, arm=self.arm):
             pose = start.interpolate(end, t)
             
@@ -491,7 +498,33 @@ class RavenController():
 
 
 
+def test_gripperMove():
+    rospy.init_node('raven_controller',anonymous=True)
+    leftArm = RavenController(raven_constants.Arm.Left)
+    rospy.sleep(2)
 
+    rospy.loginfo('Press enter to start')
+    raw_input()
+
+    leftArm.start()
+
+    leftArm.setGripper(0.0)
+    
+    rospy.sleep(5)
+    
+    leftArm.setGripper(1.2)
+
+    startPose = leftArm.currentPose
+    endPose = raven_util.endPose(startPose, tfx.pose([0.02, -0.02, -0.02]), startPose.frame)
+    leftArm.goToPose(endPose)
+    
+    rospy.loginfo('Press enter to stop')
+    raw_input()
+
+    leftArm.stop()
+
+    rospy.loginfo('Press enter to exit')
+    raw_input()
 
 
 
@@ -529,4 +562,5 @@ def test_goToPoseUsingJoints():
 
 if __name__ == '__main__':
     #test_startstop()
-    test_goToPoseUsingJoints()
+    #test_goToPoseUsingJoints()
+    test_gripperMove()
