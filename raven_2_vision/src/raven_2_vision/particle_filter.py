@@ -52,12 +52,15 @@ NUM_OF_PARTICLES = 200
 #             SUB-CLASSES               #
 ########################################
 class Pixel(object):
-    def __init__(self):
+    def __init__(self,x,y):
         self.prob_occulusion = 0
+        self.x = x; 
+        self.y = y; 
         self.a = 0
         self.b = 0
         self.o = 0
         self.z = 0
+        self.depth = 0
 
 class Particle(object):
     def __init__(self):
@@ -83,7 +86,8 @@ def update_prob_occulusion(pixel):
     pixel.prob_occulusion = prob
     
 
-    
+def gaussian(x,mean,std):
+    return (1/(std*np.sqrt(2*np.pi))*np.exp(-(x-mean)^2/(2*std^2)))
     
 def prob_b(pixel,a,b):
     
@@ -100,36 +104,37 @@ def prob_b(pixel,a,b):
 
 def prob_a(a):
     #TODO: Figure out distance from ray models
-    return STD_M*np.random.rand()+a
+    return gaussian(a,mean,std)
 
-def prob_zg_b(pixel,z):
+def prob_zg_b(pixel,z,b):
     prob = 0; 
     
     if z>0 and z< MAX_CAM_DEPTH:
         prob = BETA/MAX_CAM_DEPTH; 
         
-    prob = prob + (1-BETA)*(STD_C*np.random.rand()+z)
+    prob = prob + (1-BETA)*(gaussian(z,b,STD_C))
     
     return prob
 
 
 def prob_zpg_r_o(pixel,r):
     
-    a = 0
+    a = distance - STD_M
     b = 0
     integral = 0
-    distance = dist_to_object(r)
-    while(a < distance):
+    distance = pixel.depth
+    while(a < distance+STD_M):
         while(b<a):
-            integral = integral + prob_z_b(pixel.z)*prob_a(a)*prob_b(pixel,a,b)
+            integral = integral + prob_zg_b(pixel,z,b)*prob_a(pixel,a)*prob_b(pixel,a,b)
     
     return integral
 
         
-def prob_ztg_r1tm1_o1tm1(pixels,r):
+def prob_ztg_r1tm1_o1tm1(pixels,r,depth_im):
     prob = 1
     
     for pixel in pixels:
+        pixel.depth = depth_im(pixel)
         pixel.o = 0
         PO_otm1_1 = prob_xp_r_o(pixel,r)*P_NO_O*(1-pixel.prob_occulusion)
         P0_otm1_0 = prob_xp_r_o(pixel,r)*P_NO_NO*(pixel.prob_occulusion)
@@ -144,35 +149,65 @@ def prob_ztg_r1tm1_o1tm1(pixels,r):
 class Particle_Filter:
     def __init__(self):
         self.particles = deque()
-        rospy.Subscriber('raven_command',RavenCommand,self._stateCallback)
+        rospy.Subscriber('raven_command',RavenCommand,self._updateRavenCommand)
         rospy.Subscriber('Depth_Message',PoseStamped,_update)
         self.tracked_pose_pub = rospy.Publisher('Raven_Tracked_Pose', PoseStamped) 
+        self.RSimulator = RavenSimulator()
+        self.StartPose = StartPose()
+        
         
         for i in range(0,NUM_OF_PARTICLES):
-            particles.append(poses)
+            particle.pose = sample_from_r(self,self.StartPose)
+            particle.pixels = deque()
+            for y in range(1,YDIM_IN_IMAGE):
+                for x in range(1,XDIM_IN_IMAGE):
+                    p = pixel(x,y)
+                    particle.pixels.append(p)
+            self.particles.append(particle)
             
-    def _updateRavenCommand(self,msg):
-        
+                    
+                
+            
+    def _updateRavenCommand(self,msg):     
         for arm in msg.arms:
             if arm.name == self.arm:
-                self.controlPose = self.controlPose*tfx.pose(arm.tool.pose, header=msg.header)
+                pose = tfx.pose(arm.position,arm.orientation,header=msg.header)
+                self.controlPose = pose.matrix()*linalg.inv(self.prevpose.matrix())*self.controlPose
+                self.prevpose = pose
        
-    def sample_from_r(self,particle):
+    def sample_from_r(self,pose):
         return (self.controlPose + STD_POSE*np.random.rand(4,4))*particle.pose
     
     def _update(self,msg):
         z = msg.z
+        norm = 0; 
+        ml = 0; 
         for particle in self.particles:
-            current_pose = sample_from_r(self,particle)
-            particle.likelihood = prob_ztg_r1tm1_o1tm1(pixels,current_pose)
+            current_pose = sample_from_r(self,particle.pose)
+            depth_im = self.Rsimulator(current_pose)
+            particle.likelihood = prob_ztg_r1tm1_o1tm1(particle.pixels,current_pose,depth_im)
+            norm += particle.likelihood
+            
+            if(particle.likelihood > ml):
+                pubpose = particle.pose
+                ml = particle.likelihood
+                
             particle.current_pose = current_pose
-            for pixel in pixels:
+            for pixel in particle.pixels:
                 pixel.prob_occulusion = update_prob_occulusion(pixel)
         
+        sample = np.array(norm*10)
+        index = 0 
         for particle in self.particles:
-            particle.pose = particle.likelihood*sample_from_r(self.particle)
+            for i in range(index,index+floor(particle.likelihood*10)):
+                sample[i] = particle
+            
+            index += floor(particle.likelihood*10)
+        for particle in self.particles:
+            particle.pose = sample(np.random.uniform(0,norm*10))
+            
         
-        
+        self.tracked_pose_pub(pubpose)
         self.controlPose = np.identity(4)
         
         
@@ -181,5 +216,8 @@ class Particle_Filter:
 #      EXECUTION CODE        #
 ##############################
 def main():
+    print("hi")
     rospy.init_node('particle_filter',anonymous=True)
+    
+    rospy.spin()
     
