@@ -22,7 +22,6 @@ import time
 
 import os
 import rospy
-from raven_2_utils import raven_constants
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -32,7 +31,11 @@ import IPython
 #====== ROS ==============#
 #import tf
 #import tf.transformations as tft
+from raven_2_msgs.msg import RavenCommand
+from raven_2_msgs.msg import Constants
 from raven_2_control.kinematics import *
+from raven_2_utils import raven_constants
+from raven_2_utils import raven_util
 import tfx
 #import roslib; roslib.load_manifest("raven_2_teleop")
 #import rospy
@@ -56,7 +59,7 @@ SIDE_NAMES_FRIENDLY = ['left','right']
 
 #========================= CONSTANTS ============================#
 ARM = "ONE_ARM" # or "TWO_ARM"
-MODEL_NAME = "ravenII_2arm_simulator.xml" 
+MODEL_NAME = "myRavenSimulator.xml" 
 DEBUG = True
 
 # wtf is this
@@ -144,70 +147,134 @@ IM_H = IM_H / DOWNSAMPLE
 
 #========================= RAVEN CONTROLLER CLASS ==========================================================#
 class RavenSimulator:
-    def __init__(self, arm_mode=ARM, x_scale=X_SCALE, y_scale=Y_SCALE, z_scale=Z_SCALE, initPose=None, initGrasp=0, frame=None, relative_orientation=False, camera_frame=False):
+    
+    rosJointTypes = [Constants.JOINT_TYPE_SHOULDER,
+                     Constants.JOINT_TYPE_ELBOW,
+                     Constants.JOINT_TYPE_INSERTION,
+                     Constants.JOINT_TYPE_ROTATION,
+                     Constants.JOINT_TYPE_PITCH,
+                     Constants.JOINT_TYPE_YAW]
+
+    raveJointNamesPrefixes = ["shoulder",
+                              "elbow",
+                              "insertion",
+                              "tool_roll",
+                              "wrist_joint",
+                              "grasper_yaw"]
+    
+    def __init__(self, arm_mode=ARM, arm_names=raven_constants.Arm.Left, x_scale=X_SCALE, y_scale=Y_SCALE, z_scale=Z_SCALE, initPose=None, initGrasp=0, initJoints = None, frame=None, relative_orientation=False, camera_frame=False):
+        if isinstance(arm_names,basestring):
+            arm_names = [arm_names]
+        self.arm_names = sorted(arm_names)
+        
         self.raven_pub = rospy.Publisher('raven_command', RavenCommand)
         self.arm_mode = arm_mode
         self.x_scale = x_scale
         self.y_scale = y_scale
         self.z_scale = z_scale 
         self.active = False
-        self.configureOREnv(initPose, initGrasp)  
-
-    def updateActive(self, a):
-        if self.active != a:
-            if a==False:
-                print "Controller inactive"
-            else:
-                print "Controller active"
-        self.active = a
-
-    #========================== OPEN RAVE COMMANDS ================================#
-
-    def configureOREnv(self, initPose=None, initGrasp=0):
-        """ This function is called once at the begin to set up the openrave environment with the robot """
-        self.env = rave.Environment()
         
-        ravenModelFile = os.path.join(roslib.packages.get_pkg_subdir('raven_2_params', 'data'), MODEL_NAME)
+        self.initPose = initPose
+        self.initGrasp = initGrasp
+        self.initJoints = initJoints
+        
+        self.invKinArm = dict()
+        self.toolFrame = dict()
+        self.manipName = dict()
+        self.manip = dict()
+        self.manipJoints = dict()
+        self.raveJointNames = dict()
+        self.raveJointTypes = dict()
+        self.raveJointTypesToRos = dict()
+        self.rosJointTypesToRave = dict()
+        self.raveGrasperJointNames = dict()
+        self.raveGrasperJointTypes = dict()
+        
+        self.env = rave.Environment()
+        ravenModelFile = os.path.join(roslib.packages.get_pkg_subdir('RavenDebridement', 'models'), MODEL_NAME)
         self.env.Load(ravenModelFile)
         self.robot = self.env.GetRobots()[0]
-        self.manipulators = self.robot.GetManipulators()
-        #manip = self.robot.SetActiveManipulator('left_arm')
-        self.manip = self.manipulators[0]
-        self.manipIndices = self.manip.GetArmIndices()
-        allJoints = self.robot.GetJoints()  
-        JointValues = [joint.GetValues()[0] for joint in allJoints]
-
-        #These are the starting joints for the left arm; they are halfway between each limit
-        leftJoints = []
-        if initPose is None:
-            leftJoints = [  (SHOULDER_MAX_LIMIT+SHOULDER_MIN_LIMIT)/2.0,
-                            (ELBOW_MAX_LIMIT+ELBOW_MIN_LIMIT)/2.0,    
-                            #(Z_INS_MAX_LIMIT+Z_INS_MIN_LIMIT)/2.0,
-                            -0.1,
-                            0,
-                            (TOOL_ROLL_MAX_LIMIT+TOOL_ROLL_MIN_LIMIT)/2.0,
-                            (TOOL_WRIST_MAX_LIMIT+TOOL_WRIST_MIN_LIMIT)/2.0,
-                            (TOOL_GRASP1_MAX_LIMIT+TOOL_GRASP1_MIN_LIMIT)/2.0,
-                            (TOOL_GRASP2_MAX_LIMIT+TOOL_GRASP2_MIN_LIMIT)/2.0,
-                            0,
-                            initGrasp
-                            ]
-        else:
-            leftJoints = invArmKin(raven_constants.Arm.Left, initPose, initGrasp, True)
-        
-        self.prevLeftJoints = leftJoints
-        self.prevRightJoints = None 
-        self.prevPose = fwdArmKin(raven_constants.Arm.Left, leftJoints)[0] #FIXME: look at this
-        self.indices = np.r_[self.manipIndices, [7, 8, 9]] # extend indices to match the actual dimension of the joints in the kinematics object
-        self.publishORCommand(leftJoints, self.indices)
         self.robot.SetTransform(ROBOT_TRANSFORM)
+        
+        activeDOFs = []
+        for armName in self.arm_names:
+            self._init_arm(armName)
+            activeDOFs += self.raveJointTypes[armName]
+        self.robot.SetActiveDOFs(activeDOFs)
+
+        IPython.embed()
         
         # configure laser scanner for sensing
         self.sensor = self.env.GetSensors()[0]
         self.sensor.Configure(rave.Sensor.ConfigureCommand.PowerOn)
         self.sensor.Configure(rave.Sensor.ConfigureCommand.RenderDataOn)
+
+    def _init_arm(self, arm_name):
+        if arm_name == raven_constants.Arm.Left:
+            self.invKinArm[arm_name] = Constants.ARM_TYPE_GOLD
+            self.toolFrame[arm_name] = raven_constants.OpenraveLinks.LeftTool
+            self.manipName[arm_name] = 'left_arm'
+        else:
+            self.invKinArm[arm_name] = Constants.ARM_TYPE_GREEN
+            self.toolFrame[arm_name] = raven_constants.OpenraveLinks.RightTool
+            self.manipName[arm_name] = 'right_arm'
+        self.robot.SetActiveManipulator(self.manipName[arm_name])
+        self.manip[arm_name] = self.robot.GetActiveManipulator()
+        self.manipJoints[arm_name] = self.robot.GetJoints(self.manip[arm_name].GetArmJoints())
+
+        self.raveJointNames[arm_name] = ['{0}_{1}'.format(name, arm_name[0].upper()) for name in self.raveJointNamesPrefixes]
+
+        self.raveJointTypes[arm_name] = [self.robot.GetJointIndex(name) for name in self.raveJointNames[arm_name]]
+        self.raveJointTypesToRos[arm_name] = dict((rave,ros) for rave,ros in zip(self.raveJointTypes[arm_name], self.rosJointTypes))
+        self.rosJointTypesToRave[arm_name] = dict((ros,rave) for ros,rave in zip(self.rosJointTypes, self.raveJointTypes[arm_name]))
         
-        #self.env.SetViewer('qtcoin')
+        self.raveGrasperJointNames[arm_name] = ['grasper_joint_1_{0}'.format(arm_name[0].upper()), 'grasper_joint_2_{0}'.format(arm_name[0].upper())]
+        self.raveGrasperJointTypes[arm_name] = [self.robot.GetJointIndex(name) for name in self.raveGrasperJointNames[arm_name]]
+        
+        self.updateOpenraveJoints(arm_name, self.initJoints, grasp=self.initGrasp)
+
+    #========================== OPEN RAVE COMMANDS ================================#
+    def updateOpenraveJoints(self, armName, joints1, grasp=None):
+        """
+        Updates the openrave raven model using rosJoints
+
+        rosJoints is dictionary of {jointType : jointPos}
+        
+        jointType is from raven_2_msgs.msg.Constants
+        jointPos is position in radians
+
+        Updates based on: shoulder, elbow, insertion,
+                          rotation, pitch, yaw, grasp (self.currentGrasp)
+        """
+        rosJoints = joints1
+        
+        if grasp is None:
+            grasp = pi/2.
+        
+        raveJointTypes = []
+        jointPositions = []
+        for rosJointType, jointPos in rosJoints.items():
+            if self.rosJointTypesToRave[armName].has_key(rosJointType):
+                raveJointType = self.rosJointTypesToRave[armName][rosJointType]
+                raveJointTypes.append(raveJointType)
+                
+                # since not a hard limit, must do this
+                if rosJointType == Constants.JOINT_TYPE_ROTATION:
+                    lim = self.robot.GetJointFromDOFIndex(raveJointType).GetLimits()
+                    limLower, limUpper = lim[0][0], lim[1][0]
+                    jointPos = raven_util.setWithinLimits(jointPos, limLower, limUpper, 2*pi)
+                
+                jointPositions.append(jointPos)
+                
+
+        # for opening the gripper
+        raveJointTypes += self.raveGrasperJointTypes[armName]
+        if armName == raven_constants.Arm.Left:
+            jointPositions += [grasp/2, grasp/2]
+        else:
+            jointPositions += [grasp/2, -grasp/2]
+        self.robot.SetJointValues(jointPositions, raveJointTypes)
+
 
     def publishORCommand(self, joints, joints_array_indices):
         """ Publish a command to the robot; sets joints directly"""
@@ -222,15 +289,14 @@ class RavenSimulator:
 
     def getExpectedMeasurement(self, pose, grasp=0, arm=raven_constants.Arm.Left, disp=False):
         """ Transforms the simulated Raven by the expected pose and raycasts to get the expected measurement"""
-        success, joints, joints_array_indices = self.calculateJoints(pose, arm, grasp)
-        if success:
-            self.publishORCommand(joints, self.indices)
-            start = time.clock()
-            depth_im = self.getSensorData(disp=disp)
-            stop = time.clock()
-            print "Simulator query time (sec):", stop-start
+        joints = invArmKin(arm, pose, grasp)
+        self.updateOpenraveJoints(arm, joints, grasp)
+        start = time.clock()
+        depth_im = self.getSensorData(disp=disp)
+        stop = time.clock()
+        print "Simulator query time (sec):", stop-start
         return depth_im
-    
+        
     def getSensorData(self, disp = False):
         start = time.clock()
         
@@ -271,7 +337,7 @@ class RavenSimulator:
     def calculateJoints(self, pose, arm, grasp=0.0):
         #pose = ROBOT_TRANSFORM.dot(pose)
         try:
-            result_joints_dict = invArmKin(arm, pose, grasp, True)
+            result_joints_dict = invArmKin(arm, pose, grasp, False)
             if result_joints_dict is not None:
                 joints = []
                 joints_array_indices = []
