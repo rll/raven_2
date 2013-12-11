@@ -59,7 +59,8 @@ SIDE_NAMES_FRIENDLY = ['left','right']
 
 #========================= CONSTANTS ============================#
 ARM = "ONE_ARM" # or "TWO_ARM"
-MODEL_NAME = "myRavenSimulator.xml" 
+MODEL_NAME = "myRavenSimulator.xml"
+SENSOR_PARENT = "0_link"
 DEBUG = True
 
 # wtf is this
@@ -177,6 +178,9 @@ class RavenSimulator:
         self.initPose = initPose
         self.initGrasp = initGrasp
         self.initJoints = initJoints
+ 
+        if self.initJoints is not None:
+            self.initGrasp = self.initJoints[GRASP]
         
         self.invKinArm = dict()
         self.toolFrame = dict()
@@ -194,20 +198,31 @@ class RavenSimulator:
         ravenModelFile = os.path.join(roslib.packages.get_pkg_subdir('RavenDebridement', 'models'), MODEL_NAME)
         self.env.Load(ravenModelFile)
         self.robot = self.env.GetRobots()[0]
-        self.robot.SetTransform(ROBOT_TRANSFORM)
+        
+        # transform the robot such that the sensor parent is at the origin
+        link = self.robot.GetLink(SENSOR_PARENT)
+        link_tf = link.GetTransform()
+        link_inv_tf = np.linalg.inv(link_tf)
         
         activeDOFs = []
         for armName in self.arm_names:
             self._init_arm(armName)
-            activeDOFs += self.raveJointTypes[armName]
+            for jointType in self.raveJointTypes[armName]:
+                if jointType >= 0:
+                    activeDOFs += [jointType]
         self.robot.SetActiveDOFs(activeDOFs)
-
-        IPython.embed()
         
         # configure laser scanner for sensing
+        robot_tf = ROBOT_TRANSFORM.dot(link_inv_tf)
+        self.robot.SetTransform(robot_tf)
         self.sensor = self.env.GetSensors()[0]
         self.sensor.Configure(rave.Sensor.ConfigureCommand.PowerOn)
         self.sensor.Configure(rave.Sensor.ConfigureCommand.RenderDataOn)
+        
+        #self.env.SetViewer('qtcoin')
+        #self.updateOpenraveJoints('L', self.initJoints, self.initGrasp)
+        #depth_im = self.getSensorData(disp=disp)
+
 
     def _init_arm(self, arm_name):
         if arm_name == raven_constants.Arm.Left:
@@ -253,27 +268,31 @@ class RavenSimulator:
         
         raveJointTypes = []
         jointPositions = []
-        for rosJointType, jointPos in rosJoints.items():
-            if self.rosJointTypesToRave[armName].has_key(rosJointType):
-                raveJointType = self.rosJointTypesToRave[armName][rosJointType]
-                raveJointTypes.append(raveJointType)
+        if rosJoints is not None:
+            for rosJointType, jointPos in rosJoints.items():
+                if self.rosJointTypesToRave[armName].has_key(rosJointType):
+                    raveJointType = self.rosJointTypesToRave[armName][rosJointType]
+                    if raveJointType > 0:
+                        raveJointTypes.append(raveJointType)
+                        
+                        # since not a hard limit, must do this
+                        if rosJointType == Constants.JOINT_TYPE_ROTATION:
+                            lim = self.robot.GetJointFromDOFIndex(raveJointType).GetLimits()
+                            limLower, limUpper = lim[0][0], lim[1][0]
+                            jointPos = raven_util.setWithinLimits(jointPos, limLower, limUpper, 2*pi)
+                        
+                        jointPositions.append(jointPos)
                 
-                # since not a hard limit, must do this
-                if rosJointType == Constants.JOINT_TYPE_ROTATION:
-                    lim = self.robot.GetJointFromDOFIndex(raveJointType).GetLimits()
-                    limLower, limUpper = lim[0][0], lim[1][0]
-                    jointPos = raven_util.setWithinLimits(jointPos, limLower, limUpper, 2*pi)
-                
-                jointPositions.append(jointPos)
-                
-
-        # for opening the gripper
-        raveJointTypes += self.raveGrasperJointTypes[armName]
-        if armName == raven_constants.Arm.Left:
-            jointPositions += [grasp/2, grasp/2]
-        else:
-            jointPositions += [grasp/2, -grasp/2]
-        self.robot.SetJointValues(jointPositions, raveJointTypes)
+            # for opening the gripper
+            raveJointTypes += self.raveGrasperJointTypes[armName]
+            if armName == raven_constants.Arm.Left:
+                jointPositions += [grasp/2, grasp/2]
+            else:
+                jointPositions += [grasp/2, -grasp/2]
+           #  IPython.embed()
+            self.robot.SetJointValues(jointPositions, raveJointTypes)
+            return True
+        return False
 
 
     def publishORCommand(self, joints, joints_array_indices):
@@ -287,29 +306,33 @@ class RavenSimulator:
         return joints, joints_array_indices
 
 
-    def getExpectedMeasurement(self, pose, grasp=0, arm=raven_constants.Arm.Left, disp=False):
+    def getExpectedMeasurement(self, pose, grasp=1.2, arm=raven_constants.Arm.Left, disp=False):
         """ Transforms the simulated Raven by the expected pose and raycasts to get the expected measurement"""
         joints = invArmKin(arm, pose, grasp)
-        self.updateOpenraveJoints(arm, joints, grasp)
-        start = time.clock()
-        depth_im = self.getSensorData(disp=disp)
-        stop = time.clock()
-        print "Simulator query time (sec):", stop-start
-        return depth_im
+        success = self.updateOpenraveJoints(arm, joints, grasp)
+        if success:
+            start = time.clock()
+            depth_im = self.getSensorData(disp=disp)
+            stop = time.clock()
+            #print "Simulator query time (sec):", stop-start
+            return depth_im
+        return None
         
-    def getSensorData(self, disp = False):
+    def getSensorData(self, disp=False):
         start = time.clock()
+        max_range = 1.0
+        olddata = self.sensor.GetSensorData(rave.Sensor.Type.Laser)
         
-        data = self.sensor.GetSensorData(rave.Sensor.Type.Laser)
-        """
         while True:
             data = self.sensor.GetSensorData(self.sensor.Type.Laser)
             if data.stamp != olddata.stamp:
                 break
-            time.sleep(0.05)
-        """
+            time.sleep(0.001)
         # get points from data buffer    
         points = data.ranges
+        invalid_inds = abs((points**2).sum(axis=1)-max_range**2)<1e-3
+        points[invalid_inds,2] = 0
+        
         points_proj = points.T
         depths = points_proj[2,:]
         
@@ -323,9 +346,11 @@ class RavenSimulator:
         depth_im = np.zeros((IM_H, IM_W))
         for i in range(points_proj.shape[1]):
             p = points_proj[:,i]
+            #IPython.embed()
             
             # make sure point lies within image, then place in buffer
             if p[0] >= 0 and p[0] < IM_W and p[1] >= 0 and p[1] < IM_H:
+                #   IPython.embed()
                 depth_im[p[1], p[0]] = depths[i]
         
         if disp:

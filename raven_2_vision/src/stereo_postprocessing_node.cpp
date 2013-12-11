@@ -209,7 +209,9 @@ void StereoPostprocessingNode::image_callback(const sensor_msgs::ImageConstPtr& 
                               depth_msg->step);
   XYZ[2] = depth_image;
 
+  // resize because we want to reuse the existing stereo model
   cv::resize(disp_image, disp_image_resized, cv::Size(left_image_msg->width, left_image_msg->height)); 
+  disp_image_resized = disp_image_resized * decimation_x_;
   stereo_model_.projectDisparityImageTo3d(disp_image_resized, point_cloud_resized);
   cv::resize(point_cloud_resized, point_cloud_resized, cv::Size(depth_msg->width, depth_msg->height));
   cv::split(point_cloud_resized, XYZ);
