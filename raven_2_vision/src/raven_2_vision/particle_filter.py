@@ -51,6 +51,7 @@ STD_M = 0.01
 DT = 0.01
 YDIM_IN_IMAGE = 240
 XDIM_IN_IMAGE = 320
+NUM_TOP_PARTICLES = 5 
 
 DOWNSAMPLE = 2
 YDIM_DOWN = YDIM_IN_IMAGE / DOWNSAMPLE
@@ -266,9 +267,21 @@ class Particle_Filter:
         new_pose = rand_rot_pose.matrix*new_pose
         return new_pose
     
+    def getExpectedTrans(self,top_particles,total_likelihood):
+        
+        #Normailize likelihoods
+        exp_trans = tfx.pose([0,0,0])
+        for particle in top_particles:
+            weight = particle.likelihood/totatl_likelihood
+            exp_trans += weight* particle.pose.translation
+            
+        return exp_trans
+            
+        
+    
     def _update(self,msg):
         self.numUpdates = self.numUpdates + 1
-        
+        tot_likelihood = 0
         self.lock = True 
         self.myControlPose = self.controlPose
         self.controlPose = np.identity(4)
@@ -298,10 +311,10 @@ class Particle_Filter:
                 #print "Likelihood", particle.likelihood
                 norm += particle.likelihood
             
-            if(particle.likelihood >= ml):
-                #print "HERE"
-                pubpose = tfx.pose(current_pose, stamp=rospy.Time.now())
-                ml = particle.likelihood
+                if(particle.likelihood >= ml):
+                    #print "HERE"
+                    pubrot = tfx.pose([0,0,0],current_pose.orientation)
+                    ml = particle.likelihood
             print "PARTICLE:",i
             i += 1
             
@@ -322,8 +335,15 @@ class Particle_Filter:
         print "NORM", norm
         index = 0
         bounds = [0]
+        
+        pubtrans = getExpectedTrans(particles,norm)
+        pubpose = tfx.pose(pubtrans.translation,pubrot.orientation, stamp=rospy.Time.now())
+        
+        
+        
         for particle in self.particles:
             bounds.append(bounds[-1] + particle.likelihood)
+            
         bounds = bounds[1:-1] 
         new_particles = deque()
         
@@ -365,7 +385,7 @@ class Particle_Filter:
 ##############################
 def main():
     print("hi")
-   # IPython.embed()
+    #IPython.embed()
     rospy.init_node('particle_filter',anonymous=True)
     p = Particle_Filter()
     #IPython.embed()
