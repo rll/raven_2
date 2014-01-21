@@ -247,9 +247,9 @@ class RavenController():
                         stopRunning = val['stopRunning']
                     if val.has_key('stages'):
                         stages = val['stages']
-                        print "NEW STAGES", self.arm
+                       # print "NEW STAGES", self.arm
                         if stageIndex == -1 and len(stages) > 0:
-                            print "FRESH", self.arm
+                           # print "FRESH", self.arm
                             startTime = rospy.Time.now()
                             stageIndex = 0
                     if val.has_key('updatedStages'):
@@ -263,7 +263,7 @@ class RavenController():
                 continue
 
 
-            print "STAGES", stages, self.arm
+            #print "STAGES", stages, self.arm
             if stopRunning or rospy.is_shutdown():
                 success = True
                 break
@@ -277,11 +277,11 @@ class RavenController():
                 cmd.header = header
                 
                 if durFromStart > stage.duration:
-                    print "INCREMENTING STAGE", self.arm
+                    #print "INCREMENTING STAGE", self.arm
                     stageIndex = stageIndex + 1
                     startTime = rospy.Time.now()
                     if stageIndex >= len(stages):
-                        print "CLEARING STAGES", self.arm
+                        #print "CLEARING STAGES", self.arm
                         clearStageQueue.put({'clearStages' : True})
                         stageIndex = -1
                     continue
@@ -290,7 +290,7 @@ class RavenController():
                     t = 1
                 else:
                     t = min((durFromStart).to_sec() / stage.duration.to_sec(), 1)
-                print "Sending command", self.arm, t, stage.name, stage.duration, stageIndex
+               # print "Sending command", self.arm, t, stage.name, stage.duration, stageIndex
                 cmd = RavenCommand()
                 cmd.pedal_down = True
             
@@ -469,6 +469,7 @@ class RavenController():
     def setGripper(self,grasp,closedValue=None,duration=2):
         startGrasp = self.currentGrasp
         def fn(cmd,t, startGrasp=startGrasp, grasp=grasp, closedGraspValue=self.closedGraspValue, arm=self.arm):
+            print startGrasp, grasp, closedGraspValue, t
             cmdGraspValue = (startGrasp) + (grasp - (startGrasp - closedGraspValue))*t
             RavenController.addArmGraspCmd(cmd, arm, grasp=cmdGraspValue, graspOption=ToolCommand.GRASP_SET_NORMALIZED)
         self.addStage('Set gripper',duration,fn)
