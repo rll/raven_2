@@ -157,7 +157,7 @@ class ChessboardFrame:
 		self.avg_Tworld_to_cam_q = None
 		self.num_poses = 0
 		self.parent = '0_link'
-		self.target = None
+		self.target = 'camera_link'
 		self.target_inverted = False
 
 	def pose_callback(self,msg):
@@ -214,7 +214,7 @@ class ChessboardFrame:
 		self.transform = Tworld_to_target
 		self.transform_frame = msg.header.frame_id
 
-		self.br.sendTransform(Tworld_to_target_p, Tworld_to_target_q, msg.header.stamp, self.transform_frame, self.parent)
+		self.br.sendTransform(Tworld_to_target_p, Tworld_to_target_q, msg.header.stamp, self.target, self.parent)
 
 	def pub_tf(self):
 		if self.transform is not None:

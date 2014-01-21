@@ -42,15 +42,15 @@ ROI_size = namedtuple('ROI_size','width height')
 ########################################
 
 # right gripper
-GREEN_LOWER = (60, 45, 85) #THESE ARE THE GREEN PAPER VALUES
+GREEN_LOWER = (60, 40, 90) #THESE ARE THE GREEN PAPER VALUES
 GREEN_UPPER = (105, 255, 255)
-ORANGE_LOWER = (5, 75, 155) # THESE ARE THE ORANGE PAPER VALUES
+ORANGE_LOWER = (5, 120, 165) # THESE ARE THE ORANGE PAPER VALUES
 ORANGE_UPPER = (35, 255, 255)
 
 # left gripper
-PURPLE_LOWER = (125, 15, 115)
-PURPLE_UPPER = (170, 255, 255)
-BLUE_LOWER = (100, 52, 100)
+PURPLE_LOWER = (125, 40, 100)
+PURPLE_UPPER = (190, 255, 255)
+BLUE_LOWER = (105, 90, 120)
 BLUE_UPPER = (125, 255, 255)
 
 # TEMP: since only for one gripper at a time

@@ -469,7 +469,7 @@ class RavenController():
     def setGripper(self,grasp,closedValue=None,duration=2):
         startGrasp = self.currentGrasp
         def fn(cmd,t, startGrasp=startGrasp, grasp=grasp, closedGraspValue=self.closedGraspValue, arm=self.arm):
-            print startGrasp, grasp, closedGraspValue, t
+            #print startGrasp, grasp, closedGraspValue, t
             cmdGraspValue = (startGrasp) + (grasp - (startGrasp - closedGraspValue))*t
             RavenController.addArmGraspCmd(cmd, arm, grasp=cmdGraspValue, graspOption=ToolCommand.GRASP_SET_NORMALIZED)
         self.addStage('Set gripper',duration,fn)

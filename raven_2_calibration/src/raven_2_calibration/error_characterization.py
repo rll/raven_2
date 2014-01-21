@@ -9,17 +9,43 @@ from sklearn import mixture
 from GPR import gpr
 from Tools.general import feval
 import openravepy as rave
-from transformations import euler_from_matrix, euler_matrix
+from transformations import euler_from_matrix, euler_matrix, quaternion_from_matrix, quaternion_matrix
 
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from scipy import linalg
 import pylab as pl
 import itertools
+import tfx
 
 import csv
+import ransac
 
 import IPython
+
+class LsqModel(object):
+    def __init__(self, input_columns, output_columns):
+        self.input_columns = input_columns
+        self.output_columns = output_columns
+
+    def fit(self, data):
+        A = np.vstack(data[:,i] for i in self.input_columns).T
+        B = np.vstack(data[:,i] for i in self.output_columns).T
+        tf = transformationEstimationSVD(A, B)
+        pose = tfx.pose(tf)
+        vec = np.r_[pose.position.list, pose.orientation.list].T
+        return vec
+
+    def get_error(self, data, model):
+        # convert model to transform
+        pose = tfx.pose(model[:3], model[3:])
+        tf = pose.matrix
+        A = np.vstack(data[:,i] for i in self.input_columns)
+        B = np.vstack(data[:,i] for i in self.output_columns)
+        B_fit = tf[:3,:3].dot(A) + tf[:3,3];
+        err_per_point = np.sum(np.square(B-B_fit), axis=0).T 
+        err_per_point = err_per_point.A1
+        return err_per_point
 
 def tf_to_vec(tf):
     return tf[:3,:].reshape(-1,1)
@@ -121,29 +147,39 @@ def compare_euler_poses(ts, poses0, poses1, l = '--'):
 
 # pose error takes from tf1 to tf0
 # typically, tf0 is ground truth and tf1 is the pose being fixed
-def calc_pose_error(tf0, tf1):
+def calc_pose_error(tf0, tf1, euler_representation=True):
+    n_dim = 6
     n_data = len(tf0) # should be the same for tf1
-    pose_error = np.empty((n_data, 6))
+    pose_error = np.empty((n_data, n_dim))
+    
     for i_data in range(n_data):
-        #tf1_to_tf0 = tf0[i_data].dot(tf_inv(tf1[i_data]))
-        #pose_error[i_data,:] = tf_to_pose(tf1_to_tf0)
+        diff_translation = (tf0[i_data][:3,3] - tf1[i_data][:3,3])
+        diff_rotation = np.eye(4,4)
+        diff_rotation[:3,:3] = tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T)
         
-        #t = (tf0[i_data][:3,3] - tf1[i_data][:3,3])
-        #aa = rave.axisAngleFromRotationMatrix(tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T))
-        #pose_error[i_data,:] = np.r_[t, aa]
+        diff_rot_rep = quaternion_from_matrix(diff_rotation)
         
-        t = (tf0[i_data][:3,3] - tf1[i_data][:3,3])
-        euler = euler_from_matrix(tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T))
-        pose_error[i_data,:] = np.r_[t, euler]
+        # flip quaternions on the wrong side of the hypersphere
+        if diff_rot_rep[3] < 0:
+            diff_rot_rep = -diff_rot_rep
+        diff_rot_rep = diff_rot_rep[:3]
+        
+        if euler_representation:
+            diff_rot_rep = euler_from_matrix(tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T))
+            
+        pose_error[i_data,:] = np.r_[diff_translation, diff_rot_rep]
     return pose_error
 
-def apply_pose_error(tf1s, errors):
+def apply_pose_error(tf1s, errors, euler_representation=True):
     tf0s = []
     for (tf1, error) in zip(tf1s, errors):
         tf0 = np.eye(4)
         tf0[:3,3] = tf1[:3,3] + error[:3]
         #tf0[:3,:3] = rave.rotationMatrixFromAxisAngle(error[3:]).dot(tf1[:3,:3])
-        tf0[:3,:3] = euler_matrix(*error[3:])[:3,:3].dot(tf1[:3,:3])
+        if euler_representation:
+            tf0[:3,:3] = euler_matrix(*error[3:])[:3,:3].dot(tf1[:3,:3])
+        else:
+            tf0[:3,:3] = quaternion_matrix(*error[3:])[:3,:3].dot(tf1[:3,:3])
         tf0s.append(tf0)
     return tf0s
 
@@ -175,6 +211,23 @@ def sys_correct_tf(gt_poses, poses, tf_init):
 
 	tf = vec_to_tf(np.array(X))
 	return tf
+
+def estimateSystematicOffsetRANSAC(A, B):
+    input_columns = [0, 1, 2]
+    output_columns = [3, 4, 5]
+    model = LsqModel(input_columns, output_columns);
+
+    data = np.c_[A, B]
+#    data = data.T
+    points_per_model = 100
+    iterations = 200
+    outlier_thresh = 0.00005
+    min_points_accept = data.shape[0]*0.6
+
+    vec = ransac.ransac(data, model, points_per_model, iterations, outlier_thresh, min_points_accept, debug=True)
+    pose = tfx.pose(vec[:3], vec[3:])
+    tf = np.array(pose.matrix)
+    return tf
 
 # Finds tf such that B[i,:] = tf.dot(A[i,:]) (least-squares sense)
 # http://nghiaho.com/?page_id=671
@@ -216,13 +269,14 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
 def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_hyper=True, hyper_seed=None, subsample=1):
-    pose_error = calc_pose_error(gt_poses_train, poses_train)
+    pose_error = calc_pose_error(gt_poses_train, poses_train, euler_representation=True)
+    
     n_task_vars = pose_error.shape[1]
     alphas = []
     loghyper = hyper_seed
+    
     if train_hyper:
         loghyper = []
-        
     if hyper_seed == None:
         hyper_seed = [-1] * n_task_vars
     
@@ -248,15 +302,15 @@ def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_
         y_task_var = y_subsample[:,i_task_var]
         y = pose_error[:,i_task_var]
         
-        ## SET (hyper)parameters
-        if train_hyper:
+        ## SET (hyper)parameters (HACK: don't do the rotation angles right now - it doesn't do anything because the measurements are so bad)
+        if train_hyper and i_task_var < 3:
             ## LEARN the hyperparameters if none are provided
             print 'GP: ...training variable ', i_task_var
             ### INITIALIZE (hyper)parameters by -1
             d = X.shape[1]
                 
             h = hyper_seed[i_task_var]
-            init = h*np.ones((d,1))
+            init = h * np.ones((d,1))
             loghyper_var_i = np.array([[h], [h]])
             loghyper_var_i = np.vstack((init, loghyper_var_i))[:,0]
             print 'initial hyperparameters: ', np.exp(loghyper_var_i)
@@ -264,8 +318,13 @@ def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_
             loghyper_var_i = gpr.gp_train(loghyper_var_i, covfunc, X_subsample, y_task_var)
             print 'trained hyperparameters: ',np.exp(loghyper_var_i)
             loghyper.append(loghyper_var_i)
+        else:
+            h = hyper_seed[i_task_var]
+            init = h * np.ones((1,d)) 
+            loghyper.append(init)
 
         ## PREDICTION precomputation
+       #IPython.embed()
         alphas.append(gp_pred_precompute_alpha(loghyper[i_task_var], covfunc, X, y))
     return alphas, loghyper
 
@@ -309,7 +368,7 @@ def gp_correct_poses_fast(alphas, state_train, poses_test, state_test, loghyper=
         res = gp_pred_fast(loghyper_var_i, covfunc, X, alpha, Xstar) # get predictions for unlabeled data ONLY
         MU[:,i_task_var] = res
 
-    est_gt_poses_test = apply_pose_error(poses_test, MU)
+    est_gt_poses_test = apply_pose_error(poses_test, MU, euler_representation=True)
 
     return est_gt_poses_test
 
@@ -368,7 +427,7 @@ def gp_correct_poses(gt_poses_train, poses_train, state_train, poses_test, state
     est_gt_poses_test = apply_pose_error(poses_test, MU)
     return est_gt_poses_test
 
-def plot_componentwise_residuals(residuals, poses, state_space_grid=3, n_components=1, cv_type='diag'):
+def plot_componentwise_residuals(residuals, poses, state_space_grid=1, n_components=1, cv_type='diag', hist_n_bins=50):
 
     # for now, plot along x,y plane    
     n_dim = residuals.shape[1]
@@ -401,7 +460,6 @@ def plot_componentwise_residuals(residuals, poses, state_space_grid=3, n_compone
     hist_data = {}
     means = []
     covs = []
-    hist_n_bins = 100
     
     for j in xrange(n_dim):     
         #IPython.embed()
@@ -567,4 +625,9 @@ def print_formatted_error_stat(error):
 	for (mean, std) in zip(np.mean(error, axis=0).tolist(), np.std(error, axis=0).tolist()):
 		error_stat += str(mean) + " +/- " + str(std) + "\t"
 	print error_stat
+    
+def expectation_x_given_y_xhat_numerator(sample_poses, target_poses, loghyper, covariance):
+    x_est = sample_poses
+    x_meas = sample_poses
+    y = target_poses
 

@@ -8,6 +8,7 @@
      <base>base_link_R</base>   
      <effector>grasper1_R</effector>
    </manipulator>
+
   <AttachedSensor name="myflashlaser">
     <link>0_link</link>
     <translation>-0.039 0.245 0.027</translation>
@@ -15,9 +16,9 @@
     <sensor type="BaseFlashLidar3D">
       <maxrange>1.0</maxrange>
       <scantime>0.01</scantime>
-      <KK>160 120 160 120</KK>
-      <width>320</width>
-      <height>240</height>
+      <KK>32 24 32 24</KK>
+      <width>64</width>
+      <height>48</height>
       <color>1 1 0</color>
     </sensor>
   </AttachedSensor>

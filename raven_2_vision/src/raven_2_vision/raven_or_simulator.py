@@ -218,7 +218,7 @@ class RavenSimulator:
         self.sensor = self.env.GetSensors()[0]
         self.sensor.Configure(rave.Sensor.ConfigureCommand.PowerOn)
         self.sensor.Configure(rave.Sensor.ConfigureCommand.RenderDataOn)
-        
+        self.olddata = self.sensor.GetSensorData(rave.Sensor.Type.Laser)
         #self.env.SetViewer('qtcoin')
         #self.updateOpenraveJoints('L', self.initJoints, self.initGrasp)
         #depth_im = self.getSensorData(disp=disp)
@@ -306,8 +306,11 @@ class RavenSimulator:
         return joints, joints_array_indices
 
 
-    def getExpectedMeasurement(self, pose, grasp=1.2, arm=raven_constants.Arm.Left, disp=False):
+    def getExpectedMeasurement(self, pose, grasp=None, arm=raven_constants.Arm.Left, disp=False):
         """ Transforms the simulated Raven by the expected pose and raycasts to get the expected measurement"""
+        if grasp is None:
+            grasp = self.initGrasp
+        
         joints = invArmKin(arm, pose, grasp)
         success = self.updateOpenraveJoints(arm, joints, grasp)
         if success:
@@ -319,15 +322,15 @@ class RavenSimulator:
         return None
         
     def getSensorData(self, disp=False):
-        start = time.clock()
         max_range = 1.0
-        olddata = self.sensor.GetSensorData(rave.Sensor.Type.Laser)
         
+        olddata = self.sensor.GetSensorData(self.sensor.Type.Laser)
         while True:
             data = self.sensor.GetSensorData(self.sensor.Type.Laser)
             if data.stamp != olddata.stamp:
                 break
-            time.sleep(0.001)
+            time.sleep(0.005)
+        
         # get points from data buffer    
         points = data.ranges
         invalid_inds = abs((points**2).sum(axis=1)-max_range**2)<1e-3
@@ -346,7 +349,6 @@ class RavenSimulator:
         depth_im = np.zeros((IM_H, IM_W))
         for i in range(points_proj.shape[1]):
             p = points_proj[:,i]
-            #IPython.embed()
             
             # make sure point lies within image, then place in buffer
             if p[0] >= 0 and p[0] < IM_W and p[1] >= 0 and p[1] < IM_H:

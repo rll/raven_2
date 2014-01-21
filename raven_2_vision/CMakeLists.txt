@@ -16,6 +16,18 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+# set the openscenegraph libraries
+set(OSG_LIBRARIES osg osgViewer OpenThreads osgDB osgGA osgUtil)       
+
+# include other library headers
+include_directories(
+  SYSTEM  
+  ${Boost_INCLUDE_DIRS}
+  ${OpenRAVE_INCLUDE_DIRS}
+  ${OSG_INCLUDE_DIRS}
+  ${EIGEN_INCLUDE_DIRS}
+)
+
 #uncomment if you have defined messages
 #rosbuild_genmsg()
 #uncomment if you have defined services
@@ -28,7 +40,7 @@ rosbuild_add_boost_directories()
 
 #common commands for building c++ executables and libraries
 rosbuild_add_library(${PROJECT_NAME} src/raven_vision.cpp src/config.cpp src/position_error_table.cpp)
-target_link_libraries(${PROJECT_NAME} boost_program_options)
+target_link_libraries(${PROJECT_NAME} boost_program_options, ${OSG_LIBRARIES})
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 

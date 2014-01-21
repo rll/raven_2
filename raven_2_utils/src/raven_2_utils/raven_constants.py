@@ -66,3 +66,17 @@ class GripperTape:
 
 class Services:
     isFoamGrasped = 'thresh_red'
+    
+class Kinect:
+    width = 640
+    height = 480
+    
+class RavenDataKeys:
+    CAM_ROBOT_TF_KEY = 'camera_to_robot_tf'
+    CAM_POSE_KEY = 'camera_poses'
+    CAM_TS_KEY ='camera_ts'
+    ROBOT_POSE_KEY = 'robot_poses'
+    ROBOT_JOINT_KEY = 'robot_joints'
+    ROBOT_TS_KEY = 'robot_ts'
+    CONVERTED_KEY = 'converted'
+    RAVEN_DATA_KEYS = [CAM_ROBOT_TF_KEY, CAM_POSE_KEY, CAM_TS_KEY, ROBOT_POSE_KEY, ROBOT_JOINT_KEY, ROBOT_TS_KEY, CONVERTED_KEY]
