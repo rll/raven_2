@@ -10,6 +10,8 @@ import roslib
 roslib.load_manifest('raven_2_utils')
 import rospy
 
+import tfx
+
 class StereoClick:
     StereoName = 'stereo_points_3d'
 
@@ -70,6 +72,10 @@ class Services:
 class Kinect:
     width = 640
     height = 480
+    
+class HomePose:
+    Left = tfx.pose([-.03,-.02,-.135],tfx.tb_angles(-90,90,0))
+    Right = tfx.pose([-.12,-.02,-.135],tfx.tb_angles(-90,90,0))
     
 class RavenDataKeys:
     CAM_ROBOT_TF_KEY = 'camera_to_robot_tf'

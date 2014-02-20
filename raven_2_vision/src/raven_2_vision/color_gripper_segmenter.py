@@ -50,7 +50,7 @@ ORANGE_UPPER = (35, 255, 255)
 # left gripper
 PURPLE_LOWER = (125, 40, 100)
 PURPLE_UPPER = (190, 255, 255)
-BLUE_LOWER = (105, 90, 120)
+BLUE_LOWER = (105, 90, 85)
 BLUE_UPPER = (125, 255, 255)
 
 # TEMP: since only for one gripper at a time

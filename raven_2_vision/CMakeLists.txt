@@ -40,9 +40,8 @@ rosbuild_add_boost_directories()
 
 #common commands for building c++ executables and libraries
 rosbuild_add_library(${PROJECT_NAME} src/raven_vision.cpp src/config.cpp src/position_error_table.cpp)
-target_link_libraries(${PROJECT_NAME} boost_program_options, ${OSG_LIBRARIES})
-#rosbuild_add_boost_directories()
-#rosbuild_link_boost(${PROJECT_NAME} thread)
+rosbuild_link_boost(${PROJECT_NAME} program_options thread)
+target_link_libraries(${PROJECT_NAME} ${OSG_LIBRARIES})
 
 rosbuild_find_ros_package(dynamic_reconfigure)
 include(${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)

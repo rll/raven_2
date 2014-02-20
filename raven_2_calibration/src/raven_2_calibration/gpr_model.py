@@ -22,6 +22,7 @@ import pylab as pl
 from transformations import euler_from_matrix, euler_matrix, quaternion_from_matrix
 
 import csv
+import os
 from operator import itemgetter
 
 import IPython
@@ -180,13 +181,7 @@ class RavenErrorModel(object):
             robot_pose_ind = get_robot_pose(ts_pose[0], data[RavenDataKeys.ROBOT_POSE_KEY])
             ts_robot = data[RavenDataKeys.ROBOT_POSE_KEY][robot_pose_ind][0] - ts_start
             robot_pose_robot_frame = data[RavenDataKeys.ROBOT_POSE_KEY][robot_pose_ind][1]
-
-            #Camera Outliers
-            #if nlg.norm(prev_cam_pose[:3,3]-camera_pose_robot_frame[:3,3]) > 0.025:
-               # continue
-                        
-            #robot_pose_robot_frame[:3,3] = pose_avg_robot; 
-            # rough way to remove some camera outliers                
+          
             
             if i % subsampleRate == 0:
                 if i < n_training:
@@ -230,6 +225,21 @@ class RavenErrorModel(object):
         
         return out_test_data, out_train_data
     
+    def loadData(self, directory, armSide, subsampleRate=None):
+        if armSide not in ARMS:
+            print "ERROR: Illegal arm side provided. Acceptable values are:"
+            for arm in ARMS:
+                print "\t" + arm
+            return
+        
+        pickleFiles = []
+        for dirName, dirNames, fileName in os.walk(directory):
+            fileRoot, fileExtension = os.path.splitext(fileName)
+            if fileExtension == '.pkl':
+                pickleFiles.append(fileName)
+                
+        IPython.embed()
+            
     def loadTrainingData(self, filename, arm_side, subsampleRate=None):
         """
         Load a raw data file from data_recorder for building a new GPR model. Parititions the data into training
@@ -273,7 +283,7 @@ class RavenErrorModel(object):
             print "ERROR:", e
             print "Failed to load raw data file " + filename
     
-    def train(self, plot=True, opt_full_tf=False, loghyper=None, cross_validate=True):
+    def train(self, plot=True, opt_full_tf=True, loghyper=None, cross_validate=True, train_hyper=True, hyper_seed=None):
         """
         Compute a systematic and residual error correction model for each of the training data sets loaded
         """
@@ -292,11 +302,9 @@ class RavenErrorModel(object):
             if self.training_mode == CAM_TO_FK:
                 target_poses = robot_poses
                 input_poses = camera_poses
-                test_input_poses = test_camera_poses
             else:
                 target_poses = camera_poses
                 input_poses = robot_poses
-                test_input_poses = test_robot_poses
             
             input_state_vector = self.generatePoseVector(input_poses) # convert the poses to state vector for training
             orig_pose_error = calc_pose_error(target_poses, input_poses)
@@ -313,7 +321,7 @@ class RavenErrorModel(object):
                 target_trans = np.array([pose[:3,3] for pose in target_poses])
                 input_trans = np.array([pose[:3,3] for pose in input_poses])
                 sys_correction_tf = estimateSystematicOffsetRANSAC(input_trans, target_trans)
-                        
+            
             # systematic corrected robot poses for training data
             self.train_data[arm_side]['sys_correction_tf'] = sys_correction_tf
             sys_predicted_poses = [sys_correction_tf.dot(input_pose) for input_pose in input_poses]
@@ -328,8 +336,6 @@ class RavenErrorModel(object):
             print
             
             # 3. cross-validate to find the max-likelihood parameters 
-            train_hyper = True
-            hyper_seed = None
             if cross_validate:
                 print 'Running cross-validation...'
                 test_hyperparams = [-0.5, -1, -1.5, -2, -3, -5, -7.5, -10]

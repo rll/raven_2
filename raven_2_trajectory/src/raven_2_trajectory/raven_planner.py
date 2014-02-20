@@ -193,7 +193,7 @@ class RavenPlanner:
         self.refFrame = raven_constants.Frames.Link0
 
         self.env = rave.Environment()
-        self.env.SetViewer('qtcoin')
+        #self.env.SetViewer('qtcoin')
 
         rospy.loginfo('Before loading model')
         if withWorkspace:
@@ -203,8 +203,7 @@ class RavenPlanner:
         #ravenFile = '/home/gkahn/ros_workspace/RavenDebridement/models/myRaven.xml'
         self.env.Load(ravenFile)
         rospy.loginfo('After loading model')
-
-
+        
         self.robot = self.env.GetRobots()[0]
         
         self.invKinArm = dict()
@@ -253,22 +252,23 @@ class RavenPlanner:
         self.trajopt_pub = rospy.Publisher('trajopt',TrajoptCall)
         self.trajopt_marker_pub = rospy.Publisher('trajopt_marker',Marker)
         
-        # setup variables for kinect constraint generation
-        self.cloud_id = 0
-        self.num_cd_components = 150
-        self.decimation_rate = 0.15
-        self.geom_type = 'cd'
-        self.kinect_topic = '/camera/depth/points'
-        self.kinect_depth_frame = '/camera_depth_optical_frame'
-        self.robot_frame = '/world'
-        self.cd_body_names = []
+        if withWorkspace:
+            # setup variables for kinect constraint generation
+            self.cloud_id = 0
+            self.num_cd_components = 150
+            self.decimation_rate = 0.15
+            self.geom_type = 'cd'
+            self.kinect_topic = '/camera/depth/points'
+            self.kinect_depth_frame = '/camera_depth_optical_frame'
+            self.robot_frame = '/world'
+            self.cd_body_names = []
         
-        # get transform to apply to cloud - it is in the kinect frame by default
-        self.T_kinect_to_robot = tfx.lookupTransform(self.robot_frame, self.kinect_depth_frame, wait=20)
-        
-        workspace_file = rospy.get_param('workspace_constraints')
-        workspace_file = os.path.join(roslib.packages.get_pkg_subdir('raven_2_params', 'data'), workspace_file)
-        self.load_workspace(workspace_file)
+            # get transform to apply to cloud - it is in the kinect frame by default
+            self.T_kinect_to_robot = tfx.lookupTransform(self.robot_frame, self.kinect_depth_frame, wait=20)
+            
+            workspace_file = rospy.get_param('workspace_constraints')
+            workspace_file = os.path.join(roslib.packages.get_pkg_subdir('raven_2_params', 'data'), workspace_file)
+            self.load_workspace(workspace_file)
                 
         self.lock = threading.RLock()
         if thread:
@@ -429,9 +429,9 @@ class RavenPlanner:
         else:
             jointPositions += [grasp/2, -grasp/2]
 
-        print 'Setting joints'
+        rospy.loginfo('Setting joints')
         self.robot.SetJointValues(jointPositions, raveJointTypes)
-        print 'Done setting joints'
+        rospy.loginfo('Done setting joints')
 
     def jointTrajToDicts(self, armName, jointTrajArray, **kwargs):
         """
@@ -725,7 +725,7 @@ class RavenPlanner:
             while self.trajRequest[armName] and not rospy.is_shutdown():
                 rospy.sleep(0.05)
             print 'received arm {} traj'.format(armName) 
-            return self.deltaPoseTraj[armName]   
+        return self.deltaPoseTraj[armName]   
             #return self.poseTraj[armName]
         
     getPoseTrajectory = getTrajectoryFromPose

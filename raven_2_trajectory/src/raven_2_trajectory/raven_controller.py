@@ -290,53 +290,10 @@ class RavenController():
                     t = 1
                 else:
                     t = min((durFromStart).to_sec() / stage.duration.to_sec(), 1)
-               # print "Sending command", self.arm, t, stage.name, stage.duration, stageIndex
+                
                 cmd = RavenCommand()
                 cmd.pedal_down = True
-            
                 stage.cb(cmd,t)
-                """
-            now = rospy.Time.now()
-            durFromStart = now - startTime
-               
-            # when a stage appears, set startTime
-            if numStages == 0 and len(stages) > 0:
-                startTime = rospy.Time.now()
-    
-            numStages = len(stages)
-            stageBreaks = Stage.stageBreaks(stages)
-            now = rospy.Time.now()
-                
-            header.stamp = now
-            cmd.header = header
-    
-            if numStages > 0:
-                durFromStart = now - startTime
-                stageIndex = 0
-                    
-                # find new stage
-                for idx,stageBreak in enumerate(stageBreaks):
-                    if stageBreak > durFromStart:
-                        stageIndex = idx-1
-                        break
-                else:
-                    clearStageQueue.put({'clearStages' : True})
-                    continue
-                # get the index of the stage to execute
-                stageIndex = min(stageIndex,lastStageIndex + 1)
-                lastStageIndex = stageIndex
-                stage = stages[stageIndex]
-                    
-                if stage.duration.is_zero():
-                    t = 1
-                else:
-                    t = (durFromStart - stageBreaks[stageIndex]).to_sec() / stage.duration.to_sec()
-                print "Sending command", t
-                cmd = RavenCommand()
-                cmd.pedal_down = True
-                
-                stage.cb(cmd,t)
-                   """
             else:
                 # no stages
                 #cmd = self.ravenPauseCmd

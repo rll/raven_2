@@ -54,6 +54,7 @@ def withinBounds(ps0, ps1, transBound, rotBound, transFrame=None, rotFrame=None)
     return True
 
 
+
 def deltaPose(currPose, desPose, posFrame=None, rotFrame=None):
     """
     Returns pose0 - pose1
@@ -64,6 +65,8 @@ def deltaPose(currPose, desPose, posFrame=None, rotFrame=None):
     
     currPos, desPos = currPose.position, desPose.position
     currRot, desRot = currPose.orientation, desPose.orientation
+
+    print posFrame, desPoseFrame
 
     if posFrame is not None and currPoseFrame is not None:
         tf_currPos_to_posFrame = tfx.lookupTransform(posFrame, currPoseFrame, wait=10)

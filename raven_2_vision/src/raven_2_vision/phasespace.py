@@ -41,6 +41,7 @@ SCREW_ROTATION = np.array([SCREW_ROLL_0LINK, SCREW_PITCH_0LINK, SCREW_YAW_0LINK]
 
 SCREW_FRAME = 'screw'
 PHASESPACE_FRAME = 'phasespace'
+PHASESPACE_GRIPPER_FRAME = 'phasespace_gripper'
 
 '''
 Created on Feb 13, 2014
@@ -146,9 +147,11 @@ class PhasespaceTracker(object):
                 # get the gripper pose (in phasespace basis)
                 if len(gripperMarkers) == 3:
                     gTrans, gRot = self.poseFromMarkers(gripperMarkers, GRIPPER_MARKER_IDS, rotate=True)
+                    
                     gripperPosePhasespace = tfx.pose(gTrans, gRot, frame=PHASESPACE_FRAME, stamp=self.messageTime)
-                    #self.gripper_pose_pub.publish(gripperPosePhasespace.msg.PoseStamped())
-                    self.broadcaster.sendTransform(gTrans, gRot, self.messageTime, 'test_gripper', PHASESPACE_FRAME)
+                    self.gripper_pose_pub.publish(gripperPosePhasespace.msg.PoseStamped())
+                    
+                    self.broadcaster.sendTransform(gTrans, gRot, self.messageTime, PHASESPACE_GRIPPER_FRAME, PHASESPACE_FRAME)
                 
                 # get the registration marker pose (in phasespace basis)
                 if self.register and len(registrationMarkers) == 3:

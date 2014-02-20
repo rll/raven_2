@@ -185,34 +185,52 @@ def apply_pose_error(tf1s, errors, euler_representation=True):
 
 # Finds tf such that gt_pose = tf.dot(pose)
 def sys_correct_tf(gt_poses, poses, tf_init):
-	x_init = tf_to_vec(tf_init)
+    x_init = tf_to_vec(tf_init)
 
-	# Objective function:
-	def f_opt (x):
-		  n_poses = len(gt_poses)
-		  err_vec = np.zeros((0, 1))
-		  for i in range(n_poses):
-		      err_tf = vec_to_tf(x).dot(poses[i]).dot(tf_inv(gt_poses[i])) - np.eye(4)
-		      #err_tf = vec_to_tf(x).dot(poses[i]) - gt_poses[i]
-		      err_vec = np.r_[err_vec, tf_to_vec(err_tf)]
-		  ret = nlg.norm(err_vec)
-		  return ret
+    # Objective function:
+    def f_opt (x):
+        n_poses = len(gt_poses)
+        err_vec = np.zeros((0, 1))
+        for i in range(n_poses):
+            err_tf = vec_to_tf(x).dot(poses[i]).dot(tf_inv(gt_poses[i])) - np.eye(4)
+            #err_tf = vec_to_tf(x).dot(poses[i]) - gt_poses[i]
+            err_vec = np.r_[err_vec, tf_to_vec(err_tf)]
+        ret = nlg.norm(err_vec)
+        return ret
 
-	# Rotation constraint:
-	def rot_con (x):
-		  R = vec_to_tf(x)[0:3,0:3]
-		  err_mat = R.T.dot(R) - np.eye(3)
-		  ret = nlg.norm(err_mat)
-		  return ret
+    # Rotation constraint:
+    def rot_con (x):
+        R = vec_to_tf(x)[0:3,0:3]
+        err_mat = R.T.dot(R) - np.eye(3)
+        ret = nlg.norm(err_mat)
+        return ret
 
-	(X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], iter=50, full_output=1)
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], iter=50, full_output=1)
 
-	#print "Function value at optimum: ", fx
+    print "Function value at optimum: ", fx
+    IPython.embed()
 
-	tf = vec_to_tf(np.array(X))
-	return tf
+    tf = vec_to_tf(np.array(X))
+    return tf
 
 def estimateSystematicOffsetRANSAC(A, B):
+    input_columns = [0, 1, 2]
+    output_columns = [3, 4, 5]
+    model = LsqModel(input_columns, output_columns);
+
+    data = np.c_[A, B]
+#    data = data.T
+    points_per_model = 100
+    iterations = 200
+    outlier_thresh = 0.00005
+    min_points_accept = data.shape[0]*0.6
+
+    vec = ransac.ransac(data, model, points_per_model, iterations, outlier_thresh, min_points_accept, debug=True)
+    pose = tfx.pose(vec[:3], vec[3:])
+    tf = np.array(pose.matrix)
+    return tf
+
+def estimateLinearRegressor(A, B):
     input_columns = [0, 1, 2]
     output_columns = [3, 4, 5]
     model = LsqModel(input_columns, output_columns);
