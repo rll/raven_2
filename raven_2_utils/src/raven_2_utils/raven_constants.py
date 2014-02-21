@@ -80,8 +80,10 @@ class HomePose:
 class RavenDataKeys:
     CAM_ROBOT_TF_KEY = 'camera_to_robot_tf'
     CAM_POSE_KEY = 'camera_poses'
+    CAM_GRAD_KEY = 'camera_gradients'
     CAM_TS_KEY ='camera_ts'
     ROBOT_POSE_KEY = 'robot_poses'
+    ROBOT_GRAD_KEY = 'robot_gradients'
     ROBOT_JOINT_KEY = 'robot_joints'
     ROBOT_TS_KEY = 'robot_ts'
     CONVERTED_KEY = 'converted'

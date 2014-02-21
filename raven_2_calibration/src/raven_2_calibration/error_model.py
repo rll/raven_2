@@ -35,7 +35,7 @@ import tf.transformations as tft
 N_JOINTS = 7
 N_DOF = 6
 NO_SUBSAMPLING = 1
-TRAINING_SUBSAMPLE = 20
+TRAINING_SUBSAMPLE = 100
 TRAINING_RATIO = 0.75
 VALIDATION_RATIO = 0.75
 
@@ -246,7 +246,8 @@ class RavenErrorModel(object):
             # break up into training / test sets
             numDataPoints = len(self.rawData[armName][self.dataKeys[0]])
             for i in range(numDataPoints):
-                for key in self.dataKeys:
+                dataKeysWithGradient = self.dataKeys + [RavenDataKeys.ROBOT_GRAD_KEY, RavenDataKeys.CAM_GRAD_KEY]
+                for key in dataKeysWithGradient:
                     if i % trainingSubsample == 0:
                         self.trainingData[armName][key].append(self.rawData[armName][key][i])
                     else:
@@ -267,45 +268,47 @@ class RavenErrorModel(object):
             
             # 1. original pose error between camera and FK
             trainingCameraPoses = self.trainingData[armName][RavenDataKeys.CAM_POSE_KEY]
+            trainingCameraGradients = self.trainingData[armName][RavenDataKeys.CAM_GRAD_KEY]
             trainingRobotPoses = self.trainingData[armName][RavenDataKeys.ROBOT_POSE_KEY]
+            trainingRobotGradients = self.trainingData[armName][RavenDataKeys.ROBOT_GRAD_KEY]
+            
             testingCameraPoses = self.testingData[armName][RavenDataKeys.CAM_POSE_KEY]
+            testingCameraGradients = self.testingData[armName][RavenDataKeys.CAM_GRAD_KEY]
             testingRobotPoses = self.testingData[armName][RavenDataKeys.ROBOT_POSE_KEY]
+            testingRobotGradients = self.testingData[armName][RavenDataKeys.ROBOT_GRAD_KEY]
             
             # set the target and samples based on the training mode
             if self.trainingMode == CAM_TO_FK:
                 targetPoses = trainingRobotPoses
                 inputPoses = trainingCameraPoses
+                inputGradients = trainingCameraGradients
             else:
                 targetPoses = trainingCameraPoses
                 inputPoses = trainingRobotPoses
-            
-            numDim = 12
-            numTrainingPoses = len(targetPoses)
-            inputStateVector = np.array([np.reshape(v, (1,16)) for v in targetPoses])
-            inputStateVector = inputStateVector[:,0:12]
+                inputGradients = trainingRobotGradients
             
             # original error
             (meanError, medianError, rmsError) = self.componentwiseError(inputPoses, targetPoses)
+            print '\n'
             print 'Raw data error:'
             print 'Mean:', meanError
             print 'Median:', medianError
             print 'RMS:', rmsError
+            print '\n'
             
             # 2. calculate rigid offset
-            n_dim = 12
-            A_np = np.zeros((n_dim,0))
+            numDim = 12
+            targetStateMatrix = np.zeros((0,numDim))
             for pose in targetPoses:
-                A_np = np.c_[A_np, np.reshape(pose[:3,:], (12,1))]
+                targetStateMatrix = np.r_[targetStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
             
-            B_np = np.zeros((n_dim,0))
+            inputStateMatrix = np.zeros((0,numDim))
             for pose in inputPoses:
-                B_np = np.c_[B_np, np.reshape(pose[:3,:], (12,1))]
-        
-            A_np = A_np.T
-            B_np = B_np.T
+                inputStateMatrix = np.r_[inputStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
             
             #rigidCorrection = estimateRigidCorrectionRANSAC(targetPoses, inputPoses)
-            rigidCorrection = transformationEstimationSVD(B_np, A_np, 4)
+            translationOffset = 4
+            rigidCorrection = transformationEstimationSVD(inputStateMatrix, targetStateMatrix, translationOffset)
             
             # systematic corrected robot poses for training data
             self.trainingData[armName]['rigid_correction'] = rigidCorrection
@@ -318,8 +321,8 @@ class RavenErrorModel(object):
             print 'Mean:', meanError
             print 'Median:', medianError
             print 'RMS:', rmsError
-
-            IPython.embed()
+            print '\n'
+            #IPython.embed()
 
             # 3. cross-validate to find the max-likelihood parameters
             """
@@ -332,19 +335,25 @@ class RavenErrorModel(object):
             """
                 
             # 4. calculate residual error correction function
-            alphas, hyperparams[armName] = gp_correct_poses_precompute(targetPoses, sysPredictedTrainingPoses, inputStateVector, trainHyper, hyperSeed=hyperSeed)    
+            inputStateMatrix = np.zeros((0,numDim))
+            inputGradientMatrix = np.zeros((0,numDim))
+            for pose in sysPredictedTrainingPoses:
+                inputStateMatrix = np.r_[inputStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
+            for grad in inputGradients:
+                inputGradientMatrix = np.r_[inputGradientMatrix, np.reshape(grad[:3,:], (numDim,1)).T]
+            inputStateMatrix = np.c_[inputStateMatrix, inputGradientMatrix]
             
+            alphas, hyperparams[armName] = gp_train(inputStateMatrix, targetStateMatrix, train_hyper=True, hyper_seed=hyperSeed)    
             # systematic and GP corrected robot poses for training data
-            gpPredictedTrainingPoses = gp_correct_poses_fast(alphas, inputStateVector, sysPredictedTrainingPoses, inputStateVector, hyperparams[armName])
+            gpPredictedTrainingPoses = gp_predict_poses(alphas, inputStateMatrix, inputStateMatrix, hyperparams[armName])
             
-            # VERBOSE
-            # check error against same training data for sanity check
-            gp_pose_error = calc_pose_error(target_poses, gp_predicted_poses)
-            print "systematic and GP corrected pose error for training data"
-            print "mean", np.mean(gp_pose_error, axis=0)
-            print "std", np.std(gp_pose_error, axis=0)
-            print
-
+            # original error
+            (meanError, medianError, rmsError) = self.componentwiseError(sysPredictedTrainingPoses, targetPoses)
+            print 'GP data error:'
+            print 'Mean:', meanError
+            print 'Median:', medianError
+            print 'RMS:', rmsError
+            
             # update the internal models
             self.trainingData[armName]["alphas"] = alphas
             self.trainingData[armName]["loghyper"] = hyperparams[armName]
@@ -355,7 +364,7 @@ class RavenErrorModel(object):
                 camera_ts = self.trainingData[arm_side][RavenDataKeys.CAM_TS_KEY]
                 plot_translation_poses_nice(camera_ts, target_poses, camera_ts, input_poses, sys_predicted_poses, gp_predicted_poses, split=False, arm_side=arm_side)
 
-            trainingErrors[armName] = [orig_pose_error, sys_pose_error, gp_pose_error]
+            #trainingErrors[armName] = [orig_pose_error, sys_pose_error, gp_pose_error]
             
         return trainingErrors
     

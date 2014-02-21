@@ -307,6 +307,118 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # gt_poses_train (list of n_data homogeneous TF matrices)
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
+def gp_train(input_state, target_state, train_hyper=True, hyper_seed=None, subsample=200):
+    n_input_vars = input_state.shape[1]
+    n_output_vars = target_state.shape[1]
+    
+    alphas = []
+    loghyper = hyper_seed
+    
+    if train_hyper:
+        loghyper = []
+    if hyper_seed == None or hyper_seed.shape[1] != n_input_vars:
+        hyper_seed = [-1] * n_input_vars
+    
+    # sample X for hyperparam training
+    n_samples = input_state.shape[0]
+
+    ## data from a noisy GP
+    X = input_state
+    X_subsample = np.empty((0, n_input_vars))
+    y_subsample = np.empty((0, n_output_vars))
+    for i in range(n_samples):
+        if i % subsample == 0:
+            X_subsample = np.r_[X_subsample, input_state[i:(i+1),:]]
+            y_subsample = np.r_[y_subsample, target_state[i:(i+1),:]]
+            
+    ## DEFINE parameterized covariance funcrion
+    covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
+            
+    # sample y for y training
+    for i_output_var in range(n_output_vars):
+        ### sample observations from the GP
+        y_output_var = y_subsample[:,i_output_var]
+        y = target_state[:,i_output_var]
+        
+        ## SET (hyper)parameters
+        if train_hyper:
+            ## LEARN the hyperparameters if none are provided
+            print 'GP: ...training variable ', i_output_var
+            ### INITIALIZE (hyper)parameters by -1
+            d = X.shape[1]
+                
+            h = hyper_seed[i_output_var]
+            init = h * np.ones((d,1))
+            loghyper_var_i = np.array([[h], [h]])
+            loghyper_var_i = np.vstack((init, loghyper_var_i))[:,0]
+            
+            print 'initial hyperparameters: ', np.exp(loghyper_var_i)
+            ### TRAINING of (hyper)parameters
+            #  IPython.embed()
+            loghyper_var_i = gpr.gp_train(loghyper_var_i, covfunc, X_subsample, y_output_var)
+            print 'trained hyperparameters: ',np.exp(loghyper_var_i)
+            loghyper.append(loghyper_var_i)
+        else:
+            h = hyper_seed[i_output_var]
+            init = h * np.ones((1,d)) 
+            loghyper.append(init)
+
+        ## PREDICTION precomputation
+        alphas.append(gp_pred_precompute_alpha(loghyper[i_output_var], covfunc, X, y))
+    return alphas, loghyper
+
+
+# alphas (list of n_task_vars as returned by gp_correct_poses_precompute())
+# state_train (np.array of shape (n_data x d))
+# poses_test (list of n_test homegeneous TF matrices)
+# state_test (np.array of shape (n_test x d))
+def gp_predict_poses(alphas, state_train, state_test, loghyper=None, use_same=False):
+    n_test_samples = state_test.shape[0]
+    n_input_vars = state_test.shape[1]
+    n_output_vars = len(alphas)
+    
+    predicted_mean = np.empty((n_test_samples, n_output_vars))
+    
+    for i_output_var in range(n_output_vars):
+        ## data from a noisy GP
+        X = state_train
+
+        ## DEFINE parameterized covariance funcrion
+        covfunc = ['kernels.covSum', ['kernels.covSEiso','kernels.covNoise']]
+        
+        ## SET (hyper)parameters if none provided
+        loghyper_var_i = np.array([np.log(1), np.log(1), np.log(np.sqrt(0.01))])
+        if loghyper != None:
+            if use_same:
+                loghyper_var_i = loghyper
+            else:
+                loghyper_var_i = loghyper[i_output_var] 
+                
+        ### precomputed alpha
+        alpha = alphas[i_output_var]
+
+        ### TEST POINTS
+        Xstar = state_test
+
+        ## PREDICTION 
+        print 'GP: ...prediction'
+        predicted_var = gp_pred_fast(loghyper_var_i, covfunc, X, alpha, Xstar) # get predictions for unlabeled data ONLY
+        predicted_mean[:,i_output_var] = predicted_var
+
+    output_poses = []
+    for i in range(predicted_mean.shape[0]):
+        pose = np.reshape(predicted_mean[i,:], (3,4))
+        R_unorth = pose[:3,:3]
+        U, s, V = np.linalg.svd(R_unorth)
+        pose[:3,:3] = U.dot(V)
+        pose = np.r_[pose, np.array([[0, 0, 0, 1]])]
+        output_poses.append(pose)
+
+    return output_poses
+
+# gt_poses_train (list of n_data homogeneous TF matrices)
+# poses_train (list of n_data homogeneous TF matrices)
+# state_train (np.array of shape (n_data x d))
 def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_hyper=True, hyper_seed=None, subsample=1):
     n_task_vars = pose_error.shape[1]
     alphas = []
