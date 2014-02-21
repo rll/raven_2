@@ -35,7 +35,7 @@ import tf.transformations as tft
 N_JOINTS = 7
 N_DOF = 6
 NO_SUBSAMPLING = 1
-TRAINING_SUBSAMPLE = 100
+TRAINING_SUBSAMPLE = 20
 TRAINING_RATIO = 0.75
 VALIDATION_RATIO = 0.75
 
@@ -92,6 +92,22 @@ def comp_array(x,y):
         return True
    
     return False
+
+class PredictionError(object):
+    def __init__(self, medianError, meanError, rmsError, maxError):
+        self.medianError = medianError
+        self.meanError = meanError
+        self.rmsError = rmsError
+        self.maxError = maxError
+        
+    def __str__(self):
+        output = ''
+        output += 'Mean:' + str(self.meanError) + '\n'
+        output += 'Median:' + str(self.medianError) + '\n'
+        output += 'RMS:' + str(self.rmsError) + '\n'
+        output += 'Max:' + str(self.maxError) + '\n'
+        return output
+        
 
 class RavenErrorModel(object):
     
@@ -163,7 +179,10 @@ class RavenErrorModel(object):
         meanError = np.mean(np.abs(matrixError), axis=0)
         medianError = np.median(np.abs(matrixError), axis=0)
         rmsError = np.sqrt(np.mean(np.square(matrixError), axis=0))
-        return (meanError, medianError, rmsError)
+        maxError = np.max(np.abs(matrixError), axis=0)
+        
+        predictionError = PredictionError(medianError, meanError, rmsError, maxError)
+        return predictionError
     
     def componentwiseError(self, estimatedPoses, truePoses):
         n_poses = len(estimatedPoses)
@@ -188,7 +207,10 @@ class RavenErrorModel(object):
         meanError = np.mean(np.abs(combinedError), axis=0)
         medianError = np.median(np.abs(combinedError), axis=0)
         rmsError = np.sqrt(np.mean(np.square(combinedError), axis=0))
-        return (meanError, medianError, rmsError)
+        maxError = np.max(np.abs(combinedError), axis=0)
+        
+        predictionError = PredictionError(medianError, meanError, rmsError, maxError)
+        return predictionError
     
     def loadTrainingData(self, directory, armName, trainingSubsample=TRAINING_SUBSAMPLE):
         if armName not in ARMS:
@@ -288,12 +310,10 @@ class RavenErrorModel(object):
                 inputGradients = trainingRobotGradients
             
             # original error
-            (meanError, medianError, rmsError) = self.componentwiseError(inputPoses, targetPoses)
+            originalError= self.componentwiseError(inputPoses, targetPoses)
             print '\n'
             print 'Raw data error:'
-            print 'Mean:', meanError
-            print 'Median:', medianError
-            print 'RMS:', rmsError
+            print originalError
             print '\n'
             
             # 2. calculate rigid offset
@@ -315,14 +335,11 @@ class RavenErrorModel(object):
             sysPredictedTrainingPoses = [rigidCorrection.dot(inputPose) for inputPose in inputPoses]
             self.trainingData[armName]['sys_predicted_poses'] = sysPredictedTrainingPoses
             
-            # original error
-            (meanError, medianError, rmsError) = self.componentwiseError(sysPredictedTrainingPoses, targetPoses)
-            print 'Sys data error:'
-            print 'Mean:', meanError
-            print 'Median:', medianError
-            print 'RMS:', rmsError
+            # rigid correction error
+            sysError = self.componentwiseError(sysPredictedTrainingPoses, targetPoses)
+            print 'Rigid Correction error:'
+            print sysError
             print '\n'
-            #IPython.embed()
 
             # 3. cross-validate to find the max-likelihood parameters
             """
@@ -343,16 +360,15 @@ class RavenErrorModel(object):
                 inputGradientMatrix = np.r_[inputGradientMatrix, np.reshape(grad[:3,:], (numDim,1)).T]
             inputStateMatrix = np.c_[inputStateMatrix, inputGradientMatrix]
             
-            alphas, hyperparams[armName] = gp_train(inputStateMatrix, targetStateMatrix, train_hyper=True, hyper_seed=hyperSeed)    
-            # systematic and GP corrected robot poses for training data
+            # gp training
+            alphas, hyperparams[armName] = gp_train(inputStateMatrix, targetStateMatrix, train_hyper=True, hyper_seed=hyperSeed, subsample=2)    
             gpPredictedTrainingPoses = gp_predict_poses(alphas, inputStateMatrix, inputStateMatrix, hyperparams[armName])
             
-            # original error
-            (meanError, medianError, rmsError) = self.componentwiseError(sysPredictedTrainingPoses, targetPoses)
-            print 'GP data error:'
-            print 'Mean:', meanError
-            print 'Median:', medianError
-            print 'RMS:', rmsError
+            # gp error
+            gpError = self.componentwiseError(gpPredictedTrainingPoses, targetPoses)
+            print 'GP error:'
+            print gpError
+            print '\n'
             
             # update the internal models
             self.trainingData[armName]["alphas"] = alphas
@@ -360,9 +376,9 @@ class RavenErrorModel(object):
             self.trainingData[armName]['training_mode'] = self.trainingMode
 
             # 5. plot the translation poses
-            if False:
-                camera_ts = self.trainingData[arm_side][RavenDataKeys.CAM_TS_KEY]
-                plot_translation_poses_nice(camera_ts, target_poses, camera_ts, input_poses, sys_predicted_poses, gp_predicted_poses, split=False, arm_side=arm_side)
+            if plot:
+                camera_ts = self.trainingData[armName][RavenDataKeys.CAM_TS_KEY]
+                plot_translation_poses_nice(camera_ts, targetPoses, camera_ts, inputPoses, sysPredictedTrainingPoses, gpPredictedTrainingPoses, split=False, arm_side=armName)
 
             #trainingErrors[armName] = [orig_pose_error, sys_pose_error, gp_pose_error]
             

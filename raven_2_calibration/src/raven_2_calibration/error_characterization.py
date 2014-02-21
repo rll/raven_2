@@ -119,6 +119,8 @@ def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, 
     sys_robot_trans = np.array([pose[:3,3] for pose in sys_robot_poses])
     gp_robot_trans = np.array([pose[:3,3] for pose in gp_robot_poses])
 
+    #IPython.embed()
+
     axarr[0].set_title('Errors in the end effector translation estimate for %s arm' %(arm_side), size='large')
     for i in range(3):
         if split:
@@ -307,7 +309,7 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # gt_poses_train (list of n_data homogeneous TF matrices)
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
-def gp_train(input_state, target_state, train_hyper=True, hyper_seed=None, subsample=200):
+def gp_train(input_state, target_state, train_hyper=True, hyper_seed=None, subsample=1):
     n_input_vars = input_state.shape[1]
     n_output_vars = target_state.shape[1]
     
@@ -355,7 +357,7 @@ def gp_train(input_state, target_state, train_hyper=True, hyper_seed=None, subsa
             print 'initial hyperparameters: ', np.exp(loghyper_var_i)
             ### TRAINING of (hyper)parameters
             #  IPython.embed()
-            loghyper_var_i = gpr.gp_train(loghyper_var_i, covfunc, X_subsample, y_output_var)
+            #loghyper_var_i = gpr.gp_train(loghyper_var_i, covfunc, X_subsample, y_output_var)
             print 'trained hyperparameters: ',np.exp(loghyper_var_i)
             loghyper.append(loghyper_var_i)
         else:
