@@ -23,15 +23,22 @@ import ransac
 
 import IPython
 
+class PoseError(object):
+    def __init__(self, matError, transError, rotError):
+        self.matrixError = matError
+        self.translationError = transError
+        self.rotationError = rotError
+
 class LsqModel(object):
-    def __init__(self, input_columns, output_columns):
+    def __init__(self, input_columns, output_columns, translation_offset):
         self.input_columns = input_columns
         self.output_columns = output_columns
+        self.translation_offset = translation_offset
 
     def fit(self, data):
         A = np.vstack(data[:,i] for i in self.input_columns).T
         B = np.vstack(data[:,i] for i in self.output_columns).T
-        tf = transformationEstimationSVD(A, B)
+        tf = transformationEstimationSVD(A, B, self.translation_offset)
         pose = tfx.pose(tf)
         vec = np.r_[pose.position.list, pose.orientation.list].T
         return vec
@@ -42,9 +49,24 @@ class LsqModel(object):
         tf = pose.matrix
         A = np.vstack(data[:,i] for i in self.input_columns)
         B = np.vstack(data[:,i] for i in self.output_columns)
-        B_fit = tf[:3,:3].dot(A) + tf[:3,3];
-        err_per_point = np.sum(np.square(B-B_fit), axis=0).T 
+        
+        A_reshaped = np.zeros((3,0))
+        B_reshaped = np.zeros((3,0))
+        for i in range(A.shape[1]):
+            A_reshaped = np.c_[A_reshaped, np.reshape(A[:,i], (3,4))]
+            B_reshaped = np.c_[B_reshaped, np.reshape(B[:,i], (3,4))]
+        
+        A_ext = np.r_[A_reshaped, np.tile([0,0,0,1],(1,A_reshaped.shape[1]/4))]
+        
+        B_fit = tf.dot(A_ext);
+        B_fit = B_fit[:3,:]
+        
+        err_per_point = np.sum(np.square(B_reshaped-B_fit), axis=0).T 
         err_per_point = err_per_point.A1
+        
+        err_per_point = np.reshape(err_per_point, (err_per_point.shape[0]/4,4)).T
+        err_per_point = np.sum(err_per_point,axis=0)
+      #  IPython.embed()
         return err_per_point
 
 def tf_to_vec(tf):
@@ -147,25 +169,30 @@ def compare_euler_poses(ts, poses0, poses1, l = '--'):
 
 # pose error takes from tf1 to tf0
 # typically, tf0 is ground truth and tf1 is the pose being fixed
-def calc_pose_error(tf0, tf1, euler_representation=True):
-    n_dim = 6
-    n_data = len(tf0) # should be the same for tf1
-    pose_error = np.empty((n_data, n_dim))
+def calculatePoseError(tf0, tf1):
+    numDimMat = 16
+    numDimEul = 6
+    numDimQuat = 7
     
-    for i_data in range(n_data):
-        diff_translation = (tf0[i_data][:3,3] - tf1[i_data][:3,3])
-        diff_rotation = np.eye(4,4)
-        diff_rotation[:3,:3] = tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T)
+    numData = len(tf0) # should be the same for tf1
+    matrixPoseError = np.empty((numData, numDimMat))
+    translationPoseError = np.empty((numData, numDimMat))
+    rotationPoseError = np.empty((numData, numDimMat))
+    
+    
+    for i_data in range(numData):
+        subtractedTau = tf0 - tf1
+        deltaTau = np.lin_alg.inverse(tf0[i_data]).dot(tf1[i_data])
+        diffTranslation = deltaTau[:3,3]
+        diffRotation = np.eye(4,4)
+        diffRotation[:3,:3] = deltaTau[:3,:3]
         
-        diff_rot_rep = quaternion_from_matrix(diff_rotation)
+        diffQuat = quaternion_from_matrix(diffRotation)
+        diffEuler = euler_from_matrix(diffRotation)
         
         # flip quaternions on the wrong side of the hypersphere
-        if diff_rot_rep[3] < 0:
-            diff_rot_rep = -diff_rot_rep
-        diff_rot_rep = diff_rot_rep[:3]
-        
-        if euler_representation:
-            diff_rot_rep = euler_from_matrix(tf0[i_data][:3,:3].dot(tf1[i_data][:3,:3].T))
+        if diffQuat[3] < 0:
+            diffQuat = -diffQuat
             
         pose_error[i_data,:] = np.r_[diff_translation, diff_rot_rep]
     return pose_error
@@ -183,69 +210,33 @@ def apply_pose_error(tf1s, errors, euler_representation=True):
         tf0s.append(tf0)
     return tf0s
 
-# Finds tf such that gt_pose = tf.dot(pose)
-def sys_correct_tf(gt_poses, poses, tf_init):
-    x_init = tf_to_vec(tf_init)
+def estimateRigidCorrectionRANSAC(A, B, pointsPerModel=300, iterations=10, outlierThreshold=0.6, minPointsPercent=0.5):
+    n_dim = 12
+    input_columns = np.linspace(0,11,n_dim)
+    output_columns = np.linspace(12,23,n_dim)
+    translation_offset = 4
+    model = LsqModel(input_columns, output_columns, translation_offset);
 
-    # Objective function:
-    def f_opt (x):
-        n_poses = len(gt_poses)
-        err_vec = np.zeros((0, 1))
-        for i in range(n_poses):
-            err_tf = vec_to_tf(x).dot(poses[i]).dot(tf_inv(gt_poses[i])) - np.eye(4)
-            #err_tf = vec_to_tf(x).dot(poses[i]) - gt_poses[i]
-            err_vec = np.r_[err_vec, tf_to_vec(err_tf)]
-        ret = nlg.norm(err_vec)
-        return ret
+    A_np = np.zeros((n_dim,0))
+    for pose in A:
+        A_np = np.c_[A_np, np.reshape(pose[:3,:], (12,1))]
+    
+    B_np = np.zeros((n_dim,0))
+    for pose in B:
+        B_np = np.c_[B_np, np.reshape(pose[:3,:], (12,1))]
 
-    # Rotation constraint:
-    def rot_con (x):
-        R = vec_to_tf(x)[0:3,0:3]
-        err_mat = R.T.dot(R) - np.eye(3)
-        ret = nlg.norm(err_mat)
-        return ret
+    A_np = A_np.T
+    B_np = B_np.T
+    data = np.c_[A_np, B_np]
+    
+    min_points_accept = data.shape[0] * minPointsPercent
+    vec = ransac.ransac(data, model, pointsPerModel, iterations, outlierThreshold, minPointsPercent, debug=False)
 
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], iter=50, full_output=1)
-
-    print "Function value at optimum: ", fx
-    IPython.embed()
-
-    tf = vec_to_tf(np.array(X))
-    return tf
-
-def estimateSystematicOffsetRANSAC(A, B):
-    input_columns = [0, 1, 2]
-    output_columns = [3, 4, 5]
-    model = LsqModel(input_columns, output_columns);
-
-    data = np.c_[A, B]
-#    data = data.T
-    points_per_model = 100
-    iterations = 200
-    outlier_thresh = 0.00005
-    min_points_accept = data.shape[0]*0.6
-
-    vec = ransac.ransac(data, model, points_per_model, iterations, outlier_thresh, min_points_accept, debug=True)
     pose = tfx.pose(vec[:3], vec[3:])
     tf = np.array(pose.matrix)
+    
     return tf
 
-def estimateLinearRegressor(A, B):
-    input_columns = [0, 1, 2]
-    output_columns = [3, 4, 5]
-    model = LsqModel(input_columns, output_columns);
-
-    data = np.c_[A, B]
-#    data = data.T
-    points_per_model = 100
-    iterations = 200
-    outlier_thresh = 0.00005
-    min_points_accept = data.shape[0]*0.6
-
-    vec = ransac.ransac(data, model, points_per_model, iterations, outlier_thresh, min_points_accept, debug=True)
-    pose = tfx.pose(vec[:3], vec[3:])
-    tf = np.array(pose.matrix)
-    return tf
 
 # Finds tf such that B[i,:] = tf.dot(A[i,:]) (least-squares sense)
 # http://nghiaho.com/?page_id=671
@@ -256,16 +247,46 @@ def estimateLinearRegressor(A, B):
 # sys_correct_tf:
 #   minimizes erros in the pose
 #   uses iterative general-purpose solver which might not converge
-def transformationEstimationSVD(A, B):
+def transformationEstimationSVD(A, B, translationOffset):
     N = A.shape[0] # should be the same as B.shape[0]
-    centroidA = np.array([np.mean(A, axis=0)])
-    centroidB = np.array([np.mean(B, axis=0)])
-    H = np.zeros((3,3))
+    
+    # get translation components
+    A_trans = np.zeros((N,0))
+    B_trans = np.zeros((N,0))
+    A_combined = np.zeros((0,3))
+    B_combined = np.zeros((0,3))
+    
+  #  IPython.embed()
+    index = 0
+    for i in range(A.shape[1]):
+        if (i+1) % translationOffset == 0:
+            A_trans = np.c_[A_trans, A[:,i:(i+1)]]
+            B_trans = np.c_[B_trans, B[:,i:(i+1)]]
+    
+    for i in range(A.shape[0]):
+        A_pose = np.reshape(A[i,:],(3,4))
+        B_pose = np.reshape(B[i,:],(3,4))
+        A_combined = np.r_[A_combined, A_pose.T]
+        B_combined = np.r_[B_combined, B_pose.T]
+        
+    centroidA = np.array([np.mean(A_combined, axis=0)])
+    centroidB = np.array([np.mean(B_combined, axis=0)])
+    centroidAtrans = np.array([np.mean(A_trans, axis=0)])
+    centroidBtrans = np.array([np.mean(B_trans, axis=0)])
+    
+    X = np.zeros((3,4*N))
+    Y = np.zeros((3,4*N))
     for i in range(N):
-        H += (A[i,:] - centroidA).T.dot(B[i,:] - centroidB)
+        A_pose = np.reshape(A[i,:], (3,4))
+        B_pose = np.reshape(B[i,:], (3,4))
+        X[:,4*i:4*(i+1)] = A_pose - np.tile(centroidA.T, (1,4))
+        Y[:,4*i:4*(i+1)] = B_pose - np.tile(centroidB.T, (1,4))
+        
+    H = X.dot(Y.T)
+   # IPython.embed()
     U, s, V = nlg.svd(H)
     R = V.T.dot(U.T)
-    t = -R.dot(centroidA.T) + centroidB.T
+    t = -R.dot(centroidAtrans.T) + centroidBtrans.T
 
     tf = np.r_[np.c_[R,t], np.array([[0,0,0,1]])]
     return tf
@@ -287,8 +308,6 @@ def gp_pred_fast(logtheta, covfunc, X, alpha, Xstar):
 # poses_train (list of n_data homogeneous TF matrices)
 # state_train (np.array of shape (n_data x d))
 def gp_correct_poses_precompute(gt_poses_train, poses_train, state_train, train_hyper=True, hyper_seed=None, subsample=1):
-    pose_error = calc_pose_error(gt_poses_train, poses_train, euler_representation=True)
-    
     n_task_vars = pose_error.shape[1]
     alphas = []
     loghyper = hyper_seed
