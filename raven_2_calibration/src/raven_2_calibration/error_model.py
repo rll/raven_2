@@ -7,7 +7,7 @@ roslib.load_manifest('raven_2_calibration')
 import rospy
 
 import numpy as np, numpy.linalg as nlg
-import scipy as scp
+import scipy as scp, scipy.spatial.distance as sdist
 
 import raven_2_utils
 from raven_2_utils.raven_constants import *
@@ -20,6 +20,7 @@ import matplotlib
 import pickle
 import pylab as pl
 from transformations import euler_from_matrix, euler_matrix, quaternion_from_matrix
+import scipy.io
 
 import csv
 import os
@@ -35,7 +36,7 @@ import tf.transformations as tft
 N_JOINTS = 7
 N_DOF = 6
 NO_SUBSAMPLING = 1
-TRAINING_SUBSAMPLE = 20
+TRAINING_SUBSAMPLE = 50
 TRAINING_RATIO = 0.75
 VALIDATION_RATIO = 0.75
 
@@ -51,6 +52,14 @@ DEF_TRAIN_SAVE = 'error_model.pkl'
 DEF_TEST_SAVE = 'test_data.pkl'
 CSV_HEADER = ['Arm', 'Homing Procedures', 'FK RMS Test Error (m)', 'FK+Sys RMS Test Error (m)', 'FK+Sys+GP RMS Test Error (m)', \
                'Mean X Error (m)', 'Std X Error (m)', 'Mean Y Error (m)', 'Std Y Error (m)', 'Mean Z Error (m)', 'Std Z Error (m)', 'Mean Yaw Error (rad)', 'Std Yaw Error (rad)', 'Mean Pitch Error (rad)', 'Std Pitch Error (rad)', 'Mean Roll Error (rad)', 'Std Roll Error (rad)']
+
+TRAINING_INDEX = 0
+TESTING_INPUT_INDEX = 1
+TESTING_TARGET_INDEX = 2
+HYPER_INDEX = 3
+ALPHA_INDEX = 4
+RIGID_CORRECTION_INDEX = 5
+MODEL_NAME = 'errorModelSave'
 
 def get_robot_pose(timestamp, robot_poses):
     return min(range(len(robot_poses)), key=lambda i: abs(robot_poses[i][0] - timestamp))
@@ -93,6 +102,32 @@ def comp_array(x,y):
    
     return False
 
+def dataMatrixToPoseList(M):
+    poses = []
+    deltas = []
+    for i in range(M.shape[0]):
+        pose = np.reshape(M[i,:16], (4,4))
+        poses.append(pose)
+        if M.shape[1] > 16:
+            delta = np.reshape(M[i,16:], (4,4))
+            deltas.append(delta)
+    return poses, deltas
+    
+def poseListToDataMatrix(poses, deltas):
+    M = np.zeros((len(poses), 32))
+    index = 0
+    for pose, delta in zip(poses, deltas):
+        M[index,:16] = np.reshape(pose, (1,16))
+        M[index,16:] = np.reshape(delta, (1,16))
+        index = index+1
+    return M
+
+class Hyperparameters(object):
+    def __init__(self, mean, covariance, likelihood):
+        self.mean = mean
+        self.covariance = covariance
+        self.likelihood = likelihood
+
 class PredictionError(object):
     def __init__(self, medianError, meanError, rmsError, maxError):
         self.medianError = medianError
@@ -107,64 +142,110 @@ class PredictionError(object):
         output += 'RMS:' + str(self.rmsError) + '\n'
         output += 'Max:' + str(self.maxError) + '\n'
         return output
-        
+
+IND = 20000
 
 class RavenErrorModel(object):
     
-    def __init__(self, modelFile=None, testFile=None, mode=CAM_TO_FK, numPrevPoses=0):
+    def __init__(self, armName, modelFile=None):
         self.modelFile = modelFile
-        self.testFile = testFile
- 
-        self.rawData = {}
-        self.trainingData = {}
-        self.testingData = {}
         self.trainingMode = mode
         
-        self.dataKeys = [RavenDataKeys.CAM_POSE_KEY, RavenDataKeys.ROBOT_POSE_KEY, RavenDataKeys.CAM_TS_KEY, RavenDataKeys.ROBOT_TS_KEY]
-        
+        self.trainingInputs = {}
+        self.testingInputs = {}
+        self.testingTargets = {}
+        self.hyperparameters = {}
+        self.alphas = {}
+        self.rigidCorrection = {}
+           
         try:
             if self.modelFile:
-                # the training data is used to build a model
-                self.trainingData = pickle.load(open(self.modelFile))
-                try:
-                    self.trainingMode = self.trainingData[LEFT]['training_mode']
-                except:
-                    try:
-                        self.trainingMode = self.trainingData[RIGHT]['training_mode']
-                    except:
-                        print 'Failed to load training mode for data. Most likely the data is old'
+                model = scipy.io.loadmat(self.modelFile)
+                self.trainingInputs[armName]  = model[MODEL_NAME][0][TRAINING_INDEX]
+                self.testingInputs[armName]   = model[MODEL_NAME][0][TESTING_INPUT_INDEX][:IND,:]
+                self.testingTargets[armName]  = model[MODEL_NAME][0][TESTING_TARGET_INDEX][:IND,:]
+                self.hyperparameters[armName] = model[MODEL_NAME][0][HYPER_INDEX]
+                self.alphas[armName]          = model[MODEL_NAME][0][ALPHA_INDEX]
+                self.rigidCorrection[armName] = model[MODEL_NAME][0][RIGID_CORRECTION_INDEX]
                 
-                #HACK to remove stupid extra L/R keys from old data
-                if len(self.trainingData.keys()) > 2:
-                    temp = {}
-                    temp[LEFT] = {}
-                    temp[RIGHT] = {}
-                    for k in self.trainingData.keys():
-                        for arm in self.trainingData[k].keys():
-                            temp[arm] = self.trainingData[k][arm] # TODO: Remove when data is valid
-                    self.trainingData = temp
-            if self.testFile:
-                self.testingData = pickle.load(open(self.testFile))
+                self.hyperparameters[armName] = self.convertHyperparams(self.hyperparameters[armName])
+                self.alphas[armName] = self.convertAlphas(self.alphas[armName])
         except IOError as e:
             print "ERROR:", e
             print "Failed to load previous testing and training data file"
     
-    def __cleanOldData(self, data, arm_side):
-        clean_data = {}
-        clean_data[LEFT] = {}
-        clean_data[RIGHT] = {}
-        try:
-            for k in data.keys():
-                #HACK
-                if k != RavenDataKeys.CAM_ROBOT_TF_KEY and k != RavenDataKeys.CONVERTED_KEY:
-                    for arm in data[k].keys():
-                        clean_data[arm][k] = data[k][arm]
-                else:
-                    clean_data[arm_side][k] = data[k]
-        except:
-            print "Data could not be cleaned. Aborting"
+    def convertHyperparams(self, rawHyperMat):
+        cleanedHypers = []
+        for i in range(rawHyperMat.shape[1]):
+            curHyper = rawHyperMat[0,i]
+            mean = curHyper[0][0][0]
+            cov = curHyper[0][0][1]
+            likelihood = curHyper[0][0][2]
+            cleanHyper = Hyperparameters(mean, cov, likelihood)
+            cleanedHypers.append(cleanHyper)
+        return cleanedHypers
+    
+    def convertAlphas(self, rawAlphas):
+        cleanedAlphas = []
+        for i in range(rawAlphas.shape[1]):
+            curAlpha = rawAlphas[0,i]
+            cleanedAlphas.append(curAlpha)
+        return cleanedAlphas
+    
+    def meanSum(self, hyp, x):
+        A = x.dot(hyp[1:(x.shape[1]+1)])
+        A = A + hyp[(x.shape[1]):]*np.ones((x.shape[0],1))
+        return A
+    
+    def covarianceMaternIso(self, d, hyp, x=None, z=None, i=None):
+        if x is None and z is None and i is None:
+            K = '2'
+            return K
+        diagonal = False
+        if z == 'diag':
+            diagonal = True
+        
+        ell = np.exp(hyp[0])
+        sf2 = np.exp(2*hyp[1])
+        
+        if d not in [1, 3, 5]:
+            print 'Illegal d'
             return None
-        return clean_data
+        
+        f = None
+        if d == 1:
+            f = lambda t: 1
+            df = lambda t: 1
+        elif d == 3:
+            f = lambda t: 1 + t
+            df = lambda t: t
+        elif d ==5:
+            f = lambda t: 1 + t * (1 + t/3.0)
+            df = lambda t: t * (1 + t/3.0)
+        
+        m = lambda t, f: f(t)*np.exp(-t)
+        dm = lambda t, f: df(t)*np.exp(-t)*t
+        
+        if diagonal:
+            K = np.zeros(x.shape[0],1)
+        else:
+            if z.shape[0] == 0:
+                K = sdist.pdist((np.sqrt(d) / ell) * x)
+                K = sdist.squareform(K)
+            else:
+                K = sdist.cdist((np.sqrt(d) / ell) * x, (np.sqrt(d) / ell) * z)
+        
+        if i is None:
+            K = sf2 * m(K, f)
+        else:
+            if i == 1:
+                K = sf2*dm(K, f)
+            elif i ==2:
+                K = 2*sf2*m(K, f)
+            else:
+                print 'Unknown hyperparameter'
+                return None
+        return K
     
     def matrixError(self, estimatedPoses, truePoses):
         n_poses = len(estimatedPoses)
@@ -211,261 +292,36 @@ class RavenErrorModel(object):
         
         predictionError = PredictionError(medianError, meanError, rmsError, maxError)
         return predictionError
-    
-    def loadTrainingData(self, directory, armName, trainingSubsample=TRAINING_SUBSAMPLE):
-        if armName not in ARMS:
-            print "ERROR: Illegal arm side provided. Acceptable values are:"
-            for arm in ARMS:
-                print "\t" + arm
-            return
-        
-        # enumerate all files in the target directory
-        pickleFiles = []
-        for dirName, dirNames, fileNames in os.walk(directory):
-            for fileName in fileNames:
-                fileRoot, fileExtension = os.path.splitext(fileName)
-                if fileExtension == '.pkl':
-                    pickleFiles.append(os.path.join(directory, fileName))
-        
-        # initialize empty list
-        self.rawData[armName] = {}
-        self.trainingData[armName] = {}
-        self.testingData[armName] = {}
-        for key in self.dataKeys:
-            self.rawData[armName][key] = []
-            self.trainingData[armName][key] = []
-            self.testingData[armName][key] = []
-        self.rawData[armName][RavenDataKeys.CAM_GRAD_KEY] = []
-        self.trainingData[armName][RavenDataKeys.CAM_GRAD_KEY] = []
-        self.testingData[armName][RavenDataKeys.CAM_GRAD_KEY] = []
-        self.rawData[armName][RavenDataKeys.ROBOT_GRAD_KEY] = []
-        self.trainingData[armName][RavenDataKeys.ROBOT_GRAD_KEY] = []
-        self.testingData[armName][RavenDataKeys.ROBOT_GRAD_KEY] = []
-        
-        # read in each file
-        print 'Reading trajectory data...'
-        try:
-            for fileName in pickleFiles:
-                # load raw data from file
-                trajectoryData = pickle.load(open(fileName))
-                #IPython.embed()
-                for key in self.dataKeys:
-                    self.rawData[armName][key].extend(trajectoryData[key][armName][1:]) # only include after timestep 1
-                    
-                    # get gradients
-                    if key == RavenDataKeys.CAM_POSE_KEY:
-                        for i in range(len(trajectoryData[key][armName]) - 1):
-                            curPose = trajectoryData[key][armName][i]
-                            nextPose = trajectoryData[key][armName][i+1]
-                            self.rawData[armName][RavenDataKeys.CAM_GRAD_KEY].append(np.linalg.inv(nextPose).dot(curPose))
-                    if key == RavenDataKeys.ROBOT_POSE_KEY:
-                        for i in range(len(trajectoryData[key][armName]) - 1):
-                            curPose = trajectoryData[key][armName][i]
-                            nextPose = trajectoryData[key][armName][i+1]
-                            self.rawData[armName][RavenDataKeys.ROBOT_GRAD_KEY].append(np.linalg.inv(nextPose).dot(curPose))
-                    
-                
-            # break up into training / test sets
-            numDataPoints = len(self.rawData[armName][self.dataKeys[0]])
-            for i in range(numDataPoints):
-                dataKeysWithGradient = self.dataKeys + [RavenDataKeys.ROBOT_GRAD_KEY, RavenDataKeys.CAM_GRAD_KEY]
-                for key in dataKeysWithGradient:
-                    if i % trainingSubsample == 0:
-                        self.trainingData[armName][key].append(self.rawData[armName][key][i])
-                    else:
-                        self.testingData[armName][key].append(self.rawData[armName][key][i])           
-        except IOError as e:
-            print "ERROR:", e
-            print "Failed to load raw data file " + filename
-        print 'Done reading trajectory data...'
-    
-    def train(self, plot=True, loghyper=None, crossValidate=False, trainHyper=True, hyperSeed=None):
-        """
-        Compute a systematic and residual error correction model for each of the training data sets loaded
-        """
-        trainingErrors = {}
-        hyperparams = {}
-        for armName in self.trainingData.keys():
-            print "Training models for arm " + armName
             
-            # 1. original pose error between camera and FK
-            trainingCameraPoses = self.trainingData[armName][RavenDataKeys.CAM_POSE_KEY]
-            trainingCameraGradients = self.trainingData[armName][RavenDataKeys.CAM_GRAD_KEY]
-            trainingRobotPoses = self.trainingData[armName][RavenDataKeys.ROBOT_POSE_KEY]
-            trainingRobotGradients = self.trainingData[armName][RavenDataKeys.ROBOT_GRAD_KEY]
+    # testing should already have been performed in matlab, this function tests that our prediction method is valid
+    def test(self, plot=True, outfilename=None):
+        errors = {}
+        for armName in self.trainingInputs.keys():
+            testingInputs = self.testingInputs[armName]
+            testingTargets = self.testingTargets[armName]
             
-            testingCameraPoses = self.testingData[armName][RavenDataKeys.CAM_POSE_KEY]
-            testingCameraGradients = self.testingData[armName][RavenDataKeys.CAM_GRAD_KEY]
-            testingRobotPoses = self.testingData[armName][RavenDataKeys.ROBOT_POSE_KEY]
-            testingRobotGradients = self.testingData[armName][RavenDataKeys.ROBOT_GRAD_KEY]
-            
-            # set the target and samples based on the training mode
-            if self.trainingMode == CAM_TO_FK:
-                targetPoses = trainingRobotPoses
-                inputPoses = trainingCameraPoses
-                inputGradients = trainingCameraGradients
-            else:
-                targetPoses = trainingCameraPoses
-                inputPoses = trainingRobotPoses
-                inputGradients = trainingRobotGradients
-            
-            # original error
-            originalError= self.componentwiseError(inputPoses, targetPoses)
+            testingInputPoses, testingInputDeltas = dataMatrixToPoseList(testingInputs)
+            testingTargetPoses, testingTargetDeltas = dataMatrixToPoseList(testingTargets)
+           
+            originalError= self.componentwiseError(testingInputPoses, testingTargetPoses)
             print '\n'
             print 'Raw data error:'
             print originalError
             print '\n'
-            
-            # 2. calculate rigid offset
-            numDim = 12
-            targetStateMatrix = np.zeros((0,numDim))
-            for pose in targetPoses:
-                targetStateMatrix = np.r_[targetStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
-            
-            inputStateMatrix = np.zeros((0,numDim))
-            for pose in inputPoses:
-                inputStateMatrix = np.r_[inputStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
-            
-            #rigidCorrection = estimateRigidCorrectionRANSAC(targetPoses, inputPoses)
-            translationOffset = 4
-            rigidCorrection = transformationEstimationSVD(inputStateMatrix, targetStateMatrix, translationOffset)
-            
-            # systematic corrected robot poses for training data
-            self.trainingData[armName]['rigid_correction'] = rigidCorrection
-            sysPredictedTrainingPoses = [rigidCorrection.dot(inputPose) for inputPose in inputPoses]
-            self.trainingData[armName]['sys_predicted_poses'] = sysPredictedTrainingPoses
-            
+           
+            print "Evaluating test data for arm " + armName 
+            gpPredictedTestingPoses, sysPredictedTestingPoses = self.predict(armName, testingInputPoses, testingInputDeltas)
+             
             # rigid correction error
-            sysError = self.componentwiseError(sysPredictedTrainingPoses, targetPoses)
+            sysError = self.componentwiseError(sysPredictedTestingPoses, testingTargetPoses)
             print 'Rigid Correction error:'
             print sysError
             print '\n'
-
-            # 3. cross-validate to find the max-likelihood parameters
-            """
-            if crossValidate:
-                print 'Running cross-validation...'
-                testHyper = [-1] * 7
-                training_percent = 1 - VALIDATION_RATIO
-                hyper_seed = self.crossValidate(test_hyperparams, target_poses, sys_predicted_poses, input_state_vector, training_percent)
-                print 'Validated hyperparams ', hyper_seed
-            """
-                
-            # 4. calculate residual error correction function
-            inputStateMatrix = np.zeros((0,numDim))
-            inputGradientMatrix = np.zeros((0,numDim))
-            for pose in sysPredictedTrainingPoses:
-                inputStateMatrix = np.r_[inputStateMatrix, np.reshape(pose[:3,:], (numDim,1)).T]
-            for grad in inputGradients:
-                inputGradientMatrix = np.r_[inputGradientMatrix, np.reshape(grad[:3,:], (numDim,1)).T]
-            inputStateMatrix = np.c_[inputStateMatrix, inputGradientMatrix]
-            
-            # gp training
-            alphas, hyperparams[armName] = gp_train(inputStateMatrix, targetStateMatrix, train_hyper=True, hyper_seed=hyperSeed, subsample=2)    
-            gpPredictedTrainingPoses = gp_predict_poses(alphas, inputStateMatrix, inputStateMatrix, hyperparams[armName])
-            
             # gp error
-            gpError = self.componentwiseError(gpPredictedTrainingPoses, targetPoses)
+            gpError = self.componentwiseError(gpPredictedTestingPoses, testingTargetPoses)
             print 'GP error:'
             print gpError
             print '\n'
-            
-            # update the internal models
-            self.trainingData[armName]["alphas"] = alphas
-            self.trainingData[armName]["loghyper"] = hyperparams[armName]
-            self.trainingData[armName]['training_mode'] = self.trainingMode
-
-            # 5. plot the translation poses
-            if plot:
-                camera_ts = self.trainingData[armName][RavenDataKeys.CAM_TS_KEY]
-                plot_translation_poses_nice(camera_ts, targetPoses, camera_ts, inputPoses, sysPredictedTrainingPoses, gpPredictedTrainingPoses, split=False, arm_side=armName)
-
-            #trainingErrors[armName] = [orig_pose_error, sys_pose_error, gp_pose_error]
-            
-        return trainingErrors
-    
-    def crossValidate(self, test_hyperparams, target_poses, sys_predicted_poses, input_state_vector, training_percent):
-        train_hyper = True    
-        n_dim = N_DOF
-        
-        # generate indices for training, validation set
-        indices = np.linspace(0, len(target_poses)-1, len(target_poses))
-        np.random.shuffle(indices)
-        indices = [int(i) for i in indices]
-        
-        training_size = int(training_percent*(len(target_poses)-1))
-        training_indices = indices[:training_size]
-        validation_indices = indices[training_size:]
-        
-        # partition the training / validation poses    
-        target_poses_np = np.array(target_poses)
-        sys_pred_poses_np = np.array(sys_predicted_poses)
-        target_training_poses = target_poses_np[training_indices]
-        sys_predicted_training_poses = sys_pred_poses_np[training_indices]
-        input_state_training_vector = input_state_vector[training_indices]
-            
-        target_validation_poses = target_poses_np[validation_indices]
-        sys_predicted_validation_poses = sys_pred_poses_np[validation_indices]
-        input_state_validation_vector = input_state_vector[validation_indices]
-        
-        # compute the mean and std errors for each task variable
-        validation_mean_errors = []
-        validation_std_errors = []
-        for i in range(len(test_hyperparams)):
-            hyper_seed = [test_hyperparams[i]] * n_dim
-            alphas_cv, hypers_cv = gp_correct_poses_precompute(target_training_poses, sys_predicted_training_poses, input_state_training_vector, train_hyper, hyper_seed=hyper_seed, subsample=1)   
-                
-            gp_predicted_validation_poses = gp_correct_poses_fast(alphas_cv, input_state_training_vector, sys_predicted_validation_poses, input_state_validation_vector, hypers_cv)
-            validation_error = calc_pose_error(target_validation_poses, gp_predicted_validation_poses)
-            validation_mean_errors.append(np.mean(validation_error, axis=0))
-            validation_std_errors.append(np.std(validation_error, axis=0))
-            print 'Mean error for loghyper = %f:' %(hyper_seed[0]), validation_mean_errors[-1]
-            print 'Std error for loghyper = %f:' %(hyper_seed[0]), validation_std_errors[-1]
-            print
-        
-        # loop through all choices of hyperparameters and find the minimum error choice for each task variable 
-        validated_hyperparams = []    
-        for j in range(n_dim):
-            lowest_error = np.Infinity
-            lowest_error_hyperparam = 0
-            
-            # find the hyperparameter for this variable with the lowest error
-            for i in range(len(validation_mean_errors)):
-                if np.abs(validation_mean_errors[i][j]) < lowest_error:
-                    lowest_error = np.abs(validation_mean_errors[i][j])
-                    lowest_error_hyperparam = test_hyperparams[i]
-            
-            validated_hyperparams.append(lowest_error_hyperparam)
-        
-        return validated_hyperparams
-            
-    def test(self, plot=True, outfilename=None):
-        errors = {}
-        for arm_side in self.trainingData.keys():
-            camera_ts = self.testingData[arm_side][RavenDataKeys.CAM_TS_KEY]
-            camera_poses = self.testingData[arm_side][RavenDataKeys.CAM_POSE_KEY]
-            robot_ts = self.testingData[arm_side][RavenDataKeys.ROBOT_TS_KEY]
-            robot_poses = self.testingData[arm_side][RavenDataKeys.ROBOT_POSE_KEY]
-            camera_poses_train = self.trainingData[arm_side][RavenDataKeys.CAM_POSE_KEY]
-            robot_poses_train = self.trainingData[arm_side][RavenDataKeys.ROBOT_POSE_KEY]
-            
-            # set the target and samples based on the training mode
-            if self.trainingMode == CAM_TO_FK:
-                target_poses = robot_poses
-                train_poses = camera_poses_train
-                input_poses = camera_poses
-                target_ts = robot_ts
-                input_ts = camera_ts
-            else:
-                target_poses = camera_poses
-                train_poses = robot_poses_train
-                input_poses = robot_poses
-                target_ts = camera_ts
-                input_ts = robot_ts
-            
-            gp_predicted_poses, sys_predicted_poses = self.predict(input_poses, arm_side, train_poses=train_poses)
-            
-            print "Evaluating test data for arm " + arm_side
             
             if plot:
                 # Type 1 fonts for publication
@@ -473,212 +329,67 @@ class RavenErrorModel(object):
                 matplotlib.rcParams['ps.useafm'] = True
                 matplotlib.rcParams['pdf.use14corefonts'] = True
                 matplotlib.rcParams['text.usetex'] = True
-                plot_translation_poses_nice(target_ts, target_poses, input_ts, input_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
+                fake_camera_ts = [i for i in range(len(testingInputPoses))]
+                plot_translation_poses_nice(fake_camera_ts, testingTargetPoses, fake_camera_ts, testingInputPoses, sysPredictedTestingPoses, gpPredictedTestingPoses, split=True, arm_side=armName)
 
-            errors[arm_side] = self.calcErrors(target_poses, input_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
-            if outfilename is not None:
-                self.saveErrors(errors[arm_side], outfilename, arm_side) 
+            errors[armName] = [originalError, sysError, gpError]
+            #if outfilename is not None:
+            #   self.saveErrors(errors[arm_side], outfilename, arm_side) 
         return errors
-    
-    def predictSinglePose(self, pose, arm_side):
-        # Convert pose to numpy matrix
-        p = tft.translation_matrix([pose.position.x,pose.position.y,pose.position.z])
-        rot = tft.quaternion_matrix([pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w])
-        input_pose = np.dot(p,rot)
 
-        gpList, sysList = self.predict([input_pose], arm_side)
-        return tfx.pose(gpList[0], frame=pose.frame, stamp=pose.stamp), tfx.pose(sysList[0], frame=pose.frame, stamp=pose.stamp)
-    
-    def predict(self, input_poses, arm_side, train_poses=None):
-        alphas = self.trainingData[arm_side]['alphas']
-        loghyper = self.trainingData[arm_side]['loghyper']
-
-        if train_poses is None:
-            if self.trainingMode == CAM_TO_FK:
-                train_poses = self.trainingData[arm_side][RavenDataKeys.CAM_POSE_KEY]
-            elif self.trainingMode == FK_TO_CAM:
-                train_poses = self.trainingData[arm_side][RavenDataKeys.ROBOT_POSE_KEY]
-            else:
-                print 'Invalid training mode!'
-
-        input_state_vector = self.generatePoseVector(input_poses) # convert the poses to state vector for training
-        train_state_vector = convert_poses_to_vector(train_poses)
-        sys_correction_tf = self.trainingData[arm_side]['sys_correction_tf']
-                  
-        # systematic corrected robot poses for test data
-        print arm_side, sys_correction_tf
-        sys_predicted_poses = [sys_correction_tf.dot(input_pose) for input_pose in input_poses]
+    def gpPredict(self, armName, testingInputMatrix):
+        trainingInputMatrix = self.trainingInputs[armName]
+        alphas = self.alphas[armName]
+        hyperparams = self.hyperparameters[armName]
+        n_dim = 12
+        
+        testingPredictedMatrix = np.zeros(testingInputMatrix.shape)
+        
+        for d in range(n_dim):
+            print 'Predicting dimension', d
+            Mz = self.meanSum(hyperparams[d].mean, testingInputMatrix)
+            Kxz = self.covarianceMaternIso(3, hyperparams[d].covariance, trainingInputMatrix, testingInputMatrix)
+            testingPredictedMatrix[:,d:(d+1)] = Mz + Kxz.T.dot(alphas[d])
             
+        # add ones to make them legit poses
+        testingPredictedMatrix[:,15:16] = np.ones((testingPredictedMatrix.shape[0],1))
+            
+        return testingPredictedMatrix
+        
+       
+    def predict(self, armName, inputPoses, inputGradients):
+        rigidCorrection = self.rigidCorrection[armName]
+                      
+        # systematic corrected robot poses for test data
+        print 'Correcting rigid offset'
+        rigidCorrectedTestingPoses = [rigidCorrection.dot(inputPose) for inputPose in inputPoses]
+     
+        # training state matrix fill-in
+        testingInputMatrix = poseListToDataMatrix(inputPoses, inputGradients)
+           
         # systematic and GP corrected robot poses for training data
-        gp_predicted_poses = gp_correct_poses_fast(alphas, train_state_vector, sys_predicted_poses, input_state_vector, loghyper)
-        return gp_predicted_poses, sys_predicted_poses
-    
-        
+        print 'Correcting residual errors'
+        gpPredictedTestingMatrix = self.gpPredict(armName, testingInputMatrix)
+        gpPredictedTestingPoses, dummy = dataMatrixToPoseList(gpPredictedTestingMatrix)
+  
+        return gpPredictedTestingPoses, rigidCorrectedTestingPoses      
 
-    def predictFromFile(self, filename, arm_side='L', plot=True, outfilename=None):
-        raw_data = pickle.load(open(filename))
-        cleaned_data = self.__cleanOldData(raw_data, arm_side)
-        if cleaned_data:
-            raw_data = cleaned_data[arm_side]
-        
-        camera_to_robot_tf = raw_data[RavenDataKeys.CAM_ROBOT_TF_KEY]
-            
-        test_data, train_data = \
-            self.__convertRawData(raw_data,camera_to_robot_tf, trainingRatio=0)
 
-        camera_ts = test_data[RavenDataKeys.CAM_TS_KEY]
-        camera_poses = test_data[RavenDataKeys.CAM_POSE_KEY]
-        robot_ts = test_data[RavenDataKeys.ROBOT_TS_KEY]
-        robot_poses = test_data[RavenDataKeys.ROBOT_POSE_KEY]
-        camera_poses_train = self.trainingData[arm_side][RavenDataKeys.CAM_POSE_KEY]
-        robot_poses_train = self.trainingData[arm_side][RavenDataKeys.ROBOT_POSE_KEY]
-            
-        # set the target and samples based on the training mode
-        if self.trainingMode == CAM_TO_FK:
-            target_poses = robot_poses
-            train_poses = camera_poses_train
-            input_poses = camera_poses
-            target_ts = robot_ts
-            input_ts = camera_ts
-        else:
-            target_poses = camera_poses
-            train_poses = robot_poses_train
-            input_poses = robot_poses
-            target_ts = camera_ts
-            input_ts = robot_ts
-      
-        gp_predicted_poses, sys_predicted_poses = self.predict(input_poses, arm_side, train_poses=train_poses)
-        
-        if plot:
-            # Type 1 fonts for publication
-            # http://nerdjusttyped.blogspot.sg/2010/07/type-1-fonts-and-matplotlib-figures.html
-            matplotlib.rcParams['ps.useafm'] = True
-            matplotlib.rcParams['pdf.use14corefonts'] = True
-            matplotlib.rcParams['text.usetex'] = True
-            plot_translation_poses_nice(target_ts, target_poses, input_ts, input_poses, sys_predicted_poses, gp_predicted_poses, split=True, arm_side=arm_side)
+    def predictSinglePose(self, armName, curPose, prevPose):
+        # Convert pose to numpy matrix
+        curTrans = tft.translation_matrix([curPose.position.x, curPose.position.y, curPose.position.z])
+        curRot = tft.quaternion_matrix([curPose.orientation.x, curPose.orientation.y ,curPose.orientation.z, curPose.orientation.w])
+        curPoseMatrix = np.dot(curTrans, curRot)
 
-        errors = self.calcErrors(target_poses, input_poses, sys_predicted_poses, gp_predicted_poses, camera_ts, robot_ts)
+        prevTrans = tft.translation_matrix([prevPose.position.x, prevPose.position.y, prevPose.position.z])
+        prevRot = tft.quaternion_matrix([prevPose.orientation.x, prevPose.orientation.y ,prevPose.orientation.z, prevPose.orientation.w])
+        prevPoseMatrix = np.dot(prevTrans, prevRot)
+        
+        deltaPoseMatrix = curPoseMatrix - prevPoseMatrix # really we should be using the inverse formula but this seems to work right now
 
-        if outfilename is not None:
-            self.saveErrors(errors, outfilename, arm_side)
-        return gp_predicted_poses, sys_predicted_poses
-
-    def buildMixtureModel(self, filename, arm_side='L', min_c=2, max_c=10):
-        self.loadTrainingData(filename, arm_side)
-        test_data = self.testingData[arm_side]
-        
-        camera_poses_test = test_data[RavenDataKeys.CAM_POSE_KEY]
-        robot_poses_test = test_data[RavenDataKeys.ROBOT_POSE_KEY]
-        camera_ts_test = test_data[RavenDataKeys.CAM_TS_KEY]
-        robot_ts_test = test_data[RavenDataKeys.ROBOT_TS_KEY]
-        camera_poses_train = self.trainingData[arm_side][RavenDataKeys.CAM_POSE_KEY]
-        robot_poses_train = self.trainingData[arm_side][RavenDataKeys.ROBOT_POSE_KEY]
-            
-        # set the target and samples based on the training mode
-        if self.trainingMode == CAM_TO_FK:
-            train_poses = camera_poses_train
-            target_poses = robot_poses_test
-            target_ts = robot_ts_test
-            input_poses = camera_poses_test
-            input_ts = camera_ts_test
-        else:
-            train_poses = robot_poses_train
-            target_poses = camera_poses_test
-            target_ts = camera_ts_test
-            input_poses = robot_poses_test
-            input_ts = robot_ts_test
-        
-        gp_predicted_poses, sys_predicted_poses = self.predict(input_poses, arm_side, train_poses=train_poses)
-            
-        # get corresponding robot indices
-        robot_inds = []
-        for ts in target_ts:
-            robot_inds.append(get_robot_pose_ind(ts, input_ts))
-                
-        sys_residuals = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
-        target_pose_vectors = convert_poses_to_vector(target_poses)
-        
-        plot_componentwise_residuals(sys_residuals, target_pose_vectors)
-        
-        gmm = build_mixture_model(sys_residuals, target_pose_vectors, min_components = min_c, max_components = max_c, plot=True)
-            
-        return gmm
-      
-    def calcErrors(self, target_poses, input_poses, sys_predicted_poses, gp_predicted_poses, target_ts, input_ts):
-        robot_inds = []
-        for ts in target_ts:
-            robot_inds.append(get_robot_pose_ind(ts, input_ts))
-        
-        # CALCULATE THE ERROR
-        target_trans = np.array([pose[:3,3] for pose in target_poses])
-        input_trans = np.array([pose[:3,3] for pose in input_poses])
-        sys_input_trans = np.array([pose[:3,3] for pose in sys_predicted_poses])
-        gp_input_trans = np.array([pose[:3,3] for pose in gp_predicted_poses])
-        
-        # VERBOSE
-        # pose error between camera and FK
-        orig_pose_error = calc_pose_error(target_poses, [input_poses[ind] for ind in robot_inds])
-        fk_mean_err = np.mean(orig_pose_error, axis=0)
-        fk_std_err = np.std(orig_pose_error, axis=0)
-        print "original pose error for test data"
-        print "mean", fk_mean_err
-        print "std", fk_std_err
-        fk_err = (target_trans - input_trans[robot_inds,:]).reshape(-1,1)
-        fk_rms_err = np.sqrt((fk_err**2).mean())
-        print "xyz rms error", fk_rms_err
-        print
-        
-        # systematic corrected robot poses for test data
-        sys_pose_error = calc_pose_error(target_poses, [sys_predicted_poses[ind] for ind in robot_inds])
-        sys_mean_err = np.mean(sys_pose_error, axis=0) 
-        sys_std_err = np.std(sys_pose_error, axis=0)
-        print "systematic corrected pose error for test data"
-        print "mean", sys_mean_err
-        print "std", sys_std_err
-        sys_err = (target_trans - sys_input_trans[robot_inds,:]).reshape(-1,1)
-        sys_rms_err = np.sqrt((sys_err**2).mean())
-        print "xyz rms error", sys_rms_err
-        print
-        
-        # systematic and GP corrected robot poses for test data
-        gp_pose_error = calc_pose_error(target_poses, [gp_predicted_poses[ind] for ind in robot_inds])
-        gp_mean_err = np.mean(gp_pose_error, axis=0)
-        gp_std_err = np.std(gp_pose_error, axis=0)
-        print "systematic and GP corrected pose error for test data"
-        print "mean", gp_mean_err
-        print "std", gp_std_err
-        gp_err = (target_trans - gp_input_trans[robot_inds,:]).reshape(-1,1)
-        gp_rms_err = np.sqrt((gp_err**2).mean())
-        print "xyz rms error", gp_rms_err
-        print
-
-        # put the output into a nice lil dictionary (RMS, MEAN, STD)
-        error_dict = {}
-        error_dict['n'] = len(target_poses)
-        error_dict['fk'] = [fk_rms_err, fk_mean_err, fk_std_err]
-        error_dict['sys'] = [sys_rms_err, sys_mean_err, sys_std_err]
-        error_dict['gp'] = [gp_rms_err, gp_mean_err, gp_std_err]
-        return error_dict
-    
-    def generatePoseVector(self, poseMatrices):
-        poseVector = convert_poses_to_vector(poseMatrices) # convert the poses to state vector for training
-        
-        # convert input pose vectors to vectors of multiple past poses
-        n_poses = poseVector.shape[0]
-        n_dim = poseVector.shape[1] * (self.numPrevPoses+1)
-        stateVector = np.zeros((n_poses, n_dim))
-            
-        # put past states together into a vector
-        for i in range(n_poses):
-            if i >= self.numPrevPoses:
-                startIndex = i - self.numPrevPoses
-                endIndex = i + 1
-                pastStates = poseVector[startIndex:endIndex, :]
-                pastStatesLinear = np.reshape(pastStates, (1, n_dim))
-                stateVector[i,:] = pastStatesLinear
-        
-        return stateVector    
-    
+        gpList, sysList = self.predict(armName, [curPoseMatrix], [deltaPoseMatrix])
+        return tfx.pose(gpList[0], frame=curPose.frame, stamp=curPose.stamp), tfx.pose(sysList[0], frame=curPose.frame, stamp=curPose.stamp)
+ 
     def save(self, train_filename=DEF_TRAIN_SAVE, test_filename=DEF_TEST_SAVE):
         pickle.dump(self.trainingData, open(train_filename, "wb"))
         pickle.dump(self.testingData, open(test_filename, "wb"))
@@ -712,57 +423,26 @@ class RavenErrorModel(object):
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('arm',nargs='?',default='L')
     parser.add_argument('-m', '--mode',nargs='?',default=None)
-    parser.add_argument('-l', '--left-arm-data',nargs='?',default=None)
-    parser.add_argument('-r', '--right-arm-data',nargs='?',default=None)
     parser.add_argument('-d', '--model-data',nargs='?',default=None)
-    parser.add_argument('-t', '--test-data',nargs='?',default=None)   # original test data used to build the model, used for the mixture models
     parser.add_argument('-s', '--spreadsheet',nargs='?',default='backup.csv')
-    parser.add_argument('-c', '--cross-validate',nargs='?',default=False)
-    
     args = parser.parse_args(rospy.myargv()[1:])
+    
+    armName = args.arm
+    del args.arm
     mode = args.mode
     del args.mode
-    left_arm_data = args.left_arm_data
-    del args.left_arm_data
-    right_arm_data = args.right_arm_data
-    del args.right_arm_data
-    model_data = args.model_data
+    modelData = args.model_data
     del args.model_data
-    test_data = args.test_data
-    del args.test_data
     spreadsheet = args.spreadsheet
     del args.spreadsheet
-    cv = args.cross_validate
-    del args.cross_validate
     
 #    with launch_ipdb_on_exception():
     if True:
-        if mode == 'train':
-            r = RavenErrorModel()
-            if left_arm_data:
-                r.loadTrainingData(left_arm_data, LEFT, TRAINING_SUBSAMPLE)
-            if right_arm_data:
-                r.loadTrainingData(right_arm_data, RIGHT, TRAINING_SUBSAMPLE)
-            r.train(crossValidate=cv)
-            r.test(outfilename=spreadsheet)
-            r.save()
-        elif mode == 'test':
-            r = RavenErrorModel(model_data)
-            if left_arm_data:
-                print "Testing arm ", LEFT
-                r.predictFromFile(left_arm_data, LEFT, outfilename=spreadsheet)
-            if right_arm_data:
-                print "Testing arm ", RIGHT
-                r.predictFromFile(right_arm_data, RIGHT, outfilename=spreadsheet)
-        elif mode == 'mixture':
-            r = RavenErrorModel(model_data, test_data)
-            if left_arm_data:
-                print "Building mixture for arm ", LEFT
-                r.buildMixtureModel(left_arm_data, arm_side=LEFT, min_c=1, max_c=20)
-            if right_arm_data:
-                print "Building mixture for arm ", RIGHT
-                r.buildMixtureModel(right_arm_data, arm_side=RIGHT, min_c=1, max_c=20)
+        if mode == 'test':
+            r = RavenErrorModel(armName, modelData)
+            r.test()
         else:
             print "Please specify a valid mode: train or test"
     

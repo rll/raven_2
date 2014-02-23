@@ -146,7 +146,7 @@ class PhasespaceTracker(object):
                             
                 # get the gripper pose (in phasespace basis)
                 if len(gripperMarkers) == 3:
-                    gTrans, gRot = self.poseFromMarkers(gripperMarkers, GRIPPER_MARKER_IDS, rotate=True)
+                    gTrans, gRot = self.poseFromMarkers2(gripperMarkers, GRIPPER_MARKER_IDS, rotate=True)
                     
                     gripperPosePhasespace = tfx.pose(gTrans, gRot, frame=PHASESPACE_FRAME, stamp=self.messageTime)
                     self.gripper_pose_pub.publish(gripperPosePhasespace.msg.PoseStamped())
@@ -155,13 +155,13 @@ class PhasespaceTracker(object):
                 
                 # get the registration marker pose (in phasespace basis)
                 if self.register and len(registrationMarkers) == 3:
-                    rTrans, rRot = self.poseFromMarkers(registrationMarkers, REGISTRATION_MARKER_IDS)
+                    rTrans, rRot = self.poseFromMarkers(registrationMarkers, REGISTRATION_MARKER_IDS, rotate=False)
                     screwPosePhasespaceFrame = tfx.pose(rTrans, rRot)
                     phasespacePoseScrewFrame = screwPosePhasespaceFrame.inverse()
-                    #IPython.embed()
+                    
                     self.broadcaster.sendTransform(phasespacePoseScrewFrame.translation, phasespacePoseScrewFrame.rotation, self.messageTime, PHASESPACE_FRAME, SCREW_FRAME)
-         #   except:
-        #        rospy.loginfo('Exception thrown while getting markers...')
+                    #   except:
+                    #        rospy.loginfo('Exception thrown while getting markers...')
                 
             self.finished = True
 
@@ -170,6 +170,7 @@ class PhasespaceTracker(object):
             points = [np.zeros((3,1)), np.zeros((3,1)), np.zeros((3,1))]
             
             for m in markers:
+                ##print 'Pos',m.id,m.x,m.y,m.z
                 points[target_ids.index(m.id)] = np.array([m.x, m.y, m.z])
             
             leftPoint = points[0]
@@ -186,15 +187,53 @@ class PhasespaceTracker(object):
             yAxis= yAxis / np.linalg.norm(yAxis)
             xAxis = np.cross(yAxis, zAxis)
             
-            rotMat = np.vstack((xAxis, yAxis, zAxis))
+            ##IPython.embed()
+            
+            rotMat = np.vstack((xAxis, yAxis, zAxis)).T
             tbRot = tfx.tb_angles(rotMat).matrix
-            if rotate:
-                tbRot = self.rotate(180, "roll", tbRot)
-                tbRot = self.rotate(-90, "yaw", tbRot)
+            #if rotate:
+                #tbRot = self.rotate(-90, "roll", tbRot)
+            #else:
+            #    tbRot = self.rotate(-180, "roll", tbRot)
             quat = tfx.tb_angles(tbRot).quaternion
             
             return 1e-3*centerPoint, quat
         return None
+    
+    def poseFromMarkers2(self, markers, target_ids, rotate=False):
+        if len(markers) >= 3:
+            points = [np.zeros((3,1)), np.zeros((3,1)), np.zeros((3,1))]
+            
+            for m in markers:
+                #print 'Pos',m.id,m.x,m.y,m.z
+                points[target_ids.index(m.id)] = np.array([m.x, m.y, m.z])
+            
+            leftPoint = points[0]
+            centerPoint = points[1]
+            rightPoint = points[2]
+            
+            leftVec = leftPoint - centerPoint
+            rightVec = rightPoint - centerPoint
+            leftVec = leftVec / np.linalg.norm(leftVec) 
+            rightVec = rightVec / np.linalg.norm(rightVec) 
+            
+            zAxis = np.cross(rightVec, leftVec)    
+            xAxis = (leftVec + rightVec) / 2
+            xAxis= xAxis / np.linalg.norm(xAxis)
+            yAxis = np.cross(zAxis, xAxis)
+
+            
+            rotMat = np.vstack((xAxis, yAxis, zAxis)).T
+            tbRot = tfx.tb_angles(rotMat).matrix
+            #if rotate:
+                #tbRot = self.rotate(-90, "roll", tbRot)
+            #else:
+            #    tbRot = self.rotate(-180, "roll", tbRot)
+            quat = tfx.tb_angles(tbRot).quaternion
+            
+            return 1e-3*centerPoint, quat
+        return None
+        
         
     def rotate(self, angle, axis, matrix):
         """ 

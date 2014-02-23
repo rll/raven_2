@@ -132,7 +132,7 @@ def plot_translation_poses_nice(camera_ts, camera_poses, robot_ts, robot_poses, 
                     axarr[i].plot(camera_ts[start_split_ind:split_ind], camera_trans[start_split_ind:split_ind,i], 'b')
                 start_split_ind = split_ind
         else:
-            axarr[i].plot(camera_ts, camera_trans[:,i], 'b', label='grouth truth')
+            axarr[i].plot(camera_ts, camera_trans[:,i], 'b', label='ground truth')
         axarr[i].plot(robot_ts, robot_trans[:,i], 'g', label='raw data')
         axarr[i].plot(robot_ts, sys_robot_trans[:,i], 'r', label='systematic correction')
         axarr[i].plot(robot_ts, gp_robot_trans[:,i], 'c', label='systematic and GP correction')

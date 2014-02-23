@@ -53,7 +53,13 @@ def withinBounds(ps0, ps1, transBound, rotBound, transFrame=None, rotFrame=None)
     
     return True
 
-
+def checkBounds(gripperPose, foamPose, transBound, rotBound, transFrame=None, rotFrame=None):
+    delPose = deltaPose(gripperPose, foamPose, transFrame, rotFrame).position.list
+    bounds = [0.015, 0.007, 0.015]
+    for i in range(3):
+        if (math.fabs(delPose[i])>bounds[i]):
+            return False
+    return True
 
 def deltaPose(currPose, desPose, posFrame=None, rotFrame=None):
     """
