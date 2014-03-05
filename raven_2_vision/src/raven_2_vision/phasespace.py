@@ -24,22 +24,34 @@ SERVER_NAME = "10.116.173.110"
 INIT_FLAGS = 0
 STREAMING_FREQUENCY = 100
 
-GRIPPER_MARKER_IDS = [4, 11, 10]
-REGISTRATION_MARKER_IDS = [9, 7, 6]
+GRIPPER_MARKER_IDS = [8, 11, 10]
+REGISTRATION_MARKER_IDS = [9, 6, 7]
 
 # pose of the Raven screw relative to 0 link as of 02/13/14
 SCREW_X_0LINK = 0.3007
 SCREW_Y_0LINK= 0.0754
 SCREW_Z_0LINK = 0.02000
 
-SCREW_ROLL_0LINK = -90
+SCREW_YAW_0LINK = -90
 SCREW_PITCH_0LINK = 0
-SCREW_YAW_0LINK = 0
+SCREW_ROLL_0LINK = 0
 
 SCREW_TRANSLATION = np.array([SCREW_X_0LINK, SCREW_Y_0LINK, SCREW_Z_0LINK])
 SCREW_ROTATION = np.array([SCREW_ROLL_0LINK, SCREW_PITCH_0LINK, SCREW_YAW_0LINK])
 
+CHESSBOARD_X_0LINK = -0.0676
+CHESSBOARD_Y_0LINK = -0.0554
+CHESSBOARD_Z_0LINK = -0.1070
+           
+CHESSBOARD_YAW_0LINK = -90
+CHESSBOARD_PITCH_0LINK = 0
+CHESSBOARD_ROLL_0LINK = 0
+
+CHESSBOARD_TRANSLATION = np.array([CHESSBOARD_X_0LINK, CHESSBOARD_Y_0LINK, CHESSBOARD_Z_0LINK])
+CHESSBOARD_ROTATION = np.array([CHESSBOARD_ROLL_0LINK, CHESSBOARD_PITCH_0LINK, CHESSBOARD_YAW_0LINK])
+
 SCREW_FRAME = 'screw'
+CHESSBOARD_FRAME = 'chessboard'
 PHASESPACE_FRAME = 'phasespace'
 PHASESPACE_GRIPPER_FRAME = 'phasespace_gripper'
 
@@ -111,8 +123,13 @@ class PhasespaceTracker(object):
     def run(self):
         while(self.running):
             if True:
-                self.broadcaster.sendTransform(SCREW_TRANSLATION, tfx.tb_to_quat(SCREW_YAW_0LINK, SCREW_PITCH_0LINK, SCREW_ROLL_0LINK), rospy.Time.now(), SCREW_FRAME, '0_link')
+                self.broadcaster.sendTransform(CHESSBOARD_TRANSLATION, tfx.tb_to_quat(CHESSBOARD_ROLL_0LINK, CHESSBOARD_PITCH_0LINK, CHESSBOARD_YAW_0LINK),
+                    rospy.Time.now(), CHESSBOARD_FRAME, '0_link')
                 
+                self.broadcaster.sendTransform(SCREW_TRANSLATION, tfx.tb_to_quat(SCREW_ROLL_0LINK, SCREW_PITCH_0LINK, SCREW_YAW_0LINK),
+                    rospy.Time.now(), SCREW_FRAME, '0_link')
+                
+
                 # get markers and accompanying metadata
                 frame = owlGetIntegerv(OWL_FRAME_NUMBER)[0]
                 timestamp = owlGetIntegerv(OWL_TIMESTAMP)
@@ -158,10 +175,8 @@ class PhasespaceTracker(object):
                     rTrans, rRot = self.poseFromMarkers(registrationMarkers, REGISTRATION_MARKER_IDS, rotate=False)
                     screwPosePhasespaceFrame = tfx.pose(rTrans, rRot)
                     phasespacePoseScrewFrame = screwPosePhasespaceFrame.inverse()
-                    
-                    self.broadcaster.sendTransform(phasespacePoseScrewFrame.translation, phasespacePoseScrewFrame.rotation, self.messageTime, PHASESPACE_FRAME, SCREW_FRAME)
-                    #   except:
-                    #        rospy.loginfo('Exception thrown while getting markers...')
+
+                    self.broadcaster.sendTransform(phasespacePoseScrewFrame.translation, phasespacePoseScrewFrame.rotation, self.messageTime, PHASESPACE_FRAME, CHESSBOARD_FRAME)
                 
             self.finished = True
 
@@ -170,7 +185,6 @@ class PhasespaceTracker(object):
             points = [np.zeros((3,1)), np.zeros((3,1)), np.zeros((3,1))]
             
             for m in markers:
-                ##print 'Pos',m.id,m.x,m.y,m.z
                 points[target_ids.index(m.id)] = np.array([m.x, m.y, m.z])
             
             leftPoint = points[0]
@@ -186,15 +200,9 @@ class PhasespaceTracker(object):
             yAxis = (leftVec + rightVec) / 2
             yAxis= yAxis / np.linalg.norm(yAxis)
             xAxis = np.cross(yAxis, zAxis)
-            
-            ##IPython.embed()
-            
+
             rotMat = np.vstack((xAxis, yAxis, zAxis)).T
             tbRot = tfx.tb_angles(rotMat).matrix
-            #if rotate:
-                #tbRot = self.rotate(-90, "roll", tbRot)
-            #else:
-            #    tbRot = self.rotate(-180, "roll", tbRot)
             quat = tfx.tb_angles(tbRot).quaternion
             
             return 1e-3*centerPoint, quat
@@ -225,10 +233,6 @@ class PhasespaceTracker(object):
             
             rotMat = np.vstack((xAxis, yAxis, zAxis)).T
             tbRot = tfx.tb_angles(rotMat).matrix
-            #if rotate:
-                #tbRot = self.rotate(-90, "roll", tbRot)
-            #else:
-            #    tbRot = self.rotate(-180, "roll", tbRot)
             quat = tfx.tb_angles(tbRot).quaternion
             
             return 1e-3*centerPoint, quat
@@ -251,7 +255,7 @@ class PhasespaceTracker(object):
 if __name__ == '__main__':
     rospy.init_node('phasespace_tracker')
     
-    p = PhasespaceTracker(register=False)
+    p = PhasespaceTracker(register=False, arm='R')
     rospy.spin()
     p.stop()
     

@@ -11,6 +11,8 @@ import code
 
 import tfx
 
+import IPython
+
 import openravepy as rave
 
 
@@ -130,7 +132,13 @@ class RavenArm:
                 return
         
         endPoses = [raven_util.endPose(startPose, deltaPose, self.commandFrame) for deltaPose in deltaPoses]
-            
+        #IPython.embed()
+        print
+        print 'START', startPose
+        print 'END', endPoses[-1]
+        print
+        '''IPython.embed()
+        '''
         return self.executePoseTrajectory(endPoses, block=block, speed=speed, ignoreOrientation=ignoreOrientation)
             
 

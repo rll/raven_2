@@ -74,7 +74,7 @@ class Kinect:
     height = 480
     
 class HomePose:
-    Left = tfx.pose([-.03,-.02,-.135],tfx.tb_angles(-90,90,0))
+    Left = tfx.pose([-0.019999999999999997, -0.019999999999999997, -0.10500000000000001],tfx.tb_angles(-90,90,0), frame='0_link')
     Right = tfx.pose([-.12,-.02,-.135],tfx.tb_angles(-90,90,0))
     
 class RavenDataKeys:

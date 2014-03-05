@@ -21,6 +21,7 @@ import trajoptpy
 import cloudprocpy
 import json
 import numpy as np
+import copy
 
 import trajoptpy.make_kinbodies as mk
 from trajoptpy.check_traj import traj_is_safe
@@ -185,12 +186,13 @@ class RavenPlanner:
     defaultJointPositions = [.512, 1.6, -.2, .116, .088, 0]
     defaultJoints = dict([(jointType,jointPos) for jointType, jointPos in zip(rosJointTypes,defaultJointPositions)])
 
-    def __init__(self, armNames, errorModel=None, thread=True, withWorkspace=False):
+    def __init__(self, armNames, errorModel=None, thread=True, withWorkspace=False, addNoise=False):
         if isinstance(armNames,basestring):
             armNames = [armNames]
         self.armNames = sorted(armNames)
         self.errorModel = errorModel
         self.refFrame = raven_constants.Frames.Link0
+        self.addNoise = addNoise
 
         self.env = rave.Environment()
         #self.env.SetViewer('qtcoin')
@@ -578,8 +580,10 @@ class RavenPlanner:
                 jointTrajDicts = self.jointTrajToDicts(armName, armJointTrajArray, **graspKwargs)
                 self.jointTraj[armName] = jointTrajDicts # for debugging
                 poseTraj = self.jointDictsToPoses(armName, jointTrajDicts)
-                correctedPoseTraj = self.correctPoseTrajectory(armName, poseTraj) # apply calibrated error model to trajectory
-                self.poseTraj[armName] = correctedPoseTraj
+                #if self.addNoise:
+                #    poseTraj = self.perturbTrajectory(armName, poseTraj)
+                correctedPoseTraj = copy.copy(poseTraj) #self.correctPoseTrajectory(armName, poseTraj) # apply calibrated error model to trajectory
+                self.poseTraj[armName] = copy.copy(correctedPoseTraj)
                 deltaPoseTraj = self.posesToDeltaPoses(correctedPoseTraj)
                 self.deltaPoseTraj[armName] = deltaPoseTraj
                 
@@ -707,6 +711,10 @@ class RavenPlanner:
         startGrasp = self.getCurrentGrasp(armName)
         if endGrasp is None:
             endGrasp = startGrasp
+        
+        if self.errorModel is not None:
+            endPose, endPoseOffset = self.errorModel.predictSinglePose(armName, endPose, endPose) # << this is wrong, need true delta
+
         self.setStartAndEndPose(armName, startPose, endPose, startGrasp=startGrasp, endGrasp=endGrasp)
         self.trajSteps[armName] = n_steps
         with self.lock:
@@ -724,19 +732,119 @@ class RavenPlanner:
             print 'waiting for arm {} traj'.format(armName)
             while self.trajRequest[armName] and not rospy.is_shutdown():
                 rospy.sleep(0.05)
-            print 'received arm {} traj'.format(armName) 
+            print 'received arm {} traj'.format(armName)
+
         return self.deltaPoseTraj[armName]   
-            #return self.poseTraj[armName]
         
     getPoseTrajectory = getTrajectoryFromPose
+
+    def getFullTrajectoryFromPose(self, armName, endPose, startPose=None, endGrasp = None, n_steps=50, block=True, approachDir=None, speed=None, correctTrajectory=False):
+        success = False
+        numTries = 0
+        while not success and numTries < 10:
+            self.waitForState()
+            joints1 = self.getCurrentJoints(armName)
+            if startPose is None:
+                startPose = self.getCurrentPose(armName)
+            startGrasp = self.getCurrentGrasp(armName)
+            if endGrasp is None:
+                endGrasp = startGrasp
+
+            self.setStartAndEndPose(armName, startPose, endPose, startGrasp=startGrasp, endGrasp=endGrasp)
+            self.trajSteps[armName] = n_steps
+            with self.lock:
+                self.trajRequest[armName] = True
+            if self.trajEndJoints[armName] is None:
+                print armName, startPose, startGrasp, endPose, endGrasp
+                raise Exception()
+            
+            self.approachDir[armName] = approachDir
+            
+            self.start_pose_pubs[armName].publish(startPose.msg.PoseStamped())
+            self.end_pose_pubs[armName].publish(endPose.msg.PoseStamped())
+            
+            if block:
+                print 'waiting for arm {} traj'.format(armName)
+                while self.trajRequest[armName] and not rospy.is_shutdown():
+                    rospy.sleep(0.05)
+                print 'received arm {} traj'.format(armName)
+            
+            endPoses = [raven_util.endPose(startPose, deltaPose) for deltaPose in self.deltaPoseTraj[armName]]
+            success = (endPoses[-1].position.distance(endPose.position) <= 0.005)
+            numTries = numTries+1
+
+        if endPoses[-1].position.distance(endPose.position) > 0.005:
+            print 'FAIL'
+
+        if correctTrajectory:
+            # run a second time to correct (needed the desired approach direction)    
+            if self.errorModel is not None:
+                #startPoseCorrected, startPoseOffset = self.errorModel.predictSinglePose(armName, startPose, startPose)
+                dt = 1
+                secondLastPose = endPoses[-2]
+                lastPose = endPoses[-1]
+                if speed is not None:
+                    dt = lastPose.position.distance(secondLastPose.position) / speed
+
+                endPoseCorrected, endPoseOffset = self.errorModel.predictSinglePose(armName, lastPose, secondLastPose, dt) # << this is wrong, need true delta
+                print 'End Before', self.poseTraj[armName][n_steps-1]
+                
+
+                correctedTraj = self.getFullTrajectoryFromPose(armName, endPoseCorrected, startPose=startPose,
+                    endGrasp=endGrasp, n_steps=n_steps, block=block, approachDir=approachDir, correctTrajectory=False)
+                
+                print
+                print armName
+                for p in endPoses:
+                    print 'Pose', p
+                print 'START', startPose
+                print 'END', self.poseTraj[armName][n_steps-1]
+                print 'ORIG', endPose
+                print 'dt', dt
+                print
+               # if armName == 'R':
+                 #   IPython.embed()
+
+                return correctedTraj
+        return (self.poseTraj[armName][0], self.deltaPoseTraj[armName])   
+        #return self.poseTraj[armName]
     
+    def perturbTrajectory(self, armName, poseTraj):
+        perturbedPoseList = []
+
+        sigmaPos = 0.001
+        sigmaAngle = 1.0
+
+        for i in range(1,len(poseTraj)):
+            deltaPos = tfx.random_vector(sigmaPos)
+            deltaAngles = tfx.tb_angles(sigmaAngle*np.random.randn(),
+                sigmaAngle*np.random.randn(), sigmaAngle*np.random.randn())
+            deltaPose = tfx.pose(deltaPos, deltaAngles)
+            perturbedPose = tfx.pose(deltaPose.matrix.dot(poseTraj[i].matrix)) 
+            perturbedPoseList.append(perturbedPose)
+        
+        return perturbedPoseList
+
     def correctPoseTrajectory(self, armName, poseTraj):
         correctedPoseList = []
-        for pose in poseTraj:
-            poseGPCorrected = pose # in case no error model was provided
+        
+        # create extended pose traj to easily get a delta pose for the first pose
+        extendedPoseTraj = copy.copy(poseTraj)
+        extendedPoseTraj.insert(0, poseTraj[0])
+        
+        # correct the poses one by one
+        for i in range(1,len(extendedPoseTraj)):
+            curPose = extendedPoseTraj[i]
+            prevPose = extendedPoseTraj[i-1]
+            
+            poseGPCorrected = curPose # in case no error model was provided
+            poseSysCorrection = curPose
+
             if self.errorModel is not None:
-                poseGPCorrected, poseSysCorrected = self.errorModel.predictSinglePose(pose, armName)
+                poseGPCorrected, poseSysCorrected = self.errorModel.predictSinglePose(armName, curPose, prevPose)
+            
             correctedPoseList.append(poseGPCorrected)
+
         return correctedPoseList
     
     def trajReady(self):

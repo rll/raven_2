@@ -126,7 +126,7 @@ class RavenController():
         ravenPauseCmd.controller = Constants.CONTROLLER_CARTESIAN_SPACE
 
         self.ravenPauseCmd = ravenPauseCmd
-        
+        self.prevPose = np.array([0,0,0])
         
         self.thread = mp.Process(target=self.run, args=(self.queue, self.pubQueue, self.clearStageQueue))
         self.thread.daemon = True
@@ -148,6 +148,19 @@ class RavenController():
             self.header.stamp = rospy.Time.now()
             cmd = self.pubQueue.get()
             cmd.header = self.header
+            
+            curPoseMsg = cmd.arms[0].tool_command.pose
+            curPose = np.array([curPoseMsg.position.x, curPoseMsg.position.y, curPoseMsg.position.z ])
+            #IPython.embed()
+            if np.linalg.norm(curPose - self.prevPose) < 1e-3:
+                '''
+                print
+                print 'CUR', curPose
+                print 'PREV', self.prevPose
+                print
+                '''
+            self.prevPose = curPose
+            
             self.pubCmd.publish(cmd)
             
         while not self.clearStageQueue.empty():
@@ -247,9 +260,9 @@ class RavenController():
                         stopRunning = val['stopRunning']
                     if val.has_key('stages'):
                         stages = val['stages']
-                       # print "NEW STAGES", self.arm
+                        # print "NEW STAGES", self.arm
                         if stageIndex == -1 and len(stages) > 0:
-                           # print "FRESH", self.arm
+                            # print "FRESH", self.arm
                             startTime = rospy.Time.now()
                             stageIndex = 0
                     if val.has_key('updatedStages'):
@@ -262,8 +275,6 @@ class RavenController():
                 success = False
                 continue
 
-
-            #print "STAGES", stages, self.arm
             if stopRunning or rospy.is_shutdown():
                 success = True
                 break
@@ -284,8 +295,7 @@ class RavenController():
                         #print "CLEARING STAGES", self.arm
                         clearStageQueue.put({'clearStages' : True})
                         stageIndex = -1
-                    continue
-               
+                
                 if stage.duration.is_zero():
                     t = 1
                 else:
@@ -293,7 +303,7 @@ class RavenController():
                 
                 cmd = RavenCommand()
                 cmd.pedal_down = True
-                stage.cb(cmd,t)
+                stage.cb(cmd,t)  
             else:
                 # no stages
                 #cmd = self.ravenPauseCmd
@@ -330,12 +340,21 @@ class RavenController():
             if speed is None:
                 speed = self.defaultPoseSpeed
             duration = end.position.distance(start.position) / speed
-        
+        '''
+        print
+        print 'POSE', end
+        print
+        '''
         def fn(cmd, t, start=start, end=end, arm=self.arm):
             pose = start.interpolate(end, t)
             
             toolPose = pose.msg.Pose()
-
+            '''
+            if t == 1:
+                print
+                print 'END', toolPose
+                print
+            '''
             # not sure if correct
             cmd.controller = Constants.CONTROLLER_CARTESIAN_SPACE
             RavenController.addArmPoseCmd(cmd, arm, toolPose)
@@ -493,7 +512,7 @@ class RavenController():
         
 def test_gripperMove():
     rospy.init_node('raven_controller',anonymous=True)
-    leftArm = RavenController(raven_constants.Arm.Left)
+    leftArm = RavenController(raven_constants.Arm.Left, defaultPoseSpeed=0.05)
     rospy.sleep(2)
 
     rospy.loginfo('Press enter to start')
@@ -501,14 +520,8 @@ def test_gripperMove():
 
     leftArm.start()
 
-    leftArm.setGripper(0.0)
-    
-    rospy.sleep(5)
-    
-    leftArm.setGripper(1.2)
-
     startPose = leftArm.currentPose
-    endPose = raven_util.endPose(startPose, tfx.pose([0.02, -0.02, -0.02]), startPose.frame)
+    endPose =  tfx.pose([-0.02, -0.08, -0.17], tfx.tb_angles(-90,90,0), frame=startPose.frame)#raven_util.endPose(startPose, tfx.pose([-0.02, -0.08, -0.17]), startPose.frame)
     leftArm.goToPose(endPose)
     
     rospy.loginfo('Press enter to stop')

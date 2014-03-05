@@ -143,13 +143,13 @@ class PredictionError(object):
         output += 'Max:' + str(self.maxError) + '\n'
         return output
 
-IND = 20000
+IND = 10000
 
 class RavenErrorModel(object):
     
-    def __init__(self, armName, modelFile=None):
-        self.modelFile = modelFile
-        self.trainingMode = mode
+    def __init__(self, leftModelFile=None, rightModelFile=None):
+        self.leftModelFile = leftModelFile
+        self.rightModelFile = rightModelFile
         
         self.trainingInputs = {}
         self.testingInputs = {}
@@ -159,17 +159,33 @@ class RavenErrorModel(object):
         self.rigidCorrection = {}
            
         try:
-            if self.modelFile:
-                model = scipy.io.loadmat(self.modelFile)
-                self.trainingInputs[armName]  = model[MODEL_NAME][0][TRAINING_INDEX]
-                self.testingInputs[armName]   = model[MODEL_NAME][0][TESTING_INPUT_INDEX][:IND,:]
-                self.testingTargets[armName]  = model[MODEL_NAME][0][TESTING_TARGET_INDEX][:IND,:]
-                self.hyperparameters[armName] = model[MODEL_NAME][0][HYPER_INDEX]
-                self.alphas[armName]          = model[MODEL_NAME][0][ALPHA_INDEX]
-                self.rigidCorrection[armName] = model[MODEL_NAME][0][RIGID_CORRECTION_INDEX]
+            if self.leftModelFile:
+                arm = 'L'
+                model = scipy.io.loadmat(self.leftModelFile)
+                self.trainingInputs[arm]  = model[MODEL_NAME][0][TRAINING_INDEX]
+                self.testingInputs[arm]   = model[MODEL_NAME][0][TESTING_INPUT_INDEX][:IND,:]
+                self.testingTargets[arm]  = model[MODEL_NAME][0][TESTING_TARGET_INDEX][:IND,:]
+                self.hyperparameters[arm] = model[MODEL_NAME][0][HYPER_INDEX]
+                self.alphas[arm]          = model[MODEL_NAME][0][ALPHA_INDEX]
+                self.rigidCorrection[arm] = model[MODEL_NAME][0][RIGID_CORRECTION_INDEX]
                 
-                self.hyperparameters[armName] = self.convertHyperparams(self.hyperparameters[armName])
-                self.alphas[armName] = self.convertAlphas(self.alphas[armName])
+                self.hyperparameters[arm] = self.convertHyperparams(self.hyperparameters[arm])
+                self.alphas[arm] = self.convertAlphas(self.alphas[arm])
+            
+            if self.rightModelFile:
+                arm = 'R'
+                model = scipy.io.loadmat(self.rightModelFile)
+                self.trainingInputs[arm]  = model[MODEL_NAME][0][TRAINING_INDEX]
+                self.testingInputs[arm]   = model[MODEL_NAME][0][TESTING_INPUT_INDEX][:IND,:]
+                self.testingTargets[arm]  = model[MODEL_NAME][0][TESTING_TARGET_INDEX][:IND,:]
+                self.hyperparameters[arm] = model[MODEL_NAME][0][HYPER_INDEX]
+                self.alphas[arm]          = model[MODEL_NAME][0][ALPHA_INDEX]
+                self.rigidCorrection[arm] = model[MODEL_NAME][0][RIGID_CORRECTION_INDEX]
+                
+                self.hyperparameters[arm] = self.convertHyperparams(self.hyperparameters[arm])
+                self.alphas[arm] = self.convertAlphas(self.alphas[arm])
+                
+                #IPython.embed()
         except IOError as e:
             print "ERROR:", e
             print "Failed to load previous testing and training data file"
@@ -193,7 +209,7 @@ class RavenErrorModel(object):
         return cleanedAlphas
     
     def meanSum(self, hyp, x):
-        A = x.dot(hyp[1:(x.shape[1]+1)])
+        A = x.dot(hyp[0:(x.shape[1])])
         A = A + hyp[(x.shape[1]):]*np.ones((x.shape[0],1))
         return A
     
@@ -284,6 +300,9 @@ class RavenErrorModel(object):
             translationError[i,:] = deltaPose[:3,3].T
             rotationError[i,:] = euler_from_matrix(deltaRotation)
             
+            #if np.abs(translationError[i,1]) > 0.01:
+            #    print 'Outlier', i
+            
         combinedError = np.c_[translationError, rotationError]
         meanError = np.mean(np.abs(combinedError), axis=0)
         medianError = np.median(np.abs(combinedError), axis=0)
@@ -311,13 +330,16 @@ class RavenErrorModel(object):
            
             print "Evaluating test data for arm " + armName 
             gpPredictedTestingPoses, sysPredictedTestingPoses = self.predict(armName, testingInputPoses, testingInputDeltas)
-             
+            
+            IPython.embed() 
+
             # rigid correction error
             sysError = self.componentwiseError(sysPredictedTestingPoses, testingTargetPoses)
             print 'Rigid Correction error:'
             print sysError
             print '\n'
             # gp error
+            print 'GAUSSIAN PROCESS'
             gpError = self.componentwiseError(gpPredictedTestingPoses, testingTargetPoses)
             print 'GP error:'
             print gpError
@@ -346,36 +368,48 @@ class RavenErrorModel(object):
         testingPredictedMatrix = np.zeros(testingInputMatrix.shape)
         
         for d in range(n_dim):
-            print 'Predicting dimension', d
+            #print 'Predicting dimension', d
             Mz = self.meanSum(hyperparams[d].mean, testingInputMatrix)
             Kxz = self.covarianceMaternIso(3, hyperparams[d].covariance, trainingInputMatrix, testingInputMatrix)
+            #IPython.embed()
+
             testingPredictedMatrix[:,d:(d+1)] = Mz + Kxz.T.dot(alphas[d])
             
         # add ones to make them legit poses
         testingPredictedMatrix[:,15:16] = np.ones((testingPredictedMatrix.shape[0],1))
             
         return testingPredictedMatrix
-        
        
     def predict(self, armName, inputPoses, inputGradients):
         rigidCorrection = self.rigidCorrection[armName]
                       
         # systematic corrected robot poses for test data
-        print 'Correcting rigid offset'
+        #print 'Correcting rigid offset'
         rigidCorrectedTestingPoses = [rigidCorrection.dot(inputPose) for inputPose in inputPoses]
      
         # training state matrix fill-in
-        testingInputMatrix = poseListToDataMatrix(inputPoses, inputGradients)
+        testingInputMatrix = poseListToDataMatrix(rigidCorrectedTestingPoses, inputGradients)
            
         # systematic and GP corrected robot poses for training data
-        print 'Correcting residual errors'
+        #print 'Correcting residual errors'
         gpPredictedTestingMatrix = self.gpPredict(armName, testingInputMatrix)
         gpPredictedTestingPoses, dummy = dataMatrixToPoseList(gpPredictedTestingMatrix)
   
+        # reorth the gp predictions since they may not be legit
+        for i in range(len(gpPredictedTestingPoses)):
+            R = gpPredictedTestingPoses[i][:3,:3]
+            U, s, V = np.linalg.svd(R)
+            R = U.dot(V)
+            gpPredictedTestingPoses[i][:3,:3] = R
+
         return gpPredictedTestingPoses, rigidCorrectedTestingPoses      
 
 
-    def predictSinglePose(self, armName, curPose, prevPose):
+    def predictSinglePose(self, armName, curPose, prevPose, dt=1.0):
+        if dt <= 0:
+            print 'Error: Illegal timestamp'
+            return None
+
         # Convert pose to numpy matrix
         curTrans = tft.translation_matrix([curPose.position.x, curPose.position.y, curPose.position.z])
         curRot = tft.quaternion_matrix([curPose.orientation.x, curPose.orientation.y ,curPose.orientation.z, curPose.orientation.w])
@@ -385,7 +419,14 @@ class RavenErrorModel(object):
         prevRot = tft.quaternion_matrix([prevPose.orientation.x, prevPose.orientation.y ,prevPose.orientation.z, prevPose.orientation.w])
         prevPoseMatrix = np.dot(prevTrans, prevRot)
         
-        deltaPoseMatrix = curPoseMatrix - prevPoseMatrix # really we should be using the inverse formula but this seems to work right now
+        deltaPoseMatrix = np.linalg.inv(prevPoseMatrix).dot(curPoseMatrix)
+        deltaAngles = euler_from_matrix(deltaPoseMatrix[:3,:3])
+        deltaPos = deltaPoseMatrix[:3,3]
+
+        #deltaAngles = np.array([a / dt for a in deltaAngles])
+        deltaPos = deltaPos / dt
+        #deltaPoseMatrix = euler_matrix(deltaAngles[0], deltaAngles[1], deltaAngles[2])
+        deltaPoseMatrix[:3,3] = deltaPos
 
         gpList, sysList = self.predict(armName, [curPoseMatrix], [deltaPoseMatrix])
         return tfx.pose(gpList[0], frame=curPose.frame, stamp=curPose.stamp), tfx.pose(sysList[0], frame=curPose.frame, stamp=curPose.stamp)
@@ -441,10 +482,60 @@ if __name__ == '__main__':
 #    with launch_ipdb_on_exception():
     if True:
         if mode == 'test':
-            r = RavenErrorModel(armName, modelData)
+            r = None
+            if armName == 'L':
+                r = RavenErrorModel(leftModelData=modelData)
+            else:
+                r = RavenErrorModel(rightModelData=modelData)
+                    
             r.test()
         else:
-            print "Please specify a valid mode: train or test"
-    
-    
-    
+            #print "Please specify a valid mode: train or test"
+            try:
+                for i in range(1):
+                    r = None
+                    if armName == 'L':
+                        r = RavenErrorModel(leftModelData=modelData)
+                    else:
+                        r = RavenErrorModel(rightModelData=modelData)
+                    data = pickle.load(open('/home/jmahler/ros_workspace/RavenDebridement/test_%d.pkl' %(i) ))
+                    prevPose = tfx.pose([0,0,0])
+                    
+                    sysPredPoses = []
+                    gpPredPoses = []
+                    actualPoses = []
+                    cameraPoses = []
+                    count = 0
+                    tp = data['target_pose'][armName]
+                    IPython.embed()
+                        
+                    for cp, rp in zip(data['camera_poses'][armName], data['command_poses'][armName]):
+                        pose = tfx.pose(np.reshape(cp, (4,4)))
+                        if count > 0 and np.abs(rp[2,3]) > 0.01:
+                            gpPred, sysPred = r.predictSinglePose(armName, pose, prevPose)
+                            sysPredPoses.append(tp)
+                            gpPredPoses.append(gpPred.matrix)
+                            actualPoses.append(rp)
+                            cameraPoses.append(cp)
+                        prevPose = pose
+                        count = count+1
+
+                    pose = tfx.pose(tp)
+                    gpPred, sysPred = r.predictSinglePose(armName, pose, pose)
+                    test = gpPred.matrix
+                    #gpPredPoses = [test for i in range(len(sysPredPoses))]
+
+                    p = r.componentwiseError(gpPredPoses, actualPoses)
+                    print p
+
+
+                    matplotlib.rcParams['ps.useafm'] = True
+                    matplotlib.rcParams['pdf.use14corefonts'] = True
+                    matplotlib.rcParams['text.usetex'] = True
+                    fake_camera_ts = [i for i in range(len(gpPredPoses))]
+                    plot_translation_poses_nice(fake_camera_ts, actualPoses, fake_camera_ts, cameraPoses,
+                        sysPredPoses, gpPredPoses, split=True, arm_side=armName)
+
+
+            except:
+                print 'Done reading files'
