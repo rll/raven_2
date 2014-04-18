@@ -16,16 +16,20 @@ from tf.msg import tfMessage
 import cv
 import cv2
 import copy
+import image_geometry
+
 from std_msgs.msg import String
 from std_msgs.msg import Empty as EmptyMsg
 from std_srvs.srv import Empty as EmptySrv
 from sensor_msgs.msg import Image, CameraInfo
 from stereo_msgs.msg import DisparityImage
 from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Point, PointStamped
 from cv_bridge import CvBridge, CvBridgeError
 import thread
 import IPython
 import numpy as np
+import threading
 from stereo_click.msg import *
 
 # modes of operation
@@ -35,7 +39,21 @@ FLS_CLICK_STREAMING = 1
 # num clocks per pose estimate
 FLS_CLICKS_PER_POSE = 3
 
-FLS_SEARCH_RADIUS = 10
+FLS_SEARCH_RADIUS = 40
+
+def convertStereo(u, v, disparity, info):
+    """
+    Converts two pixel coordinates u and v along with the disparity to give PointStamped       
+    """
+    stereoModel = image_geometry.StereoCameraModel()
+    stereoModel.fromCameraInfo(info['l'], info['r'])
+    (x,y,z) = stereoModel.projectPixelTo3d((u,v), disparity)
+
+    cameraPoint = PointStamped()
+    cameraPoint.header.frame_id = info['l'].header.frame_id
+    cameraPoint.header.stamp = rospy.Time.now()
+    cameraPoint.point = Point(x,y,z)
+    return cameraPoint
 
 ##	ClickWindow documentation
 #
@@ -48,7 +66,7 @@ class ClickWindow:
 	#	@param self The object pointer
 	#	@param cameraName The name of the camera in the stereo pair. Ex: /wide_stereo_left
 	#	@param outputName The name of the output node
-	def __init__(self, imageName, infoName, disparityName, frame, outputName, mode=FLS_CLICK_STATIC):
+	def __init__(self, imageName, leftInfoName, rightInfoName, disparityName, frame, outputName, mode=FLS_CLICK_STATIC):
 		self.name = "%s Viewer"%'doosh'
 		self.cp = False
 		self.ch_x = 0
@@ -68,14 +86,18 @@ class ClickWindow:
 		self.commitPoses = False
 		self.maxRadius = FLS_SEARCH_RADIUS 
 
+		self.camera_info = {'l':None, 'r':None}
 		self.cv_image = None
 		self.disparity_image = None
+		self.image_lock = threading.Lock()
 
 		self.cameraTopic = imageName
-		self.cameraInfoTopic = infoName
+		self.leftCameraInfoTopic = leftInfoName
+		self.rightCameraInfoTopic = rightInfoName
 		self.disparityTopic = disparityName
 		self.camera_sub = rospy.Subscriber(self.cameraTopic, Image, self.update_background)
-		self.camera_info_sub = rospy.Subscriber(self.cameraInfoTopic, CameraInfo, self.update_camera_info)	
+		self.left_camera_info_sub = rospy.Subscriber(self.leftCameraInfoTopic, CameraInfo, self.left_info_callback)	
+		self.right_camera_info_sub = rospy.Subscriber(self.rightCameraInfoTopic, CameraInfo, self.right_info_callback)	
 		self.disparity_sub = rospy.Subscriber(self.disparityTopic, DisparityImage, self.update_disparity)
 
 		if self.mode == FLS_CLICK_STREAMING:	
@@ -127,29 +149,39 @@ class ClickWindow:
 	#	@param data The camera data (in Image format)
 	def update_background(self,data):
 		if self.listening:
+			self.image_lock.acquire()
 			try:
 				self.cv_image = self.bridge.imgmsg_to_cv(data, "bgr8")
 			except CvBridgeError, e:
 				print e
+			self.image_lock.release()
 			self.set_background(self.cv_image)
 			self.image_width = data.width
 			self.image_height = data.height
 			self.listen()
 	
-	def update_camera_info(self, data):
-		self.set_camera_info(data)
+	def left_info_callback(self, msg):
+		if self.camera_info['l']:
+			return
+		self.camera_info['l'] = msg
+
+	def right_info_callback(self, msg):
+		if self.camera_info['r']:
+			return
+		self.camera_info['r'] = msg
 		
 	def update_disparity(self, data):
+		self.image_lock.acquire()
 		if self.cv_image is not None:
 			tmpImg = self.bridge.imgmsg_to_cv(data.image, "mono8")
-	        self.minDisparity = max(data.min_disparity, 0.0)
-	        self.disparityScale = self.cv_image.width / tmpImg.width
-	        scaleMat = np.zeros((tmpImg.height, tmpImg.height))
-	        cv2.setIdentity(scaleMat, self.disparityScale)
-	       	self.disparity_image = cv.fromarray(scaleMat.dot(tmpImg))
-
-	def set_camera_info(self,info):
-		self.camera_info = info
+			self.minDisparity = max(data.min_disparity, 0.0)
+			if tmpImg is not None:
+				self.disparityScale = self.cv_image.width / tmpImg.width
+		        scaleMat = np.zeros((tmpImg.height, tmpImg.height))
+		        cv2.setIdentity(scaleMat, self.disparityScale)
+		       	self.disparity_image = cv.fromarray(scaleMat.dot(tmpImg))
+	    
+		self.image_lock.release()
 		
 	def set_listeners(self):
 		cv.SetMouseCallback(self.name, self.onMouse, 0)
@@ -201,18 +233,22 @@ class ClickWindow:
 	#	@param (x,y) The (x,y) coordinates of the pixel, in the camera's view
 	def add_point(self, x, y):
 		if self.disparity_image is not None:
-			point = (x, y)
+			point = (int(x), int(y))
 
 			if self.cv_image is not None:
-				# get nearest disparity value
-				x, y, disparity = self.get_box_disparity(point, self.maxRadius, self.cv_image)
+
+				for radius in range(self.maxRadius):
+					x, y, disparity = self.get_box_disparity(point, radius, self.cv_image)
+					if disparity > self.minDisparity:
+						break
 
 				if disparity < self.minDisparity:
 					print "Could not find valid disparity within radius. Please retry"
 					return
 
 				# convert point to 3d
-				point3d = Util.convertStereo(point[0], point[1], disparity, self.camera_info)
+				point3d = convertStereo(point[0], point[1], disparity, self.camera_info)
+				print '3D Point', point3d
 
 				# points stored left top bottom
 				self.curPoints.append(point3d)
@@ -222,6 +258,7 @@ class ClickWindow:
 					# compute pose
 					pose = self.compute_pose(self.curPoints)
 					self.curPoses.append(pose)
+					IPython.embed()
 
 					# reset variables
 					self.numClicked = 0
@@ -272,40 +309,46 @@ class ClickWindow:
 
 		return tfx.pose(center, quat, frame=self.frame)
 
+	def get_disparity(self, x, y, image, dispImg):
+		if 0 <= y < image.height and 0 <= x < image.width:
+			if image[y, x] > 0:
+				return cv.GetReal2D(dispImg, y / self.disparityScale, x / self.disparityScale)
+		return -float("inf")
+
 	def get_box_disparity(self, pt, radius, image):
 		"""
 		Gets a disparity value in a square of radius radius, or None if no disparity value can be found.
 		"""
 
 		xClose, yClose = pt
-
+		
 		dispImg = self.disparity_image
 		if dispImg is not None:
 			# check left edge
 			x = xClose - radius
 			for y in range(yClose - radius, yClose + radius + 1):
-				d = self.getDisparity(x, y, image, dispImg)
+				d = self.get_disparity(x, y, image, dispImg)
 				if d > self.minDisparity:
 					return (x, y, d)
 
 			# check top edge
 			y = yClose + radius
 			for x in range(xClose - radius, xClose + radius + 1):
-				d = self.getDisparity(x, y, image, dispImg)
+				d = self.get_disparity(x, y, image, dispImg)
 				if d > self.minDisparity:
 					return (x, y, d)
 
 			# check right edge
 			x = xClose + radius
 			for y in range(yClose - radius, yClose + radius + 1):
-				d = self.getDisparity(x, y, image, dispImg)
+				d = self.get_disparity(x, y, image, dispImg)
 				if d > self.minDisparity:
 					return (x, y, d)
 
 			# check bottom edge
 			y = yClose - radius
 			for x in range(xClose - radius, xClose + radius + 1):
-				d = self.getDisparity(x, y, image, dispImg)
+				d = self.get_disparity(x, y, image, dispImg)
 				if d > self.minDisparity:
 					return (x, y, d)
 		return 0,0,0
@@ -318,26 +361,29 @@ def main():
 	import argparse
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-i', '--image', default='/BC/left/image_rect_color')
-	parser.add_argument('-c', '--info', default='/BC/left/camera_info')
+	parser.add_argument('-l', '--leftinfo', default='/BC/left/camera_info')
+	parser.add_argument('-r', '--rightinfo', default='/BC/right/camera_info')
 	parser.add_argument('-d', '--disparity', default='/BC/downsampled_disparity')
 	parser.add_argument('-f', '--frame', default='/left_BC')
 	parser.add_argument('-o', '--output', default='/block_poses')
 	args = parser.parse_args(rospy.myargv()[1:])
 
 	imageName = args.image
-	infoName = args.info
+	leftInfoName = args.leftinfo
+	rightInfoName = args.rightinfo
 	disparityName = args.disparity
 	frame = args.frame
 	outputName = args.output
 	del args.image
-	del args.info
+	del args.leftinfo
+	del args.rightinfo
 	del args.disparity
 	del args.frame
 	del args.output
 
 	name = "fls_click_interface"
 	rospy.init_node(name)
-	gui = ClickWindow(imageName=imageName, infoName=infoName, disparityName=disparityName, frame=frame,
+	gui = ClickWindow(imageName=imageName, leftInfoName=leftInfoName, rightInfoName=rightInfoName, disparityName=disparityName, frame=frame,
 				  outputName=outputName, mode=FLS_CLICK_STATIC)
 
 	gui.get_poses()
